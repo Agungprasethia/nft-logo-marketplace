@@ -1,0 +1,114 @@
+import 'dart:collection';
+import 'package:flutter/material.dart';
+import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
+import 'package:nft_logo_marketplace/core/widgets/premium_notification.dart';
+import 'package:nft_logo_marketplace/core/services/web3_service.dart';
+import 'package:uuid/uuid.dart';
+
+class NotificationManager {
+  static final NotificationManager _instance = NotificationManager._internal();
+  static NotificationManager get instance => _instance;
+
+  NotificationManager._internal();
+
+  OverlayEntry? _currentOverlay;
+  final Queue<_NotificationData> _queue = Queue<_NotificationData>();
+  bool _isShowing = false;
+
+  /// Show a premium Web3 notification
+  /// Automatically saves to Firestore if [saveToHistory] is true and a wallet is connected.
+  static void show({
+    required BuildContext context,
+    required String title,
+    required String message,
+    NotificationType type = NotificationType.info,
+    String category = 'system',
+    int? tokenId,
+    String? imageUrl,
+    String? actionRoute,
+    bool saveToHistory = true,
+  }) {
+    // Generate notification ID
+    final id = const Uuid().v4();
+    final now = DateTime.now();
+
+    final notification = AppNotification(
+      id: id,
+      title: title,
+      message: message,
+      type: type,
+      category: category,
+      tokenId: tokenId,
+      imageUrl: imageUrl,
+      createdAt: now,
+      actionRoute: actionRoute,
+    );
+
+    // Save to Firestore
+    if (saveToHistory) {
+      final currentWallet = Web3Service.instance.currentAddress;
+      if (currentWallet != null && currentWallet.isNotEmpty) {
+        FirestoreService.instance.saveNotification(currentWallet, notification);
+      }
+    }
+
+    // Add to UI queue
+    _instance._queue.add(_NotificationData(context: context, notification: notification));
+    _instance._processQueue();
+  }
+
+  void _processQueue() {
+    if (_isShowing || _queue.isEmpty) return;
+
+    final data = _queue.removeFirst();
+    _showOverlay(data.context, data.notification);
+  }
+
+  void _showOverlay(BuildContext context, AppNotification notification) {
+    if (!context.mounted) {
+      _processQueue(); // Context might be dead, skip and process next
+      return;
+    }
+
+    _isShowing = true;
+
+    final overlay = Overlay.of(context);
+    
+    _currentOverlay = OverlayEntry(
+      builder: (context) {
+        return PremiumNotification(
+          title: notification.title,
+          message: notification.message,
+          type: notification.type,
+          onDismissed: () {
+            _removeCurrent();
+          },
+          onTap: () {
+            if (notification.actionRoute != null) {
+              Navigator.pushNamed(context, notification.actionRoute!);
+            }
+          },
+        );
+      },
+    );
+
+    overlay.insert(_currentOverlay!);
+  }
+
+  void _removeCurrent() {
+    if (_currentOverlay != null) {
+      _currentOverlay!.remove();
+      _currentOverlay = null;
+    }
+    _isShowing = false;
+    _processQueue();
+  }
+}
+
+class _NotificationData {
+  final BuildContext context;
+  final AppNotification notification;
+
+  _NotificationData({required this.context, required this.notification});
+}

@@ -1,0 +1,46 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // USERS
+    match /users/{document=**} {
+      allow read, write: if true;
+    }
+
+    // NFTS
+    match /nfts/{document=**} {
+      allow read, write: if true;
+    }
+
+    // AUCTIONS
+    match /auctions/{document=**} {
+      allow read, write: if true;
+    }
+
+    // BIDS
+    match /bids/{document=**} {
+      allow read, write: if true;
+    }
+
+    // TRANSACTIONS
+    match /transactions/{document=**} {
+      allow read, write: if true;
+    }
+
+    // NOTIFICATIONS
+    match /notifications/{document=**} {
+      allow read, write: if true;
+    }
+
+    // RE-AUCTION REQUESTS
+    match /re_auction_requests/{document=**} {
+      allow read, write: if true;
+    }
+
+    // FALLBACK
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}
