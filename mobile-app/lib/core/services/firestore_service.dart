@@ -42,7 +42,7 @@ class FirestoreService {
     while (attempt < maxRetries) {
       try {
         await operation();
-        debugPrint('✅ $operationName succeeded (attempt ${attempt + 1})');
+        if (kDebugMode) { debugPrint('✅ $operationName succeeded (attempt ${attempt + 1})'); }
         return;
       } catch (e) {
         attempt++;
@@ -60,6 +60,14 @@ class FirestoreService {
   // ============ NFTs Operations ============
 
   Future<void> saveNFT(LogoNFT logo) async {
+    // ═══ ANTI-GHOST NFT GUARD ═══
+    if (logo.tokenId <= 0) {
+      throw Exception('INVALID BLOCKCHAIN TOKEN ID');
+    }
+    if (logo.txHash == null || logo.txHash!.isEmpty) {
+      throw Exception('INVALID TRANSACTION HASH');
+    }
+
     try {
       final data = logo.toFirestore();
       data['status'] = 'pending';
@@ -88,9 +96,9 @@ class FirestoreService {
         }, SetOptions(merge: true));
       }
 
-      debugPrint('🔥 Firestore: NFT #${logo.tokenId} saved');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #${logo.tokenId} saved'); }
     } catch (e) {
-      debugPrint('❌ Firestore saveNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore saveNFT error: $e'); }
       rethrow;
     }
   }
@@ -98,47 +106,89 @@ class FirestoreService {
   Future<void> approveNFT(int tokenId, String adminId) async {
     try {
       final docRef = _nftsCollection.doc(tokenId.toString());
-      final doc = await docRef.get();
-      if (!doc.exists) throw Exception('NFT not found');
+      
+      await _db.runTransaction((transaction) async {
+        final doc = await transaction.get(docRef);
+        if (!doc.exists) throw Exception('NFT not found');
 
-      final data = doc.data()!;
-      final durationSeconds = data['auctionDuration'] as int? ?? 86400; // default 24h
-      final now = DateTime.now();
-      final endTime = now.add(Duration(seconds: durationSeconds));
-
-      await docRef.update({
-        'status': 'approved',
-        'approvedBy': adminId,
-        'approvedAt': FieldValue.serverTimestamp(),
-        'startTime': now.millisecondsSinceEpoch,
-        'endTime': endTime.millisecondsSinceEpoch,
-        'isAuctionActive': true,
-        'auctionCreated': true, // Keep for backward compatibility with UI
-        'isActive': true,
+        // Atomic update for status and visibility
+        transaction.update(docRef, {
+          'status': 'approved',
+          'nftVisible': true,
+          'approvedBy': adminId,
+          'approvedAt': FieldValue.serverTimestamp(),
+          'copyrightVerifiedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
       });
 
-      // Automatically create auction
-      final auction = Auction(
-        auctionId: tokenId, // We use tokenId as auctionId
-        tokenId: tokenId,
-        sellerId: data['ownerId'] as String? ?? '',
-        sellerWallet: data['ownerWallet'] as String? ?? '',
-        startingPrice: (data['price'] as num?)?.toDouble() ?? 0.0,
-        highestBid: (data['highestBid'] as num?)?.toDouble() ?? 0.0,
-        highestBidderId: data['highestBidderId'] as String? ?? '',
-        highestBidderWallet: data['highestBidderWallet'] as String? ?? '',
-        startTime: now,
-        endTime: endTime,
-        status: AuctionStatus.active,
-      );
-
-      final auctionData = auction.toFirestore();
-      auctionData['createdAt'] = FieldValue.serverTimestamp();
-      await _auctionsCollection.doc(tokenId.toString()).set(auctionData);
-
-      debugPrint('🔥 Firestore: NFT #$tokenId approved and auction started automatically');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId approved (Atomic Transaction)'); }
     } catch (e) {
-      debugPrint('❌ Firestore approveNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore approveNFT error: $e'); }
+      rethrow;
+    }
+  }
+
+  /// Manually starts an auction for an approved/available NFT
+  Future<void> startAuction(int tokenId, {int? onChainAuctionId}) async {
+    try {
+      final docRef = _nftsCollection.doc(tokenId.toString());
+      final auctionRef = _auctionsCollection.doc(tokenId.toString());
+
+      await _db.runTransaction((transaction) async {
+        final doc = await transaction.get(docRef);
+        if (!doc.exists) throw Exception('NFT not found');
+
+        final data = doc.data()!;
+        final currentStatus = data['status'] as String? ?? '';
+        final isAuctionActive = data['isAuctionActive'] as bool? ?? false;
+
+        // Lock validation
+        if (isAuctionActive) throw Exception('Auction is already active for this NFT.');
+        if (currentStatus != 'approved' && currentStatus != 'available') {
+          throw Exception('NFT must be approved or available to start auction. Current: $currentStatus');
+        }
+
+        final durationSeconds = data['auctionDuration'] as int? ?? 86400; // default 24h
+        final now = DateTime.now();
+        final endTime = now.add(Duration(seconds: durationSeconds));
+
+        transaction.update(docRef, {
+          'status': 'auction',
+          'auctionStatus': 'ACTIVE',
+          'isInAuction': true,
+          'isAuctionActive': true,
+          'auctionCreated': true,
+          'isActive': true,
+          'startTime': now.millisecondsSinceEpoch,
+          'endTime': endTime.millisecondsSinceEpoch,
+          'updatedAt': FieldValue.serverTimestamp(),
+        });
+
+        // Create/Overwrite active auction document
+        final auctionData = {
+          'auctionId': onChainAuctionId ?? tokenId, // Save real on-chain ID
+          'tokenId': tokenId,
+          'sellerId': data['ownerId'] as String? ?? '',
+          'sellerWallet': data['ownerWallet'] as String? ?? '',
+          'startingPrice': (data['price'] as num?)?.toDouble() ?? 0.0,
+          'highestBid': (data['highestBid'] as num?)?.toDouble() ?? 0.0,
+          'highestBidderId': data['highestBidderId'] as String? ?? '',
+          'highestBidderWallet': data['highestBidderWallet'] as String? ?? '',
+          'startTime': now,
+          'endTime': endTime,
+          'status': 'active',
+          'totalBids': data['totalBids'] as int? ?? 0,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        transaction.set(auctionRef, auctionData);
+      });
+
+      if (kDebugMode) { debugPrint('🔥 Firestore: Auction STARTED for NFT #$tokenId (Auction ID: $onChainAuctionId)'); }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ Firestore startAuction error: $e'); }
       rethrow;
     }
   }
@@ -150,9 +200,9 @@ class FirestoreService {
         'isActive': false,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('🔥 Firestore: NFT #$tokenId rejected (status updated)');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId rejected (status updated)'); }
     } catch (e) {
-      debugPrint('❌ Firestore rejectNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore rejectNFT error: $e'); }
       rethrow;
     }
   }
@@ -174,9 +224,9 @@ class FirestoreService {
         await doc.reference.delete();
       }
       
-      debugPrint('🔥 All NFTs and Auctions deleted successfully');
+      if (kDebugMode) { debugPrint('🔥 All NFTs and Auctions deleted successfully'); }
     } catch (e) {
-      debugPrint('❌ Error clearing data: $e');
+      if (kDebugMode) { debugPrint('❌ Error clearing data: $e'); }
     }
   }
 
@@ -188,7 +238,7 @@ class FirestoreService {
         'ownerWallet': newOwnerWallet,
       });
     } catch (e) {
-      debugPrint('❌ updateNFTOwner error: $e');
+      if (kDebugMode) { debugPrint('❌ updateNFTOwner error: $e'); }
     }
   }
 
@@ -199,9 +249,9 @@ class FirestoreService {
       await _nftsCollection.doc(tokenId.toString()).update({
         'isFrozen': true,
       });
-      debugPrint('🔥 Firestore: NFT #$tokenId frozen');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId frozen'); }
     } catch (e) {
-      debugPrint('❌ Firestore freezeNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore freezeNFT error: $e'); }
       rethrow;
     }
   }
@@ -211,9 +261,9 @@ class FirestoreService {
       await _nftsCollection.doc(tokenId.toString()).update({
         'isFrozen': false,
       });
-      debugPrint('🔥 Firestore: NFT #$tokenId unfrozen');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId unfrozen'); }
     } catch (e) {
-      debugPrint('❌ Firestore unfreezeNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore unfreezeNFT error: $e'); }
       rethrow;
     }
   }
@@ -228,9 +278,9 @@ class FirestoreService {
         'isInAuction': false,
         'disabledAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('🔥 Firestore: NFT #$tokenId disabled');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId disabled'); }
     } catch (e) {
-      debugPrint('❌ Firestore disableNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore disableNFT error: $e'); }
       rethrow;
     }
   }
@@ -253,9 +303,9 @@ class FirestoreService {
         'isAuctionActive': false,
         'deletedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('🔥 Firestore: NFT #$tokenId soft deleted');
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId soft deleted'); }
     } catch (e) {
-      debugPrint('❌ Firestore softDeleteNFT error: $e');
+      if (kDebugMode) { debugPrint('❌ Firestore softDeleteNFT error: $e'); }
       rethrow;
     }
   }
@@ -274,7 +324,7 @@ class FirestoreService {
           .get();
 
       if (querySnapshot.docs.isEmpty) {
-        debugPrint('❌ verifyNFTOwnership: NFT not found for imageUrl');
+        if (kDebugMode) { debugPrint('❌ verifyNFTOwnership: NFT not found for imageUrl'); }
         return false;
       }
 
@@ -286,24 +336,24 @@ class FirestoreService {
 
       // Security checks
       if (walletAddress.toLowerCase() != ownerWallet) {
-        debugPrint('❌ verifyNFTOwnership: Wallet mismatch — $walletAddress != $ownerWallet');
+        if (kDebugMode) { debugPrint('❌ verifyNFTOwnership: Wallet mismatch — $walletAddress != $ownerWallet'); }
         return false;
       }
 
       if (isFrozen) {
-        debugPrint('❌ verifyNFTOwnership: NFT is frozen — download denied');
+        if (kDebugMode) { debugPrint('❌ verifyNFTOwnership: NFT is frozen — download denied'); }
         return false;
       }
 
       if (isAuctionActive) {
-        debugPrint('❌ verifyNFTOwnership: NFT is in active auction — download denied');
+        if (kDebugMode) { debugPrint('❌ verifyNFTOwnership: NFT is in active auction — download denied'); }
         return false;
       }
 
-      debugPrint('✅ verifyNFTOwnership: Ownership verified for wallet $walletAddress');
+      if (kDebugMode) { debugPrint('✅ verifyNFTOwnership: Ownership verified for wallet $walletAddress'); }
       return true;
     } catch (e) {
-      debugPrint('❌ verifyNFTOwnership error: $e');
+      if (kDebugMode) { debugPrint('❌ verifyNFTOwnership error: $e'); }
       return false;
     }
   }
@@ -392,9 +442,9 @@ class FirestoreService {
       };
 
       await _reportsCollection.doc(reportId).set(reportData);
-      debugPrint('🔥 Firestore: Report submitted for NFT #$tokenId');
+      if (kDebugMode) { debugPrint('🔥 Firestore: Report submitted for NFT #$tokenId'); }
     } catch (e) {
-      debugPrint('❌ submitNFTReport error: $e');
+      if (kDebugMode) { debugPrint('❌ submitNFTReport error: $e'); }
       rethrow;
     }
   }
@@ -485,9 +535,9 @@ class FirestoreService {
         });
       });
 
-      debugPrint('🔥 Firestore: Auction # FROZEN (bids preserved, timer paused)');
+      if (kDebugMode) { debugPrint('🔥 Firestore: Auction # FROZEN (bids preserved, timer paused)'); }
     } catch (e) {
-      debugPrint('❌ freezeReportedAuction error: ');
+      if (kDebugMode) { debugPrint('❌ freezeReportedAuction error: '); }
       rethrow;
     }
   }
@@ -544,9 +594,9 @@ class FirestoreService {
       }
       await batch.commit();
 
-      debugPrint('🔥 Firestore: Auction # REOPENED (timer resumed)');
+      if (kDebugMode) { debugPrint('🔥 Firestore: Auction # REOPENED (timer resumed)'); }
     } catch (e) {
-      debugPrint('❌ reopenAuction error: ');
+      if (kDebugMode) { debugPrint('❌ reopenAuction error: '); }
       rethrow;
     }
   }
@@ -596,9 +646,9 @@ class FirestoreService {
       }
       await batch.commit();
 
-      debugPrint('🔥 Firestore: Auction # REJECTED (permanently removed)');
+      if (kDebugMode) { debugPrint('🔥 Firestore: Auction # REJECTED (permanently removed)'); }
     } catch (e) {
-      debugPrint('❌ rejectAuction error: ');
+      if (kDebugMode) { debugPrint('❌ rejectAuction error: '); }
       rethrow;
     }
   }
@@ -618,9 +668,9 @@ class FirestoreService {
           'resolvedAt': FieldValue.serverTimestamp(),
         });
       });
-      debugPrint('🔥 Firestore: Report  dismissed');
+      if (kDebugMode) { debugPrint('🔥 Firestore: Report  dismissed'); }
     } catch (e) {
-      debugPrint('❌ dismissReport error: ');
+      if (kDebugMode) { debugPrint('❌ dismissReport error: '); }
       rethrow;
     }
   }
@@ -653,9 +703,9 @@ class FirestoreService {
         'isActive': false,
         'updatedAt': FieldValue.serverTimestamp(),
       });
-      debugPrint('🔥 NFT #$tokenId marked as sold to $buyerWallet');
+      if (kDebugMode) { debugPrint('🔥 NFT #$tokenId marked as sold to $buyerWallet'); }
     } catch (e) {
-      debugPrint('❌ markNFTAsSold error: $e');
+      if (kDebugMode) { debugPrint('❌ markNFTAsSold error: $e'); }
       rethrow;
     }
   }
@@ -674,41 +724,98 @@ class FirestoreService {
     });
   }
 
+  Stream<List<LogoNFT>>? _approvedNFTsStream;
+
   Stream<List<LogoNFT>> getApprovedNFTsStream() {
-    return _nftsCollection
-        .where('status', isEqualTo: 'approved')
+    _approvedNFTsStream ??= _nftsCollection
+        .where('nftVisible', isEqualTo: true)
         .snapshots()
         .map((snapshot) {
-      final list =
-          snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
-      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      return list;
-    });
+      final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
+      
+      // Client-side filtering to avoid composite index requirement
+      final allowedStatuses = [
+        ValidationStatus.approved,
+        ValidationStatus.auction,
+        ValidationStatus.sold,
+        ValidationStatus.available,
+        ValidationStatus.pendingPayment,
+      ];
+      
+      final filteredList = list.where((nft) => allowedStatuses.contains(nft.status)).toList();
+      filteredList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      
+      return filteredList;
+    }).asBroadcastStream();
+    return _approvedNFTsStream!;
   }
 
-  Stream<List<LogoNFT>> getUserNFTsStream(String userId) {
-    return _nftsCollection
-        .where('ownerId', isEqualTo: userId)
+  final Map<String, Stream<List<LogoNFT>>> _userCollectionStreams = {};
+
+  Stream<List<LogoNFT>> getUserNFTsStream(String userWallet) {
+    final wallet = userWallet.toLowerCase().trim();
+    if (wallet.isEmpty) return const Stream.empty();
+    
+    _userCollectionStreams[wallet] ??= _nftsCollection
+        .where('ownerWallet', isEqualTo: wallet)
+        .where('status', whereIn: ['sold', 'approved', 'auction'])
         .snapshots()
         .map((snapshot) {
-      final list =
-          snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
+      final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
-    });
+    }).asBroadcastStream();
+    
+    return _userCollectionStreams[wallet]!;
   }
 
-  /// Stream of NFTs created by a specific user
-  Stream<List<LogoNFT>> getUserCreatedNFTsStream(String userId) {
-    return _nftsCollection
-        .where('creatorId', isEqualTo: userId)
+  Future<int> getUserNFTsCount(String userWallet) async {
+    final wallet = userWallet.toLowerCase().trim();
+    if (wallet.isEmpty) return 0;
+    try {
+      final aggregateQuery = await _nftsCollection
+          .where('ownerWallet', isEqualTo: wallet)
+          .where('status', whereIn: ['sold', 'approved', 'auction'])
+          .count()
+          .get();
+      return aggregateQuery.count ?? 0;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('getUserNFTsCount error: $e'); }
+      return 0;
+    }
+  }
+
+  final Map<String, Stream<List<LogoNFT>>> _userCreationsStreams = {};
+
+  Stream<List<LogoNFT>> getUserCreatedNFTsStream(String userWallet) {
+    final wallet = userWallet.toLowerCase().trim();
+    if (wallet.isEmpty) return const Stream.empty();
+    
+    _userCreationsStreams[wallet] ??= _nftsCollection
+        .where('creatorWallet', isEqualTo: wallet)
         .snapshots()
         .map((snapshot) {
-      final list =
-          snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
+      final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
-    });
+    }).asBroadcastStream();
+    
+    return _userCreationsStreams[wallet]!;
+  }
+
+  Future<int> getUserCreatedNFTsCount(String userWallet) async {
+    final wallet = userWallet.toLowerCase().trim();
+    if (wallet.isEmpty) return 0;
+    try {
+      final aggregateQuery = await _nftsCollection
+          .where('creatorWallet', isEqualTo: wallet)
+          .count()
+          .get();
+      return aggregateQuery.count ?? 0;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('getUserCreatedNFTsCount error: $e'); }
+      return 0;
+    }
   }
 
   /// Stream all NFTs (for admin)
@@ -746,8 +853,33 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      debugPrint('⚠️ getNFTData error for #$tokenId: $e');
+      if (kDebugMode) { debugPrint('⚠️ getNFTData error for #$tokenId: $e'); }
       return null;
+    }
+  }
+
+  Future<LogoNFT?> getNFTByTokenId(int tokenId) async {
+    try {
+      final doc = await _nftsCollection.doc(tokenId.toString()).get();
+      if (doc.exists) {
+        return LogoNFT.fromFirestore(doc.data()!);
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('⚠️ Error getting NFT by tokenId: $e'); }
+      return null;
+    }
+  }
+
+  Future<List<LogoNFT>> getAllNFTs() async {
+    try {
+      final snapshot = await _nftsCollection.get();
+      final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
+      list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      return list;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('⚠️ Error getting all NFTs: $e'); }
+      return [];
     }
   }
 
@@ -843,7 +975,7 @@ class FirestoreService {
       await _auctionsCollection.doc(auction.auctionId.toString()).set(data);
       await markAuctionCreated(auction.tokenId);
     } catch (e) {
-      debugPrint('❌ createAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ createAuction error: $e'); }
       rethrow;
     }
   }
@@ -964,7 +1096,7 @@ class FirestoreService {
         }
       });
     } catch (e) {
-      debugPrint('❌ placeBid error: $e');
+      if (kDebugMode) { debugPrint('❌ placeBid error: $e'); }
       rethrow;
     }
   }
@@ -1025,7 +1157,7 @@ class FirestoreService {
   /// Returns a map of tokenId -> { 'amount', 'timestamp' }
   Stream<Map<int, Map<String, dynamic>>> getUserParticipatedBidsStream(String wallet) {
     return _db.collectionGroup('bids')
-        .where('bidderWallet', isEqualTo: wallet)
+        .where('bidderWallet', isEqualTo: wallet.toLowerCase())
         .snapshots()
         .handleError((error) {
           FirestoreErrorHandler.logDebugError(error, context: 'getUserParticipatedBidsStream');
@@ -1097,7 +1229,7 @@ class FirestoreService {
         return Auction.fromFirestore(doc.data()!);
       }
     } catch (e) {
-      debugPrint('❌ getAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ getAuction error: $e'); }
     }
     return null;
   }
@@ -1167,7 +1299,7 @@ class FirestoreService {
   /// This method is idempotent — safe to call multiple times for the same auction.
   Future<void> endOffChainAuction(int tokenId) async {
     try {
-      debugPrint("Updating auction state...");
+      if (kDebugMode) { debugPrint("Updating auction state..."); }
       final nftRef = _nftsCollection.doc(tokenId.toString());
       final auctionRef = _auctionsCollection.doc(tokenId.toString());
       
@@ -1179,7 +1311,7 @@ class FirestoreService {
         // Idempotent guard: skip if auction is already ended
         final isAuctionActive = data['isAuctionActive'] as bool? ?? false;
         if (!isAuctionActive) {
-          debugPrint('⏭️ Auction #$tokenId already ended, skipping.');
+          if (kDebugMode) { debugPrint('⏭️ Auction #$tokenId already ended, skipping.'); }
           return;
         }
         
@@ -1196,7 +1328,9 @@ class FirestoreService {
           // Ownership does NOT transfer here.
           transaction.update(nftRef, {
             'isAuctionActive': false,
-            'auctionStatus': 'PAYMENT_PENDING',
+            'isInAuction': false,
+            'auctionStatus': 'PENDING_PAYMENT',
+            'status': 'pending_payment',
             'paymentPending': true,
             'paymentDeadline': DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
             'paymentExpired': false,
@@ -1205,7 +1339,7 @@ class FirestoreService {
           
           if (auctionDoc.exists) {
             transaction.update(auctionRef, {
-              'status': 'PAYMENT_PENDING',
+              'status': 'PENDING_PAYMENT',
               'highestBid': highestBid,
               'highestBidderId': highestBidderId,
               'highestBidderWallet': highestBidderWallet,
@@ -1243,33 +1377,33 @@ class FirestoreService {
             await saveNotification(creatorWallet, creatorNotif);
           }
         } else {
-          // No bids — ended_no_bid state
+          // No bids — available state
           transaction.update(nftRef, {
             'isAuctionActive': false,
-            'isActive': false,
+            'isInAuction': false,
             'auctionCreated': false, // Remove from homepage automatically
-            'auctionStatus': 'ENDED_NO_BIDS',
-            'status': 'ended_no_bids',
+            'auctionStatus': 'ENDED',
+            'status': 'available',
             'highestBid': 0.0,
             'highestBidderId': null,
             'highestBidderWallet': null,
             'paymentPending': false,
           });
-          debugPrint("status: ended_no_bids");
-          debugPrint("isAuctionActive: false");
-          debugPrint("auctionStatus: ENDED_NO_BIDS");
+          if (kDebugMode) { debugPrint("status: available"); }
+          if (kDebugMode) { debugPrint("isAuctionActive: false"); }
+          if (kDebugMode) { debugPrint("auctionStatus: ENDED"); }
           
           if (auctionDoc.exists) {
             transaction.update(auctionRef, {
-              'status': 'ENDED_NO_BIDS',
+              'status': 'ENDED',
             });
           }
         }
       });
-      debugPrint("Auction successfully marked as ended_no_bids");
-      debugPrint('🔥 Off-chain auction #$tokenId ended, moved to payment_pending if has bids');
+      if (kDebugMode) { debugPrint("Auction successfully marked as ended_no_bids"); }
+      if (kDebugMode) { debugPrint('🔥 Off-chain auction #$tokenId ended, moved to payment_pending if has bids'); }
     } catch (e) {
-      debugPrint('❌ endOffChainAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ endOffChainAuction error: $e'); }
       rethrow;
     }
   }
@@ -1351,9 +1485,9 @@ class FirestoreService {
         }
       });
 
-      debugPrint('🔥 Firestore: Re-auction requested for NFT #$tokenId');
+      if (kDebugMode) { debugPrint('🔥 Firestore: Re-auction requested for NFT #$tokenId'); }
     } catch (e) {
-      debugPrint('❌ requestReAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ requestReAuction error: $e'); }
       rethrow;
     }
   }
@@ -1373,6 +1507,17 @@ class FirestoreService {
   // 6. EXACT ETH AMOUNT           — no underpayment / overpayment
   // 7. CHAIN VALIDATION           — Sepolia only (chainId 11155111)
   // ═══════════════════════════════════════════════════════════════════
+
+  /// Set payment processing lock to prevent duplicate tx
+  Future<void> setPaymentProcessing(int tokenId, bool isProcessing) async {
+    try {
+      await _nftsCollection.doc(tokenId.toString()).update({
+        'isPaymentProcessing': isProcessing,
+      });
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ setPaymentProcessing error: $e'); }
+    }
+  }
 
   /// Complete final payment for an auction — STRICT 7-POINT VALIDATION
   Future<void> completePayment(int tokenId, String winnerWallet, double userBalance, {required String txHash}) async {
@@ -1468,11 +1613,11 @@ class FirestoreService {
           throw Exception('SECURITY: You are not the highest bidder. Wallet mismatch detected.');
         }
 
-        debugPrint('✅ All 7-point validations passed for NFT #$tokenId');
-        debugPrint('   Status: $auctionStatus');
-        debugPrint('   Winner: $highestBidderWallet');
-        debugPrint('   Amount: $highestBid ETH');
-        debugPrint('   TxHash: $txHash');
+        if (kDebugMode) { debugPrint('✅ All 7-point validations passed for NFT #$tokenId'); }
+        if (kDebugMode) { debugPrint('   Status: $auctionStatus'); }
+        if (kDebugMode) { debugPrint('   Winner: $highestBidderWallet'); }
+        if (kDebugMode) { debugPrint('   Amount: $highestBid ETH'); }
+        if (kDebugMode) { debugPrint('   TxHash: $txHash'); }
 
         // ═══ ALL VALIDATIONS PASSED — TRANSFER OWNERSHIP ═══
         transaction.update(nftRef, {
@@ -1568,15 +1713,22 @@ class FirestoreService {
         await saveNotification(creatorW, creatorNotif);
       }
 
-      debugPrint('🔥 ═══ PAYMENT COMPLETED: NFT #$tokenId ownership transferred ═══');
+      if (kDebugMode) { debugPrint('🔥 ═══ PAYMENT COMPLETED: NFT #$tokenId ownership transferred ═══'); }
     } catch (e) {
-      debugPrint('❌ completePayment error: $e');
+      if (kDebugMode) { debugPrint('❌ completePayment error: $e'); }
       rethrow;
     }
   }
 
+  DateTime? _lastPaymentCheck;
+
   /// Sweeps all PAYMENT_PENDING auctions and marks them as PAYMENT_EXPIRED if their deadline has passed
   Future<int> expirePaymentDeadlines() async {
+    if (_lastPaymentCheck != null && DateTime.now().difference(_lastPaymentCheck!) < const Duration(seconds: 60)) {
+      return 0; // Throttle to max 1 check per minute
+    }
+    _lastPaymentCheck = DateTime.now();
+
     int expiredCount = 0;
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
@@ -1686,11 +1838,11 @@ class FirestoreService {
           }
 
           expiredCount++;
-          debugPrint('⏰ Expired pending payment for NFT #$tokenId');
+          if (kDebugMode) { debugPrint('⏰ Expired pending payment for NFT #$tokenId'); }
         }
       }
     } catch (e) {
-      debugPrint('❌ checkAndExpirePendingPayments error: $e');
+      if (kDebugMode) { debugPrint('❌ checkAndExpirePendingPayments error: $e'); }
     }
     return expiredCount;
   }
@@ -1750,7 +1902,7 @@ class FirestoreService {
                'highestBidderWallet': secondBidder.bidderWallet,
              });
           }
-          debugPrint('🔥 Payment failed, passed to 2nd bidder for NFT #$tokenId');
+          if (kDebugMode) { debugPrint('🔥 Payment failed, passed to 2nd bidder for NFT #$tokenId'); }
         } else {
           // No 2nd bidder, mark as failed_payment
           transaction.update(nftRef, {
@@ -1763,11 +1915,11 @@ class FirestoreService {
                'status': 'failed_payment',
              });
           }
-          debugPrint('🔥 Payment failed, no 2nd bidder. Status set to failed_payment for NFT #$tokenId');
+          if (kDebugMode) { debugPrint('🔥 Payment failed, no 2nd bidder. Status set to failed_payment for NFT #$tokenId'); }
         }
       });
     } catch (e) {
-      debugPrint('❌ handleFailedPayment error: $e');
+      if (kDebugMode) { debugPrint('❌ handleFailedPayment error: $e'); }
       rethrow;
     }
   }
@@ -1794,9 +1946,9 @@ class FirestoreService {
       }
 
       await batch.commit();
-      debugPrint('🔥 Auction #$auctionId cancelled');
+      if (kDebugMode) { debugPrint('🔥 Auction #$auctionId cancelled'); }
     } catch (e) {
-      debugPrint('❌ cancelAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ cancelAuction error: $e'); }
       rethrow;
     }
   }
@@ -1816,7 +1968,7 @@ class FirestoreService {
           .doc(tx.transactionId)
           .set(data, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('❌ recordTransaction error: $e');
+      if (kDebugMode) { debugPrint('❌ recordTransaction error: $e'); }
     }
   }
 
@@ -1880,9 +2032,9 @@ class FirestoreService {
       await _usersCollection.doc(uid).update({
         'role': newRole,
       });
-      debugPrint('🔥 User $uid role updated to $newRole');
+      if (kDebugMode) { debugPrint('🔥 User $uid role updated to $newRole'); }
     } catch (e) {
-      debugPrint('❌ updateUserRole error: $e');
+      if (kDebugMode) { debugPrint('❌ updateUserRole error: $e'); }
       rethrow;
     }
   }
@@ -1895,7 +2047,7 @@ class FirestoreService {
         return UserModel.fromFirestore(doc.data()!);
       }
     } catch (e) {
-      debugPrint('❌ getUser error: $e');
+      if (kDebugMode) { debugPrint('❌ getUser error: $e'); }
     }
     return null;
   }
@@ -1917,14 +2069,21 @@ class FirestoreService {
         }
       }
     } catch (e) {
-      debugPrint('❌ syncFirestoreState error: $e');
+      if (kDebugMode) { debugPrint('❌ syncFirestoreState error: $e'); }
     }
   }
 
   // ============ Edge Case Hardening ============
 
+  DateTime? _lastExpireCheck;
+
   /// Check for and auto-close expired auctions that are still marked as active
   Future<int> closeExpiredAuctions() async {
+    if (_lastExpireCheck != null && DateTime.now().difference(_lastExpireCheck!) < const Duration(seconds: 60)) {
+      return 0; // Throttle to max 1 check per minute
+    }
+    _lastExpireCheck = DateTime.now();
+
     int closedCount = 0;
     try {
       final snapshot = await _auctionsCollection
@@ -1942,11 +2101,11 @@ class FirestoreService {
 
           await endOffChainAuction(tokenId);
           closedCount++;
-          debugPrint('⏰ Auto-closed expired auction #$auctionId');
+          if (kDebugMode) { debugPrint('⏰ Auto-closed expired auction #$auctionId'); }
         }
       }
     } catch (e) {
-      debugPrint('❌ closeExpiredAuctions error: $e');
+      if (kDebugMode) { debugPrint('❌ closeExpiredAuctions error: $e'); }
     }
     return closedCount;
   }
@@ -1959,7 +2118,7 @@ class FirestoreService {
       final status = doc.data()?['status'] as String? ?? 'active';
       return status == 'ended' || status == 'cancelled';
     } catch (e) {
-      debugPrint('❌ isAuctionAlreadyCompleted error: $e');
+      if (kDebugMode) { debugPrint('❌ isAuctionAlreadyCompleted error: $e'); }
       return false; // Fail open to allow retry
     }
   }
@@ -1975,7 +2134,7 @@ class FirestoreService {
       if (reservePrice <= 0) return true; // No reserve price set
       return highestBid >= reservePrice;
     } catch (e) {
-      debugPrint('❌ isReservePriceMet error: $e');
+      if (kDebugMode) { debugPrint('❌ isReservePriceMet error: $e'); }
       return false;
     }
   }
@@ -2092,9 +2251,9 @@ class FirestoreService {
         await batch.commit();
       }
 
-      debugPrint('🔥 Instant Re-Auction started for NFT #$tokenId');
+      if (kDebugMode) { debugPrint('🔥 Instant Re-Auction started for NFT #$tokenId'); }
     } catch (e) {
-      debugPrint('❌ requestReAuctionWithSettings error: $e');
+      if (kDebugMode) { debugPrint('❌ requestReAuctionWithSettings error: $e'); }
       rethrow;
     }
   }
@@ -2160,9 +2319,9 @@ class FirestoreService {
         await batch.commit();
       }
 
-      debugPrint('🔥 Approved Re-Auction for NFT #$tokenId');
+      if (kDebugMode) { debugPrint('🔥 Approved Re-Auction for NFT #$tokenId'); }
     } catch (e) {
-      debugPrint('❌ approveReAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ approveReAuction error: $e'); }
       rethrow;
     }
   }
@@ -2176,9 +2335,9 @@ class FirestoreService {
         'reAuctionNotes': FieldValue.delete(),
         'reAuctionRequestedAt': FieldValue.delete(),
       });
-      debugPrint('🔥 Rejected Re-Auction for NFT #$tokenId');
+      if (kDebugMode) { debugPrint('🔥 Rejected Re-Auction for NFT #$tokenId'); }
     } catch (e) {
-      debugPrint('❌ rejectReAuction error: $e');
+      if (kDebugMode) { debugPrint('❌ rejectReAuction error: $e'); }
       rethrow;
     }
   }
@@ -2266,7 +2425,7 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting latest report: ');
+      if (kDebugMode) { debugPrint('Error getting latest report: '); }
       return null;
     }
   }
@@ -2283,7 +2442,7 @@ class FirestoreService {
       }
       return null;
     } catch (e) {
-      debugPrint('Error getting appeal: ');
+      if (kDebugMode) { debugPrint('Error getting appeal: '); }
       return null;
     }
   }
@@ -2299,7 +2458,7 @@ class FirestoreService {
       final ref = _userNotificationsCollection(wallet).doc(notification.id);
       await ref.set(notification.toMap());
     } catch (e) {
-      debugPrint('❌ Error saving notification: $e');
+      if (kDebugMode) { debugPrint('❌ Error saving notification: $e'); }
     }
   }
 
@@ -2327,7 +2486,7 @@ class FirestoreService {
       if (wallet.isEmpty) return;
       await _userNotificationsCollection(wallet).doc(notificationId).update({'isRead': true});
     } catch (e) {
-      debugPrint('❌ Error marking notification as read: $e');
+      if (kDebugMode) { debugPrint('❌ Error marking notification as read: $e'); }
     }
   }
 
@@ -2346,7 +2505,7 @@ class FirestoreService {
       }
       await batch.commit();
     } catch (e) {
-      debugPrint('❌ Error marking all notifications as read: $e');
+      if (kDebugMode) { debugPrint('❌ Error marking all notifications as read: $e'); }
     }
   }
 
@@ -2366,7 +2525,7 @@ class FirestoreService {
           .get();
       return query.docs.isNotEmpty;
     } catch (e) {
-      debugPrint('❌ checkDuplicateTxHash error: $e');
+      if (kDebugMode) { debugPrint('❌ checkDuplicateTxHash error: $e'); }
       // Fail-safe: if we can't verify, reject the payment
       return true;
     }
@@ -2391,9 +2550,9 @@ class FirestoreService {
         'timestamp': FieldValue.serverTimestamp(),
         'createdAt': DateTime.now().toIso8601String(),
       });
-      debugPrint('📝 Audit log: $actionType for NFT #$nftId');
+      if (kDebugMode) { debugPrint('📝 Audit log: $actionType for NFT #$nftId'); }
     } catch (e) {
-      debugPrint('❌ logAuctionActivity error: $e');
+      if (kDebugMode) { debugPrint('❌ logAuctionActivity error: $e'); }
       // Non-critical: don't throw, audit failure shouldn't block payment
     }
   }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
@@ -7,6 +8,7 @@ import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/shared/widgets/logo_card.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/upload_page.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_page.dart';
+import 'package:nft_logo_marketplace/features/nft/presentation/detail_logo_page.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/profile_page.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
@@ -24,7 +26,7 @@ import 'package:nft_logo_marketplace/core/widgets/notification_bell.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
 
-import 'package:nft_logo_marketplace/core/services/api_service.dart';
+// Removed api_service.dart
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -45,14 +47,13 @@ class _HomePageState extends State<HomePage> {
   
   int _limit = 10;
   bool _isRefreshing = false;
-
-  List<LogoNFT> _firestoreLogosCache = [];
-  List<LogoNFT> _cachedMarketplaceLogos = [];
+  late final Stream<List<LogoNFT>> _nftStream;
 
   @override
   void initState() {
     super.initState();
-    _loadNFTsFromBackend();
+
+    _nftStream = FirestoreService.instance.getApprovedNFTsStream();
 
     _web3.addListener(_refresh);
     _searchFocusNode.addListener(_onSearchFocusChanged);
@@ -60,30 +61,6 @@ class _HomePageState extends State<HomePage> {
     FirestoreService.instance.closeExpiredAuctions();
     FirestoreService.instance.expirePaymentDeadlines();
     _loadBlockchainData();
-  }
-
-  Future<void> _loadNFTsFromBackend() async {
-    try {
-      final logos = await ApiService.instance.fetchAllNFTs();
-      if (!mounted) return;
-      
-      final approvedLogos = logos.where((l) => l.status == ValidationStatus.approved).toList();
-      approvedLogos.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-      
-      setState(() {
-        _firestoreLogosCache = approvedLogos;
-        _applyFilters();
-      });
-    } catch (e) {
-      debugPrint('Error loading backend NFTs: $e');
-    }
-  }
-
-  void _applyFilters() {
-    if (!mounted) return;
-    setState(() {
-      _cachedMarketplaceLogos = _filterLogos(_firestoreLogosCache);
-    });
   }
 
   void _onSearchFocusChanged() {
@@ -112,7 +89,9 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _refresh() {
-    if (mounted) setState(() {});
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadBlockchainData() async {
@@ -121,43 +100,51 @@ class _HomePageState extends State<HomePage> {
     try {
       await _web3.loadFromChain();
     } catch (e) {
-      debugPrint('Error loading blockchain data: $e');
+      if (kDebugMode) { debugPrint('Error loading blockchain data: $e'); }
     } finally {
       if (mounted) setState(() => _isRefreshing = false);
     }
   }
 
   List<LogoNFT> _filterLogos(List<LogoNFT> logos) {
-    final now = DateTime.now();
-    return logos.where((logo) {
-      // ═══ STRICT POSITIVE FILTERING: LIVE AUCTIONS ONLY ═══
-      // 1. Must be approved
-      if (logo.status != ValidationStatus.approved) return false;
+    final uniqueIds = <String>{};
+    
+    // Dedup and filter
+    return logos.map((logo) {
+      // Client-side auction expiration validation
+      if (logo.isAuctionActive && logo.endTime != null) {
+        if (DateTime.now().isAfter(logo.endTime!)) {
+          return logo.copyWith(
+            isAuctionActive: false,
+            // If it has a bidder, project it as pendingPayment. Otherwise, available.
+            status: (logo.highestBidderWallet != null && logo.highestBidderWallet!.isNotEmpty && logo.highestBid > 0)
+                ? ValidationStatus.pendingPayment
+                : ValidationStatus.available,
+          );
+        }
+      }
+      return logo;
+    }).where((logo) {
+      if (!uniqueIds.add(logo.tokenId.toString())) return false;
       
-      // 2. STRICT STATUS EXCLUSION — Block ALL non-LIVE statuses
-      final auctionStatus = (logo.auctionStatus ?? '').toUpperCase().trim();
-      const blockedStatuses = {
-        'ENDED_NO_BID', 'ENDED_NO_BIDS',
-        'PAYMENT_PENDING',
-        'PAYMENT_COMPLETED',
-        'PAYMENT_EXPIRED',
-        'RE_AUCTION_REQUESTED',
-        'CANCELLED',
-        'REJECTED',
-        'FROZEN',
-        'FAILED_PAYMENT',
-        'CLAIMED',
-        'SOLD',
-        'ENDED',
-      };
-      if (blockedStatuses.contains(auctionStatus)) return false;
-
-      // 3. Must have an active auction
-      if (!logo.isAuctionActive) return false;
-      // 4. Must not be frozen
       if (logo.isFrozen) return false;
-      // 5. Must have endTime in the future (still live)
-      if (logo.endTime == null || !logo.endTime!.isAfter(now)) return false;
+
+      if (['EXPIRED_NO_BID', 'PAYMENT_PENDING', 'COMPLETED', 'PAYMENT_EXPIRED'].contains(logo.auctionStatus)) {
+        return false;
+      }
+
+      if (logo.status == ValidationStatus.sold ||
+          logo.status == ValidationStatus.pendingPayment ||
+          logo.status == ValidationStatus.rejected) {
+        return false;
+      }
+
+      if (logo.status == ValidationStatus.auction) {
+        if (!logo.isAuctionActive) return false;
+        if (logo.endTime != null && DateTime.now().isAfter(logo.endTime!)) return false;
+      } else if (logo.status != ValidationStatus.approved) {
+        return false;
+      }
 
       // ── Category filter ──
       if (_selectedCategory != NFTCategory.all &&
@@ -212,7 +199,7 @@ class _HomePageState extends State<HomePage> {
         _buildHomeContent(),
         UploadPage(
           onMintSuccess: () {
-            setState(() => _currentIndex = 0);
+            setState(() => _currentIndex = 2);
             _loadBlockchainData();
           },
         ),
@@ -338,14 +325,23 @@ class _HomePageState extends State<HomePage> {
   }
 
   Widget _buildHomeContent() {
-    // Only take up to _limit items for lazy loading
-    final filteredLogos = _cachedMarketplaceLogos.take(_limit).toList();
-    final bool hasMore = _cachedMarketplaceLogos.length > _limit;
-    final isLoading = _firestoreLogosCache.isEmpty && _isRefreshing; // basic loading state
+    return StreamBuilder<List<LogoNFT>>(
+      stream: _nftStream,
+      builder: (context, snapshot) {
+        final List<LogoNFT> allLogos = snapshot.hasData ? snapshot.data! : [];
+        final filteredLogos = _filterLogos(allLogos);
+        final displayedLogos = filteredLogos.take(_limit).toList();
+        final bool hasMore = filteredLogos.length > _limit;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final hasError = snapshot.hasError;
 
-    return RefreshIndicator(
-      onRefresh: _loadBlockchainData,
-      color: AppColors.primary,
+        if (hasError && kDebugMode) {
+          debugPrint('🔥 NFT Stream Error: ${snapshot.error}');
+        }
+
+        return RefreshIndicator(
+          onRefresh: _loadBlockchainData,
+          color: AppColors.primary,
           backgroundColor: AppColors.surface,
           child: CustomScrollView(
             controller: _scrollController,
@@ -486,7 +482,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // â”€â”€â”€ Search Bar â”€â”€â”€
+              // Search Bar
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, AppSpacing.xxl, AppSpacing.screenPadding, AppSpacing.md),
@@ -503,7 +499,6 @@ class _HomePageState extends State<HomePage> {
                         _searchDebounce = Timer(const Duration(milliseconds: 300), () {
                           if (mounted) {
                             setState(() => _searchQuery = value);
-                            _applyFilters();
                           }
                         });
                       },
@@ -526,7 +521,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // ─── Category Filters ───
+              // Category Filters
               SliverToBoxAdapter(
                 child: SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
@@ -542,13 +537,12 @@ class _HomePageState extends State<HomePage> {
                             style: AppTextStyles.labelMedium.copyWith(
                               color: isSelected ? AppColors.textPrimary : AppColors.textSecondary,
                               fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                              fontSize: 12, // smaller font for mobile
+                              fontSize: 12,
                             ),
                           ),
                           selected: isSelected,
                           onSelected: (_) {
                             setState(() => _selectedCategory = category);
-                            _applyFilters();
                           },
                           backgroundColor: AppColors.surface,
                           selectedColor: AppColors.primary,
@@ -568,7 +562,7 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // â”€â”€â”€ Section Title â”€â”€â”€
+              // Section Title
               SliverToBoxAdapter(
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, AppSpacing.xxl, AppSpacing.screenPadding, AppSpacing.md),
@@ -589,20 +583,44 @@ class _HomePageState extends State<HomePage> {
                 ),
               ),
 
-              // â”€â”€â”€ Grid View â”€â”€â”€
+              // Grid View
               if (isLoading)
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 120),
-                  sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 250,
-                      childAspectRatio: 0.95,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) => const LoadingSkeleton(),
-                      childCount: 4,
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) {
+                      return SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 240,
+                          childAspectRatio: 0.72,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) => const LoadingSkeleton(),
+                          childCount: 6,
+                        ),
+                      );
+                    },
+                  ),
+                )
+              else if (hasError)
+                SliverToBoxAdapter(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 40),
+                    child: Center(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.error_outline, color: AppColors.danger, size: 48),
+                          const SizedBox(height: 16),
+                          Text('Gagal memuat NFT', style: AppTextStyles.h3),
+                          TextButton(
+                            onPressed: () => setState(() {}),
+                            child: const Text('Coba Lagi', style: TextStyle(color: AppColors.primary)),
+                          )
+                        ],
+                      ),
                     ),
                   ),
                 )
@@ -624,50 +642,56 @@ class _HomePageState extends State<HomePage> {
               else
                 SliverPadding(
                   padding: const EdgeInsets.fromLTRB(AppSpacing.screenPadding, 0, AppSpacing.screenPadding, 120),
-                  sliver: SliverGrid(
-                    gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                      maxCrossAxisExtent: 250,
-                      childAspectRatio: 0.95,
-                      crossAxisSpacing: 16,
-                      mainAxisSpacing: 16,
-                    ),
-                    delegate: SliverChildBuilderDelegate(
-                      (context, index) {
-                        if (index == filteredLogos.length) {
-                          return Center(child: CustomLoadingIndicator(size: 24));
-                        }
-                        final logo = filteredLogos[index];
-                        Auction? activeAuction;
-                        try {
-                          activeAuction = _web3.activeAuctions.firstWhere((a) => a.tokenId == logo.tokenId);
-                        } catch (_) {
-                          activeAuction = null;
-                        }
+                  sliver: SliverLayoutBuilder(
+                    builder: (context, constraints) {
+                      return SliverGrid(
+                        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                          maxCrossAxisExtent: 240,
+                          childAspectRatio: 0.72,
+                          crossAxisSpacing: 12,
+                          mainAxisSpacing: 12,
+                        ),
+                        delegate: SliverChildBuilderDelegate(
+                          (context, index) {
+                            if (index == displayedLogos.length) {
+                              return const Center(child: CustomLoadingIndicator(size: 24));
+                            }
+                            final logo = displayedLogos[index];
+                            Auction? activeAuction;
+                            try {
+                              activeAuction = _web3.activeAuctions.firstWhere((a) => a.tokenId == logo.tokenId);
+                            } catch (_) {
+                              activeAuction = null;
+                            }
 
-                        return RepaintBoundary(
-                          child: AnimatedOpacity(
-                            opacity: 1.0,
-                            duration: Duration(milliseconds: 300 + (index * 50)),
-                            curve: Curves.easeIn,
-                            child: LogoCard(
-                              logo: logo,
-                              auction: activeAuction,
-                              onTap: () {
-                                // All items on homepage are LIVE auctions → go to AuctionPage
-                                Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(tokenId: logo.tokenId)));
-                              },
-                            ),
-                          ),
-                        );
-                      },
-                      childCount: filteredLogos.length + (hasMore ? 1 : 0),
-                    ),
+                            return AnimatedOpacity(
+                              opacity: 1.0,
+                              duration: Duration(milliseconds: 300 + (index * 50)),
+                              curve: Curves.easeIn,
+                              child: LogoCard(
+                                logo: logo,
+                                auction: activeAuction,
+                                onTap: () {
+                                  if (logo.status == ValidationStatus.auction && logo.isAuctionActive) {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: logo)));
+                                  } else {
+                                    Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo)));
+                                  }
+                                },
+                              ),
+                            );
+                          },
+                          childCount: displayedLogos.length + (hasMore ? 1 : 0),
+                        ),
+                      );
+                    },
                   ),
                 ),
-
-              const SliverToBoxAdapter(child: SizedBox(height: 40)), // Adjusted padding
+              const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
           ),
         );
+      },
+    );
   }
 }

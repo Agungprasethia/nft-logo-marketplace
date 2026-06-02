@@ -1,8 +1,9 @@
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
-import 'package:flutter_dotenv/flutter_dotenv.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
+
+import 'package:nft_logo_marketplace/core/config/app_config.dart';
 
 class ApiService {
   static final ApiService instance = ApiService._internal();
@@ -15,7 +16,10 @@ class ApiService {
 
   // Centralized configurable API base URL
   static String get baseUrl {
-    return dotenv.env['API_BASE_URL'] ?? 'http://127.0.0.1:3000/api';
+    return const String.fromEnvironment(
+      'API_BASE_URL',
+      defaultValue: AppConfig.apiBaseUrl,
+    );
   }
 
   // Local Memory Cache
@@ -27,7 +31,7 @@ class ApiService {
   void clearCache() {
     _cachedNFTs = null;
     _lastFetchTime = null;
-    debugPrint('🧹 Local NFT cache cleared');
+    if (kDebugMode) { debugPrint('🧹 Local NFT cache cleared'); }
   }
 
   /// Fetch all NFTs from the backend API
@@ -35,12 +39,12 @@ class ApiService {
     // Return cached data if valid and not forced
     if (!forceRefresh && _cachedNFTs != null && _lastFetchTime != null) {
       if (DateTime.now().difference(_lastFetchTime!) < _cacheValidDuration) {
-        debugPrint('⚡ Returning cached NFTs (${_cachedNFTs!.length} items)');
+        if (kDebugMode) { debugPrint('⚡ Returning cached NFTs (${_cachedNFTs!.length} items)'); }
         return _cachedNFTs!;
       }
     }
 
-    debugPrint('🌐 Loading NFTs from backend API...');
+    if (kDebugMode) { debugPrint('🌐 Loading NFTs from backend API...'); }
     try {
       final response = await http.get(Uri.parse('$baseUrl/nft/all'));
 
@@ -57,15 +61,15 @@ class ApiService {
         _cachedNFTs = logos;
         _lastFetchTime = DateTime.now();
 
-        debugPrint('✅ Backend NFT batch loaded: ${logos.length}');
-        debugPrint('⚡ Firestore realtime listeners preserved');
+        if (kDebugMode) { debugPrint('✅ Backend NFT batch loaded: ${logos.length}'); }
+        if (kDebugMode) { debugPrint('⚡ Firestore realtime listeners preserved'); }
 
         return logos;
       } else {
         throw Exception('Failed to load NFTs from API. Status Code: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('❌ API fetchAllNFTs Error: $e');
+      if (kDebugMode) { debugPrint('❌ API fetchAllNFTs Error: $e'); }
       throw Exception('Failed to load NFTs: $e');
     }
   }
@@ -97,7 +101,7 @@ class ApiService {
         throw Exception('Failed to load NFT $tokenId from API. Status Code: ${response.statusCode}');
       }
     } catch (e) {
-      debugPrint('❌ API fetchNFTById Error: $e');
+      if (kDebugMode) { debugPrint('❌ API fetchNFTById Error: $e'); }
       return null;
     }
   }

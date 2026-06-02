@@ -9,6 +9,8 @@ import 'package:nft_logo_marketplace/features/profile/presentation/widgets/live_
 import 'package:nft_logo_marketplace/features/profile/presentation/widgets/leaderboard_modal.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:nft_logo_marketplace/core/services/web3_service.dart';
+
 import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
 
 class LiveAuctionCard extends StatelessWidget {
@@ -182,7 +184,10 @@ class LiveAuctionCard extends StatelessWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: () {
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(tokenId: auction.tokenId)));
+                    final l = logo ?? Web3Service.instance.allLogos.cast<LogoNFT?>().firstWhere((l) => l?.tokenId == auction.tokenId, orElse: () => null);
+                    if (l != null) {
+                      Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: l)));
+                    }
                   },
                   icon: const Icon(Icons.open_in_new, size: 16),
                   label: const Text('Open Page'),

@@ -42,10 +42,10 @@ class UserService {
           batch.update(doc.reference, {'creatorUsername': newUsername});
         }
         await batch.commit();
-        debugPrint('✅ Updated creatorUsername on ${nftQuery.docs.length} NFTs');
+        if (kDebugMode) { debugPrint('✅ Updated creatorUsername on ${nftQuery.docs.length} NFTs'); }
       }
     } catch (e) {
-      debugPrint('⚠️ Failed to propagate creatorUsername to NFTs: $e');
+      if (kDebugMode) { debugPrint('⚠️ Failed to propagate creatorUsername to NFTs: $e'); }
       // Non-critical — don't rethrow
     }
   }

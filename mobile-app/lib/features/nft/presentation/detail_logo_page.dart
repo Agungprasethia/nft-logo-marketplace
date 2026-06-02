@@ -5,6 +5,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shimmer/shimmer.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/widgets/appeal_dialog.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
@@ -33,10 +34,10 @@ import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
 import 'package:nft_logo_marketplace/core/utils/firestore_error_handler.dart';
 
 class DetailLogoPage extends StatefulWidget {
-  final int tokenId;
+  final LogoNFT logo;
   final bool openedFromMyCollection;
 
-  const DetailLogoPage({super.key, required this.tokenId, this.openedFromMyCollection = false});
+  const DetailLogoPage({super.key, required this.logo, this.openedFromMyCollection = false});
 
   @override
   State<DetailLogoPage> createState() => _DetailLogoPageState();
@@ -63,42 +64,59 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
     if (mounted) setState(() {});
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final logo = _web3.allLogos.cast<LogoNFT?>().firstWhere(
-      (l) => l!.tokenId == widget.tokenId,
-      orElse: () => null,
-    );
+  Future<void> _mintPendingNFT(LogoNFT pendingLogo) async {
+    try {
+      showDialog(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+      );
 
-    if (logo == null) {
-      return Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          backgroundColor: AppColors.background,
-          leading: IconButton(
-            icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
-            onPressed: () => Navigator.pop(context),
-          ),
-        ),
-        body: Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              const CircularProgressIndicator(color: AppColors.primary),
-              const SizedBox(height: 16),
-              Text('Loading NFT #${widget.tokenId}...', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
-              const SizedBox(height: 8),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: const Text('Go Back'),
-              ),
-            ],
-          ),
+      final newLogo = await _web3.mintLogo(
+        name: pendingLogo.name,
+        description: pendingLogo.description,
+        imageUrl: pendingLogo.imageUrl,
+        price: pendingLogo.price,
+        category: pendingLogo.category,
+      );
+
+      // We should also delete the old pending document to avoid duplicates
+      await FirebaseFirestore.instance.collection('nfts').doc(pendingLogo.tokenId.toString()).delete();
+
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+      
+      NotificationManager.show(
+        context: context,
+        title: 'Mint Success',
+        message: 'NFT successfully minted!',
+        type: NotificationType.success,
+      );
+
+      // Navigate to new detail page and pop the old one
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (context) => DetailLogoPage(logo: newLogo),
         ),
       );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context); // close loading
+      NotificationManager.show(
+        context: context,
+        title: 'Mint Failed',
+        message: e.toString(),
+        type: NotificationType.error,
+      );
     }
+  }
 
-    final auction = _web3.getAuctionForLogo(widget.tokenId);
+  @override
+  Widget build(BuildContext context) {
+    final logo = widget.logo;
+
+    final auction = _web3.getAuctionForLogo(logo.tokenId);
     final isCreator = _web3.currentAddress?.toLowerCase() == logo.creatorWallet.toLowerCase();
     
     String displayImageUrl = logo.imageUrl;
@@ -111,7 +129,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('nfts').doc(widget.tokenId.toString()).snapshots(),
+        stream: FirebaseFirestore.instance.collection('nfts').doc(logo.tokenId.toString()).snapshots(),
         builder: (context, snapshot) {
           if (snapshot.hasError) {
             return FirestoreErrorHandler.buildErrorWidget(
@@ -245,24 +263,15 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
     final bool hasVerification = isCompleted || (logo.copyrightHash != null && logo.copyrightHash!.isNotEmpty);
 
-    debugPrint('=== NFT COMPLETION DEBUG ===');
-    debugPrint('auctionStatus: ${logo.auctionStatus}');
-    debugPrint('status: ${logo.status}');
-    debugPrint('ownershipType: ${logo.ownershipType}');
-    debugPrint('ownerWallet: ${logo.ownerWallet}');
-    debugPrint('highestBid: ${logo.highestBid}');
-    debugPrint('isCompleted: $isCompleted');
 
-    debugPrint('=== COPYRIGHT DEBUG ===');
-    debugPrint('copyrightHash: ${logo.copyrightHash}');
-    debugPrint('hashAlgorithm: ${logo.hashAlgorithm}');
-    debugPrint('auctionStatus: ${logo.auctionStatus}');
-    debugPrint('ownershipType: ${logo.ownershipType}');
-    debugPrint('hasVerification: $hasVerification');
+
+
 
     final bool showFinalBidPrice = isCompleted;
     final bool showAuctionDuration = !isCompleted;
     final bool showOwnerWallet = isCompleted || logo.canViewCurrentOwner(currentWallet: _web3.currentAddress ?? '');
+
+    final bool canDownload = isCompleted && logo.ownerWallet.toLowerCase() == (_web3.currentAddress ?? '').toLowerCase();
 
     final double bidPrice = (logo.previousFinalBid != null && logo.previousFinalBid! > 0) ? logo.previousFinalBid! : (logo.highestBid > 0 ? logo.highestBid : 0.0);
     final formattedPrice = '${bidPrice.toStringAsFixed(2)} ETH';
@@ -544,6 +553,18 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                     Text(formattedPrice, style: AppTextStyles.labelLarge.copyWith(color: AppColors.accentOrange, fontWeight: FontWeight.bold)),
                   ],
                 ),
+                if (logo.highestBidderWallet != null && logo.highestBidderWallet!.isNotEmpty) ...[
+                  const Divider(color: AppColors.border, height: 24),
+                  Row(
+                    children: [
+                      const Icon(Icons.emoji_events_outlined, color: AppColors.accentOrange, size: 20),
+                      const SizedBox(width: 12),
+                      Text('Highest Bidder', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
+                      const Spacer(),
+                      Text('${logo.highestBidderWallet!.substring(0, 6)}...${logo.highestBidderWallet!.substring(logo.highestBidderWallet!.length - 4)}', style: AppTextStyles.labelLarge),
+                    ],
+                  ),
+                ],
               ] else if (showAuctionDuration) ...[
                 Row(
                   children: [
@@ -582,7 +603,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           child: Column(
             children: [
               // Completed Actions (Download / Save to Gallery)
-              if (isCompleted) ...[
+              if (canDownload) ...[
                 Row(
                   children: [
                     Expanded(
@@ -622,8 +643,55 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
               ],
 
 
-              // Show auction status info for owners
-              if (isCreator && status == 'approved' && !auctionCreated)
+              // Mint Pending NFT Button
+              if (isCreator && status == 'approvedPendingMint')
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: AppColors.accentOrange.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.stars, color: AppColors.accentOrange, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Admin approved! Mint your NFT to the blockchain to make it official.',
+                              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.accentOrange, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () => _mintPendingNFT(logo),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.accentOrange,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Mint Now'),
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Estimated Gas Fee will be calculated by MetaMask',
+                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+                      ),
+                    ],
+                  ),
+                ),
+
+              // Show manual start auction button for creators when approved/available
+              if (isCreator && (status == 'approved' || status == 'available') && !isActive && (logo.auctionStatus == 'NONE' || logo.auctionStatus == 'COMPLETED' || logo.auctionStatus == 'ENDED_NO_BID' || logo.auctionStatus == 'PAYMENT_EXPIRED'))
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -633,15 +701,80 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                     borderRadius: BorderRadius.circular(AppRadius.lg),
                     border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
                   ),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.auto_awesome, color: AppColors.success, size: 20),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Text(
-                          'Auction will start automatically once approved by admin.',
-                          style: AppTextStyles.bodyMedium.copyWith(color: AppColors.success),
+                      Row(
+                        children: [
+                          const Icon(Icons.rocket_launch, color: AppColors.success, size: 20),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Text(
+                              'Your NFT is ready! Start the auction to allow bidding.',
+                              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.success, fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () async {
+                            if (logo.isAuctionActive || logo.auctionStatus == 'ACTIVE') {
+                              NotificationManager.show(
+                                context: context,
+                                title: 'Error',
+                                message: 'An auction is already active for this NFT.',
+                                type: NotificationType.error,
+                              );
+                              return;
+                            }
+                            try {
+                              showDialog(
+                                context: context,
+                                barrierDismissible: false,
+                                builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                              );
+                              // 1. Create on-chain
+                              await _web3.createAuctionOnChain(
+                                tokenId: logo.tokenId,
+                                creatorAddress: logo.creatorWallet,
+                                startingPrice: logo.price,
+                                durationSeconds: logo.auctionDuration ?? 86400,
+                              );
+                              // 2. Start on Firestore
+                              await FirestoreService.instance.startAuction(logo.tokenId);
+                              if (!mounted) return;
+                              Navigator.pop(context); // close loading
+                              NotificationManager.show(
+                                context: context,
+                                title: 'Auction Started',
+                                message: 'Your NFT is now live for bidding!',
+                                type: NotificationType.success,
+                              );
+                            } catch (e) {
+                              if (!mounted) return;
+                              Navigator.pop(context); // close loading
+                              NotificationManager.show(
+                                context: context,
+                                title: 'Error',
+                                message: 'Failed to start auction: $e',
+                                type: NotificationType.error,
+                              );
+                            }
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.success,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('Start Auction Now'),
                         ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Estimated Gas Fee will be calculated by MetaMask',
+                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary, fontStyle: FontStyle.italic),
                       ),
                     ],
                   ),
@@ -715,7 +848,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
               if (isCreator && logo.isFrozen)
                 FutureBuilder<Map<String, dynamic>?>(
-                  future: FirestoreService.instance.getLatestReportForToken(widget.tokenId),
+                  future: FirestoreService.instance.getLatestReportForToken(widget.logo.tokenId),
                   builder: (context, snapshot) {
                     final report = snapshot.data;
                     final reason = report?['reason'] ?? 'A marketplace report is being investigated.';
@@ -794,7 +927,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                                   child: ElevatedButton.icon(
                                     onPressed: () => AppealDialog.show(
                                       context,
-                                      tokenId: widget.tokenId,
+                                      tokenId: widget.logo.tokenId,
                                       reportId: reportId,
                                       creatorWallet: logo.creatorWallet,
                                       creatorUsername: logo.creatorUsername,
@@ -826,9 +959,9 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   } else if (status == 'rejected') {
                     color = AppColors.danger;
                     message = 'This NFT has been permanently removed by marketplace moderation.';
-                  } else if (status != 'approved' && status != 'sold') {
+                  } else if (status != 'approved' && status != 'sold' && status != 'available') {
                     color = AppColors.accentOrange;
-                    message = 'NFT is waiting for admin approval. Auction will start automatically once approved.';
+                    message = 'NFT is waiting for admin approval.';
                   } else {
                     return const SizedBox.shrink();
                   }
@@ -851,7 +984,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   padding: const EdgeInsets.only(bottom: AppSpacing.md),
                   child: PrimaryButton(
                     text: 'View Live Auction',
-                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(tokenId: widget.tokenId))),
+                    onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: logo))),
                   ),
                 ),
               
@@ -917,7 +1050,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ),
 
               TextButton.icon(
-                onPressed: () => ReportDialog.show(context, widget.tokenId),
+                onPressed: () => ReportDialog.show(context, widget.logo.tokenId),
                 icon: const Icon(Icons.flag_outlined, size: 16, color: AppColors.danger),
                 label: Text('Report Artwork', style: AppTextStyles.labelMedium.copyWith(color: AppColors.danger)),
               ),
@@ -933,10 +1066,14 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
   }
 
   Widget _placeholder() {
-    return Container(
-      color: AppColors.surface,
-      child: const Center(
-        child: Icon(Icons.image_outlined, size: 60, color: AppColors.textSecondary),
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.border,
+      child: Container(
+        color: AppColors.surface,
+        child: const Center(
+          child: Icon(Icons.image_outlined, size: 60, color: AppColors.textSecondary),
+        ),
       ),
     );
   }
@@ -1004,7 +1141,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
             border: Border.all(color: AppColors.border),
           ),
           child: StreamBuilder<List<Bid>>(
-            stream: FirestoreService.instance.getAuctionBidsStream(widget.tokenId),
+            stream: FirestoreService.instance.getAuctionBidsStream(widget.logo.tokenId),
             builder: (context, snapshot) {
               if (snapshot.hasError) {
                 return Padding(
@@ -1301,7 +1438,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
     _lastBidAttempt = DateTime.now();
 
     final currentWallet = _web3.currentAddress;
-    final logo = _web3.allLogos.firstWhere((l) => l.tokenId == widget.tokenId);
+    final logo = widget.logo;
     if (currentWallet != null && currentWallet.toLowerCase().trim() == logo.ownerWallet.toLowerCase().trim()) {
       NotificationManager.show(context: context, title: 'Invalid Bid', message: 'Cannot bid on own auction', type: NotificationType.warning);
       return;
@@ -1324,7 +1461,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
               lastBidTimestamp: DateTime.now(),
               transactionHash: 'offchain_${DateTime.now().millisecondsSinceEpoch}',
             );
-            await FirestoreService.instance.placeBid(widget.tokenId, bid, userBalance: _web3.balance);
+            await FirestoreService.instance.placeBid(widget.logo.tokenId, bid, userBalance: _web3.balance);
             if (!mounted) return;
             NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
           } catch (e) {

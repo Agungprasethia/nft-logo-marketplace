@@ -69,15 +69,15 @@ class FirestoreErrorHandler {
   /// In release builds this is a complete no-op.
   static void logDebugError(Object? error, {String context = ''}) {
     if (kDebugMode) {
-      debugPrint('╔══════════════════════════════════════════════════');
-      debugPrint('║ 🔥 FIRESTORE ERROR ${context.isNotEmpty ? '[$context]' : ''}');
-      debugPrint('║ Type : ${_classifyError(error)}');
-      debugPrint('║ Detail: $error');
+      if (kDebugMode) { debugPrint('╔══════════════════════════════════════════════════'); }
+      if (kDebugMode) { debugPrint('║ 🔥 FIRESTORE ERROR ${context.isNotEmpty ? '[$context]' : ''}'); }
+      if (kDebugMode) { debugPrint('║ Type : ${_classifyError(error)}'); }
+      if (kDebugMode) { debugPrint('║ Detail: $error'); }
       final url = extractIndexUrl(error);
       if (url != null) {
-        debugPrint('║ 🔗 Index URL: $url');
+        if (kDebugMode) { debugPrint('║ 🔗 Index URL: $url'); }
       }
-      debugPrint('╚══════════════════════════════════════════════════');
+      if (kDebugMode) { debugPrint('╚══════════════════════════════════════════════════'); }
     }
   }
 

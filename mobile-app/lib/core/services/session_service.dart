@@ -94,9 +94,9 @@ class SessionService {
       final jsonString = jsonEncode(session.toJson());
       await prefs.setString(_getKeyForType(session.sessionType), jsonString);
       await saveLastConnectedWallet(session.walletAddress);
-      debugPrint('✅ Wallet session saved to SharedPreferences (${session.sessionType})');
+      if (kDebugMode) { debugPrint('✅ Wallet session saved to SharedPreferences (${session.sessionType})'); }
     } catch (e) {
-      debugPrint('⚠️ Error saving wallet session: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error saving wallet session: $e'); }
     }
   }
 
@@ -109,7 +109,7 @@ class SessionService {
         return SessionData.fromJson(json);
       }
     } catch (e) {
-      debugPrint('⚠️ Error reading wallet session: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error reading wallet session: $e'); }
       await clearSession(sessionType: sessionType);
     }
     return null;
@@ -121,7 +121,7 @@ class SessionService {
 
     // Check expiration (7 days)
     if (isSessionStale(session)) {
-      debugPrint('⏰ Session is stale (older than ${_maxSessionAge.inDays} days).');
+      if (kDebugMode) { debugPrint('⏰ Session is stale (older than ${_maxSessionAge.inDays} days).'); }
       return false; // Don't clear immediately here, let the UI handle it gracefully
     }
 
@@ -132,7 +132,7 @@ class SessionService {
 
     // Schema version check
     if (session.sessionSchemaVersion != '1.0.0') {
-      debugPrint('⚠️ Session schema mismatch. Expected 1.0.0, got ${session.sessionSchemaVersion}');
+      if (kDebugMode) { debugPrint('⚠️ Session schema mismatch. Expected 1.0.0, got ${session.sessionSchemaVersion}'); }
       return false;
     }
 
@@ -142,15 +142,15 @@ class SessionService {
   /// Fingerprint validation: Called when reconnecting to verify the wallet hasn't changed.
   bool validateFingerprint(SessionData session, String currentAddress, int currentChainId, String currentProvider) {
     if (session.walletAddress.toLowerCase() != currentAddress.toLowerCase()) {
-      debugPrint('⚠️ Fingerprint mismatch: Wallet address changed');
+      if (kDebugMode) { debugPrint('⚠️ Fingerprint mismatch: Wallet address changed'); }
       return false;
     }
     if (session.chainId != currentChainId) {
-      debugPrint('⚠️ Fingerprint mismatch: Chain ID changed');
+      if (kDebugMode) { debugPrint('⚠️ Fingerprint mismatch: Chain ID changed'); }
       return false;
     }
     if (session.walletProvider != currentProvider) {
-      debugPrint('⚠️ Fingerprint mismatch: Provider changed');
+      if (kDebugMode) { debugPrint('⚠️ Fingerprint mismatch: Provider changed'); }
       return false;
     }
     return true;
@@ -166,7 +166,7 @@ class SessionService {
     if (session != null) {
       final updated = session.copyWith(lastConnectedAt: DateTime.now());
       await saveSession(updated);
-      debugPrint('🔄 Session lastConnectedAt refreshed ($sessionType)');
+      if (kDebugMode) { debugPrint('🔄 Session lastConnectedAt refreshed ($sessionType)'); }
     }
   }
 
@@ -174,9 +174,9 @@ class SessionService {
     try {
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove(_getKeyForType(sessionType));
-      debugPrint('🔌 Wallet session cleared from SharedPreferences ($sessionType)');
+      if (kDebugMode) { debugPrint('🔌 Wallet session cleared from SharedPreferences ($sessionType)'); }
     } catch (e) {
-      debugPrint('⚠️ Error clearing wallet session: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error clearing wallet session: $e'); }
     }
   }
 
@@ -187,9 +187,9 @@ class SessionService {
       await prefs.remove(_marketplaceSessionKey);
       await prefs.remove(_adminSessionKey);
       // We intentionally do NOT clear 'leo_last_connected_wallet' to show it as a hint on WalletGatePage
-      debugPrint('🚨 FULL LOGOUT: All SharedPreferences cleared.');
+      if (kDebugMode) { debugPrint('🚨 FULL LOGOUT: All SharedPreferences cleared.'); }
     } catch (e) {
-      debugPrint('⚠️ Error during full logout: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error during full logout: $e'); }
     }
   }
 
@@ -199,7 +199,7 @@ class SessionService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('leo_last_connected_wallet', address);
     } catch (e) {
-      debugPrint('⚠️ Error saving last connected wallet: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error saving last connected wallet: $e'); }
     }
   }
 

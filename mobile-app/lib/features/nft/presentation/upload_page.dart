@@ -3,11 +3,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:nft_logo_marketplace/config/contract_config.dart';
+
+
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
-import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:nft_logo_marketplace/core/services/notification_service.dart';
 import 'package:nft_logo_marketplace/core/services/pinata_service.dart';
@@ -47,20 +46,7 @@ class _UploadPageState extends State<UploadPage> {
   bool _isInitializingContract = false;
   String _statusMessage = '';
   String _selectedCategory = NFTCategory.technology;
-
-  // Auction Duration options (in seconds)
-  int _selectedDurationSeconds = 30; // default 30 seconds for demo
-  static const Map<int, String> _durationOptions = {
-    30: '30 Seconds (Demo)',
-    60: '1 Minute (Demo)',
-    300: '5 Minutes (Demo)',
-    3600: '1 Hour',
-    21600: '6 Hours',
-    43200: '12 Hours',
-    86400: '24 Hours',
-    259200: '3 Days',
-    604800: '7 Days',
-  };
+  int _auctionDurationMinutes = 5;
 
   @override
   void initState() {
@@ -89,12 +75,12 @@ class _UploadPageState extends State<UploadPage> {
     setState(() => _isInitializingContract = true);
 
     try {
-      debugPrint('[WEB3] UploadPage: ensuring Web3 readiness...');
+      if (kDebugMode) { debugPrint('[WEB3] UploadPage: ensuring Web3 readiness...'); }
       await _web3.initialize();
 
       // Check contract readiness (mobile exposes isContractReady)
       final isReady = _web3.isInitialized && _web3.isConnected;
-      debugPrint('[WEB3] UploadPage: initialized=${_web3.isInitialized}, connected=${_web3.isConnected}');
+      if (kDebugMode) { debugPrint('[WEB3] UploadPage: initialized=${_web3.isInitialized}, connected=${_web3.isConnected}'); }
 
       if (mounted) {
         setState(() {
@@ -103,7 +89,7 @@ class _UploadPageState extends State<UploadPage> {
         });
       }
     } catch (e) {
-      debugPrint('[WEB3] UploadPage: Web3 readiness check failed: $e');
+      if (kDebugMode) { debugPrint('[WEB3] UploadPage: Web3 readiness check failed: $e'); }
       if (mounted) {
         setState(() => _isInitializingContract = false);
       }
@@ -139,7 +125,10 @@ class _UploadPageState extends State<UploadPage> {
     }
   }
 
-  Future<void> _mintAndCreateAuction() async {
+  bool _isMinting = false;
+  bool _isProcessing = false;
+
+  Future<void> _submitForReview() async {
     if (!_formKey.currentState!.validate()) return;
     if (_imageBase64 == null) {
       NotificationManager.show(
@@ -151,7 +140,7 @@ class _UploadPageState extends State<UploadPage> {
       return;
     }
 
-    // Show Digital Artwork Agreement popup FIRST â€” mint is locked until agreed
+    // Show Digital Artwork Agreement popup FIRST — mint is locked until agreed
     final agreed = await AgreementDialog.show(context);
     if (!agreed || !mounted) return;
 
@@ -213,31 +202,35 @@ class _UploadPageState extends State<UploadPage> {
           }
         }
       } catch (e) {
-        debugPrint('Error checking anti-spam: $e');
+        if (kDebugMode) { debugPrint('Error checking anti-spam: $e'); }
       }
     }
     // ----------------------------
 
     setState(() {
       _isLoading = true;
+      _isMinting = true;
+      _isProcessing = true;
       _statusMessage = 'Uploading Image to IPFS... 1/4\nSaving logo to Pinata';
     });
 
     try {
-      // Step 1: Upload image to Pinata IPFS
+      // ═══ STEP 1: Upload image to Pinata IPFS ═══
+      if (kDebugMode) { debugPrint('[UPLOAD START] Uploading image to IPFS...'); }
       final ipfsImageUrl = await PinataService.uploadImage(
         _imageBytes!, 
         'nft_logo_${DateTime.now().millisecondsSinceEpoch}.png'
       );
       
       if (!mounted) return;
-      debugPrint('âœ… Image uploaded to IPFS: $ipfsImageUrl');
+      if (kDebugMode) { debugPrint('[IPFS IMAGE SUCCESS] ✅ Image uploaded: $ipfsImageUrl'); }
 
       setState(() {
         _statusMessage = 'Uploading Metadata to IPFS... 2/4\nSaving NFT metadata JSON';
       });
 
-      // Step 2: Upload NFT metadata JSON to Pinata IPFS
+      // ═══ STEP 2: Upload NFT metadata JSON to Pinata IPFS ═══
+      if (kDebugMode) { debugPrint('[UPLOAD START] Uploading metadata to IPFS...'); }
       final ipfsMetadataUrl = await PinataService.uploadMetadata(
         name: _nameController.text.trim(),
         description: _descController.text.trim(),
@@ -246,85 +239,58 @@ class _UploadPageState extends State<UploadPage> {
       );
       
       if (!mounted) return;
-      debugPrint('âœ… Metadata uploaded to IPFS: $ipfsMetadataUrl');
+      if (kDebugMode) { debugPrint('[IPFS METADATA SUCCESS] ✅ Metadata uploaded: $ipfsMetadataUrl'); }
 
-      setState(() {
-        _statusMessage = 'Minting NFT... 3/4\nCheck your wallet';
-      });
-
-      // Step 3: Mint the NFT with IPFS URLs
-      late LogoNFT mintedLogo;
-      try {
-        mintedLogo = await _web3.mintLogo(
-          name: _nameController.text.trim(),
-          description: _descController.text.trim(),
-          imageUrl: ipfsImageUrl, // IPFS image URL
-          price: double.parse(_priceController.text),
-          category: _selectedCategory,
-        );
-
-        if (!mounted) return;
-
-        // Show mint success message
-        NotificationManager.show(
-          context: context,
-          title: 'Minting Successful',
-          message: 'Logo berhasil di mint!',
-          type: NotificationType.success,
-        );
-        debugPrint('âœ… Logo berhasil di mint! Token ID: ${mintedLogo.tokenId}');
-      } catch (mintError) {
-        if (!mounted) return;
-
-        // Show mint failure message
-        NotificationManager.show(
-          context: context,
-          title: 'Minting Failed',
-          message: 'Logo tidak berhasil di mint: $mintError',
-          type: NotificationType.error,
-        );
-        debugPrint('â Œ Logo tidak berhasil di mint: $mintError');
-        rethrow; // Let the outer catch handle cleanup
-      }
-
-      // Step 4: Save to Firestore with status "pending" for admin validation
-      // Attach auction duration selected by user (clock starts on admin approval)
-      // Attach copyright hash (SHA-256 of the original image bytes)
       final copyrightHash = sha256.convert(_imageBytes!).toString();
 
-      mintedLogo = mintedLogo.copyWith(
-        auctionDuration: _selectedDurationSeconds,
+      setState(() {
+        _statusMessage = 'Minting on Blockchain... 3/4\nConfirm in MetaMask';
+      });
+
+      // ═══ STEP 3: BLOCKCHAIN MINT — ATOMIC ═══
+      // mintLogo() handles:
+      //   - Send transaction to smart contract
+      //   - Wait for blockchain receipt
+      //   - Parse REAL tokenId from receipt
+      //   - Build LogoNFT with REAL tokenId
+      //   - Save to Firestore ONLY after blockchain success
+      //   - Return the REAL LogoNFT
+      if (kDebugMode) { debugPrint('[MINT START] Calling mintLogo()...'); }
+      
+      final mintedNFT = await _web3.mintLogo(
+        name: _nameController.text.trim(),
+        description: _descController.text.trim(),
+        imageUrl: ipfsImageUrl,
+        price: double.parse(_priceController.text),
+        category: _selectedCategory,
+        metadataUrl: ipfsMetadataUrl,
         copyrightHash: copyrightHash,
         hashAlgorithm: 'SHA-256',
-        copyrightVerifiedAt: DateTime.now(),
       );
 
-      setState(() {
-        _statusMessage = 'Submitting for Review... 4/4';
-      });
-      
+      // Save auction duration to Firestore for Quick Auction Mode
       try {
-        debugPrint('ðŸ”¥ Attempting to save NFT #${mintedLogo.tokenId} to Firestore...');
-        await FirestoreService.instance.saveNFT(mintedLogo);
-        debugPrint('âœ… SUCCESS: NFT #${mintedLogo.tokenId} successfully written to Firestore.');
-      } catch (firestoreError) {
-        debugPrint('âŒ FAILURE: Firestore write failed for NFT #${mintedLogo.tokenId}. Error: $firestoreError');
-        // Don't rethrow â€” the NFT is minted on-chain, Firestore is supplementary
+        await FirebaseFirestore.instance.collection('nfts').doc(mintedNFT.tokenId.toString()).set({
+          'auctionDurationMinutes': _auctionDurationMinutes,
+          'auctionDuration': _auctionDurationMinutes * 60,
+        }, SetOptions(merge: true));
+      } catch (e) {
+        if (kDebugMode) { debugPrint('Failed to update auction duration in Firestore: $e'); }
       }
 
       if (!mounted) return;
+      if (kDebugMode) { debugPrint('[MINT COMPLETE] ✅ NFT minted with REAL tokenId: ${mintedNFT.tokenId}'); }
 
-      debugPrint('ðŸŽ‰ Mint + Firestore save complete!');
-      debugPrint('ðŸ“¦ IPFS Image: $ipfsImageUrl');
-      debugPrint('ðŸ“„ IPFS Metadata: $ipfsMetadataUrl');
+      setState(() {
+        _statusMessage = 'Finalizing... 4/4';
+      });
 
-      // Reload blockchain data in background to sync with on-chain state
+      // ═══ STEP 4: SUCCESS — Reload data & show UI ═══
       _web3.loadFromChain();
 
       // Show success dialog with IPFS info
       _showSuccessDialog(
-        mintedLogo.txHash, 
-        mintedLogo.name,
+        mintedNFT.name,
         ipfsImageUrl: ipfsImageUrl,
         ipfsMetadataUrl: ipfsMetadataUrl,
       );
@@ -332,12 +298,12 @@ class _UploadPageState extends State<UploadPage> {
       // Trigger Local Notification
       try {
         await NotificationService().showNotification(
-          id: mintedLogo.tokenId,
-          title: 'NFT Submitted for Review! ðŸ“‹',
-          body: 'Artwork "${mintedLogo.name}" is pending admin approval.\nIPFS: $ipfsImageUrl'
+          id: mintedNFT.tokenId % 100000,
+          title: 'NFT Submitted for Review! 📋',
+          body: 'Artwork "${mintedNFT.name}" is pending admin approval.\nToken ID: ${mintedNFT.tokenId}'
         );
       } catch (e) {
-        debugPrint('Failed to show notification: $e');
+        if (kDebugMode) { debugPrint('Failed to show notification: $e'); }
       }
 
       // Reset form
@@ -348,33 +314,54 @@ class _UploadPageState extends State<UploadPage> {
         _imageBase64 = null;
         _imageBytes = null;
         _selectedCategory = NFTCategory.technology;
+        _auctionDurationMinutes = 5;
         _statusMessage = '';
       });
 
-      // Navigate back to homepage after a short delay so user sees the dialog first
-      // The callback will be invoked when the dialog is dismissed
     } catch (e) {
       if (!mounted) return;
-      // Only show generic error if it wasn't already shown by the specific catch blocks
-      if (!e.toString().contains('Logo tidak berhasil')) {
-        NotificationManager.show(
-          context: context,
-          title: 'Error',
-          message: e.toString().replaceFirst("Exception: ", ""),
-          type: NotificationType.error,
-        );
+      
+      // ═══ TARGETED ERROR MESSAGES ═══
+      String errorMessage = e.toString().replaceFirst("Exception: ", "");
+      
+      if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
+        errorMessage = 'Transaction cancelled';
+      } else if (e.toString().contains('insufficient funds') || e.toString().contains('gas')) {
+        errorMessage = 'Blockchain transaction failed';
+      } else if (e.toString().contains('network') || e.toString().contains('Sepolia')) {
+        errorMessage = 'Wrong network. Please switch to Sepolia Testnet in MetaMask.';
+      } else if (e.toString().contains('IPFS') || e.toString().contains('Pinata') || e.toString().contains('upload')) {
+        errorMessage = 'IPFS upload failed. Please check your internet and try again.';
+      } else if (e.toString().contains('Transaction failed on-chain') || e.toString().contains('revert')) {
+        errorMessage = 'Smart contract rejected the transaction. Please try again.';
+      } else if (e.toString().contains('Firestore fail')) {
+        errorMessage = 'Blockchain success but database update failed. Your NFT is safe and will sync later.';
+      } else if (e.toString().contains('timed out')) {
+        errorMessage = 'Transaction timed out. Check Etherscan for status.';
       }
+
+      NotificationManager.show(
+        context: context,
+        title: 'Mint Failed',
+        message: errorMessage,
+        type: NotificationType.error,
+      );
+      
+      if (kDebugMode) { debugPrint('[MINT FAILED] ❌ $e'); }
+      if (kDebugMode) { debugPrint('[MINT FAILED] No ghost NFT was created — Firestore is clean.'); }
     } finally {
       if (mounted) {
         setState(() {
           _isLoading = false;
+          _isMinting = false;
+          _isProcessing = false;
           _statusMessage = '';
         });
       }
     }
   }
 
-  void _showSuccessDialog(String? txHash, String logoName, {String? ipfsImageUrl, String? ipfsMetadataUrl}) {
+  void _showSuccessDialog(String logoName, {String? ipfsImageUrl, String? ipfsMetadataUrl}) {
     showDialog(
       context: context,
       barrierDismissible: false,
@@ -405,7 +392,7 @@ class _UploadPageState extends State<UploadPage> {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                '"$logoName" has been minted and submitted for admin review. Once approved, the auction will start automatically and the countdown will begin.',
+                '"$logoName" has been submitted for admin review. Once approved, you will be able to mint it to the blockchain.',
                 style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
                 textAlign: TextAlign.center,
               ),
@@ -485,65 +472,6 @@ class _UploadPageState extends State<UploadPage> {
                   ),
                 ),
               ],
-
-              if (txHash != null && txHash.isNotEmpty) ...[
-                const SizedBox(height: AppSpacing.lg),
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.background,
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    border: Border.all(color: AppColors.border),
-                  ),
-                  child: Column(
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              'Tx: ${txHash.substring(0, 10)}...${txHash.substring(txHash.length - 8)}',
-                              style: AppTextStyles.mono.copyWith(color: AppColors.textSecondary, fontSize: 12),
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.copy, size: 18),
-                            color: AppColors.textSecondary,
-                            onPressed: () {
-                              Clipboard.setData(ClipboardData(text: txHash));
-                              NotificationManager.show(
-                                context: context,
-                                title: 'Copied',
-                                message: 'Transaction hash copied!',
-                                type: NotificationType.success,
-                              );
-                            },
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.sm),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        alignment: WrapAlignment.center,
-                        children: ContractConfig.getTxExplorerUrls(txHash)
-                            .map((explorer) {
-                          return OutlinedButton(
-                            onPressed: () => _openExplorer(explorer['url']!),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.textPrimary,
-                              side: const BorderSide(color: AppColors.textSecondary),
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 12, vertical: 8),
-                              textStyle: AppTextStyles.labelMedium,
-                            ),
-                            child: Text(explorer['name']!),
-                          );
-                        }).toList(),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
               const SizedBox(height: AppSpacing.xxl),
               PrimaryButton(
                 text: 'OK',
@@ -559,20 +487,21 @@ class _UploadPageState extends State<UploadPage> {
     );
   }
 
-  Future<void> _openExplorer(String url) async {
-    final uri = Uri.parse(url);
-    try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
-      }
-    } catch (e) {
-      debugPrint('Error opening explorer: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return PopScope(
+      canPop: !_isMinting,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          NotificationManager.show(
+            context: context,
+            title: 'Please Wait',
+            message: 'Cannot go back while minting is in progress',
+            type: NotificationType.warning,
+          );
+        }
+      },
+      child: Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
         backgroundColor: Colors.transparent,
@@ -736,7 +665,7 @@ class _UploadPageState extends State<UploadPage> {
                     ),
                     const SizedBox(height: AppSpacing.xl),
 
-                    // Auction Duration dropdown
+                    // Auction Duration field
                     _buildLabel('Auction Duration'),
                     const SizedBox(height: AppSpacing.sm),
                     Container(
@@ -747,41 +676,44 @@ class _UploadPageState extends State<UploadPage> {
                         border: Border.all(color: AppColors.border),
                       ),
                       child: DropdownButtonHideUnderline(
-                        child: DropdownButton<int>(
-                          value: _selectedDurationSeconds,
+                        child: DropdownButtonFormField<int>(
+                          initialValue: _auctionDurationMinutes,
                           isExpanded: true,
                           dropdownColor: AppColors.surface,
                           style: AppTextStyles.bodyMedium,
-                          icon: const Icon(Icons.arrow_drop_down, color: AppColors.accentOrange),
-                          items: _durationOptions.entries.map((entry) {
-                            return DropdownMenuItem<int>(
-                              value: entry.key,
+                          decoration: const InputDecoration(
+                            border: InputBorder.none,
+                            contentPadding: EdgeInsets.zero,
+                          ),
+                          icon: const Icon(Icons.arrow_drop_down, color: AppColors.primary),
+                          items: const [
+                            DropdownMenuItem(
+                              value: 5,
                               child: Row(
                                 children: [
-                                  const Icon(
-                                    Icons.timer,
-                                    color: AppColors.accentOrange,
-                                    size: 20,
-                                  ),
-                                  const SizedBox(width: AppSpacing.md),
-                                  Text(entry.value),
+                                  Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
+                                  SizedBox(width: AppSpacing.md),
+                                  Text('5 Minutes'),
                                 ],
                               ),
-                            );
-                          }).toList(),
-                          onChanged: (v) => setState(() => _selectedDurationSeconds = v!),
+                            ),
+                            DropdownMenuItem(
+                              value: 10,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
+                                  SizedBox(width: AppSpacing.md),
+                                  Text('10 Minutes'),
+                                ],
+                              ),
+                            ),
+                          ],
+                          onChanged: (v) => setState(() => _auctionDurationMinutes = v!),
+                          validator: (v) => v == null ? 'Please select auction duration' : null,
                         ),
                       ),
                     ),
-                    const SizedBox(height: AppSpacing.sm),
-                    Text(
-                      'Auction will start automatically after admin approval with the selected duration.',
-                      style: AppTextStyles.bodySmall.copyWith(
-                        color: AppColors.textSecondary,
-                        fontStyle: FontStyle.italic,
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xxl),
+                    const SizedBox(height: AppSpacing.xl),
 
                     // Info card
                     Container(
@@ -797,7 +729,7 @@ class _UploadPageState extends State<UploadPage> {
                           const SizedBox(width: AppSpacing.md),
                           Expanded(
                             child: Text(
-                              'After minting, your artwork will be reviewed by admin. Once approved, the auction will start automatically with your selected duration.',
+                              'Your artwork will be reviewed by admin. Once approved, you can mint it to the blockchain and start an auction at your convenience.',
                               style: AppTextStyles.bodySmall.copyWith(color: AppColors.frozenBlue),
                             ),
                           ),
@@ -838,7 +770,7 @@ class _UploadPageState extends State<UploadPage> {
                         ),
                       ),
                     ElevatedButton(
-                      onPressed: (_isLoading || _isInitializingContract) ? null : _mintAndCreateAuction,
+                      onPressed: (_isLoading || _isMinting || _isProcessing || _isInitializingContract) ? null : _submitForReview,
                       style: ElevatedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 18),
                         backgroundColor: AppColors.accentOrange,
@@ -893,6 +825,7 @@ class _UploadPageState extends State<UploadPage> {
                 ),
               ),
             ),
+      ),
     );
   }
 

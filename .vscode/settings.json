@@ -1,0 +1,17 @@
+{
+  "java.import.exclusions": [
+    "**/node_modules/**",
+    "**/.metadata/**",
+    "**/archetype-resources/**",
+    "**/META-INF/maven/**",
+    "**/android/**",
+    "**/build/**",
+    "**/mobile-app/android/**",
+    "**/mobile-app/build/**",
+    "**/.dart_tool/**",
+    "**/.flutter-plugins/**",
+    "**/.gradle/**"
+  ],
+  "java.import.gradle.enabled": false,
+  "java.configuration.updateBuildConfiguration": "disabled"
+}

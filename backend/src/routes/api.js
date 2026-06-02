@@ -15,6 +15,7 @@ router.get('/health', (req, res) => {
 router.get('/test-firestore', nftController.testFirestore);
 
 // NFT Routes
+router.post('/nft/mint', nftController.mintNFT);
 router.get('/nft/all', nftController.getAllNFTs);
 router.get('/nft/:id', nftController.getNFTById);
 router.get('/profile/my-creations/:wallet', nftController.getMyCreations);

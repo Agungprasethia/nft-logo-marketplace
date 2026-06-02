@@ -5,6 +5,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/firebase_options.dart';
+import 'package:nft_logo_marketplace/shared/widgets/offline_banner.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -36,6 +37,9 @@ class NFTLogoMarketplaceApp extends StatelessWidget {
       title: 'L E O',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,
+      builder: (context, child) {
+        return OfflineBannerWrapper(child: child ?? const SizedBox());
+      },
       home: const SplashScreen(),
     );
   }

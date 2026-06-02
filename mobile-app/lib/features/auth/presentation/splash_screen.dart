@@ -73,14 +73,14 @@ class _SplashScreenState extends State<SplashScreen>
         FlutterLocalNotificationsPlugin().initialize(
           const InitializationSettings(android: AndroidInitializationSettings('@mipmap/ic_launcher')),
         ).catchError((e) { 
-          debugPrint('Notification init error: $e');
+          if (kDebugMode) { debugPrint('Notification init error: $e'); }
           return false;
         });
       }
 
       // 2. Web3 Base Initialization (Background)
       Web3Service.instance.initialize().catchError((e) {
-        debugPrint('[WEB3] ⚠️ Init Error (non-fatal): $e');
+        if (kDebugMode) { debugPrint('[WEB3] ⚠️ Init Error (non-fatal): $e'); }
       });
 
       // 3. Handle Admin Mode Routing
@@ -109,7 +109,7 @@ class _SplashScreenState extends State<SplashScreen>
       _navigateTo(const HomePage());
 
     } catch (e) {
-      debugPrint('Boot error: $e');
+      if (kDebugMode) { debugPrint('Boot error: $e'); }
       _splashState.value = SplashState.error;
       _navigateTo(const HomePage());
     }
@@ -158,7 +158,7 @@ class _SplashScreenState extends State<SplashScreen>
         );
       }
     } catch (e) {
-      debugPrint('Background validation error: $e');
+      if (kDebugMode) { debugPrint('Background validation error: $e'); }
     }
   }
 

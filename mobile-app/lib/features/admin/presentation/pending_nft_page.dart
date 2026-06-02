@@ -261,9 +261,12 @@ class _PendingNftPageState extends State<PendingNftPage> {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: _processingTokens.contains(logo.tokenId) ? null : () async {
+                                final confirm = await _showConfirmDialog(context, 'Approve NFT', 'Are you sure you want to approve this NFT?');
+                                if (confirm != true) return;
                                 setState(() => _processingTokens.add(logo.tokenId));
                                 try {
                                   await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
+                                  await FirestoreService.instance.startAuction(logo.tokenId);
                                   if (!context.mounted) return;
                                   NotificationManager.show(
                                     context: context,
@@ -300,6 +303,8 @@ class _PendingNftPageState extends State<PendingNftPage> {
                           Expanded(
                             child: ElevatedButton(
                               onPressed: _processingTokens.contains(logo.tokenId) ? null : () async {
+                                final confirm = await _showConfirmDialog(context, 'Reject NFT', 'Are you sure you want to reject this NFT?');
+                                if (confirm != true) return;
                                 setState(() => _processingTokens.add(logo.tokenId));
                                 try {
                                   await FirestoreService.instance.rejectNFT(logo.tokenId);
@@ -456,8 +461,11 @@ class _PendingNftPageState extends State<PendingNftPage> {
                                 icon: Icons.check,
                                 backgroundColor: AppColors.success,
                                 onPressed: () async {
+                                  final confirm = await _showConfirmDialog(context, 'Approve NFT', 'Are you sure you want to approve this NFT?');
+                                  if (confirm != true) return;
                                   try {
                                     await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
+                                    await FirestoreService.instance.startAuction(logo.tokenId);
                                     if (!context.mounted) return;
                                     Navigator.pop(context);
                                     NotificationManager.show(context: context, title: 'Success', message: 'NFT Approved!', type: NotificationType.success);
@@ -472,6 +480,8 @@ class _PendingNftPageState extends State<PendingNftPage> {
                             Expanded(
                               child: OutlinedButton(
                                 onPressed: () async {
+                                  final confirm = await _showConfirmDialog(context, 'Reject NFT', 'Are you sure you want to reject this NFT?');
+                                  if (confirm != true) return;
                                   try {
                                     await FirestoreService.instance.rejectNFT(logo.tokenId);
                                     if (!context.mounted) return;
@@ -531,5 +541,27 @@ class _PendingNftPageState extends State<PendingNftPage> {
     String mm = m.toString().padLeft(2, '0');
     String ss = s.toString().padLeft(2, '0');
     return '$hh.$mm,$ss';
+  }
+
+  Future<bool?> _showConfirmDialog(BuildContext context, String title, String content) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        title: Text(title, style: AppTextStyles.h3),
+        content: Text(content, style: AppTextStyles.bodyMedium),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel', style: TextStyle(color: AppColors.textSecondary)),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(backgroundColor: AppColors.primary),
+            child: const Text('Confirm', style: TextStyle(color: AppColors.textPrimary)),
+          ),
+        ],
+      ),
+    );
   }
 }

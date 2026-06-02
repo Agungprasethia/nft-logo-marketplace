@@ -1,5 +1,5 @@
 /// Logo NFT Validation Status mapping to Smart Contract Enum
-enum ValidationStatus { pending, approved, rejected, disabled }
+enum ValidationStatus { pending, approvedPendingMint, approved, rejected, disabled, auction, available, pendingPayment, sold }
 
 /// Available NFT categories
 class NFTCategory {
@@ -83,6 +83,10 @@ class LogoNFT {
   final String? reAuctionNotes;
   final String? ownershipType;
   final int? reAuctionDuration;
+  final bool nftVisible;
+  final bool isPaymentProcessing;
+  final bool isMetadataLocked;
+  final String? rejectedReason;
 
   LogoNFT({
     required this.tokenId,
@@ -91,10 +95,10 @@ class LogoNFT {
     required this.imageUrl,
     required this.imageHash,
     required this.creatorId,
-    required this.creatorWallet,
+    required String creatorWallet,
     this.creatorUsername,
     required this.ownerId,
-    required this.ownerWallet,
+    required String ownerWallet,
     required this.createdAt,
     required this.price,
     this.isForSale = false,
@@ -134,7 +138,12 @@ class LogoNFT {
     this.reAuctionDuration,
     this.reAuctionNotes,
     this.ownershipType,
-  });
+    this.nftVisible = false,
+    this.isPaymentProcessing = false,
+    this.isMetadataLocked = false,
+    this.rejectedReason,
+  }) : creatorWallet = creatorWallet.toLowerCase().trim(),
+       ownerWallet = ownerWallet.toLowerCase().trim();
 
   LogoNFT copyWith({
     int? tokenId,
@@ -186,6 +195,10 @@ class LogoNFT {
     int? reAuctionDuration,
     String? reAuctionNotes,
     String? ownershipType,
+    bool? nftVisible,
+    bool? isPaymentProcessing,
+    bool? isMetadataLocked,
+    String? rejectedReason,
   }) {
     return LogoNFT(
       tokenId: tokenId ?? this.tokenId,
@@ -237,6 +250,10 @@ class LogoNFT {
       reAuctionDuration: reAuctionDuration ?? this.reAuctionDuration,
       reAuctionNotes: reAuctionNotes ?? this.reAuctionNotes,
       ownershipType: ownershipType ?? this.ownershipType,
+      nftVisible: nftVisible ?? this.nftVisible,
+      isPaymentProcessing: isPaymentProcessing ?? this.isPaymentProcessing,
+      isMetadataLocked: isMetadataLocked ?? this.isMetadataLocked,
+      rejectedReason: rejectedReason ?? this.rejectedReason,
     );
   }
 
@@ -291,6 +308,10 @@ class LogoNFT {
       'reAuctionDuration': reAuctionDuration,
       'reAuctionNotes': reAuctionNotes,
       'ownershipType': ownershipType,
+      'nftVisible': nftVisible,
+      'isPaymentProcessing': isPaymentProcessing,
+      'isMetadataLocked': isMetadataLocked,
+      if (rejectedReason != null) 'rejectedReason': rejectedReason,
     };
   }
 
@@ -322,18 +343,18 @@ class LogoNFT {
 
   factory LogoNFT.fromJson(Map<String, dynamic> json) {
     return LogoNFT(
-      tokenId: json['tokenId'] as int,
-      name: json['name'] as String,
-      description: json['description'] as String,
-      imageUrl: json['imageUrl'] as String,
-      imageHash: json['imageHash'] as String,
+      tokenId: json['tokenId'] as int? ?? 0,
+      name: json['name'] as String? ?? 'Unnamed NFT',
+      description: json['description'] as String? ?? '',
+      imageUrl: json['imageUrl'] as String? ?? '',
+      imageHash: json['imageHash'] as String? ?? '',
       creatorId: json['creatorId'] as String? ?? '',
-      creatorWallet: json['creatorWallet'] as String? ?? '',
+      creatorWallet: json['creatorWallet'] as String? ?? json['creator'] as String? ?? '',
       creatorUsername: json['creatorUsername'] as String?,
       ownerId: json['ownerId'] as String? ?? '',
-      ownerWallet: json['ownerWallet'] as String? ?? '',
+      ownerWallet: json['ownerWallet'] as String? ?? json['owner'] as String? ?? '',
       createdAt: _parseDateTimeFlex(json['createdAt']),
-      price: (json['price'] as num).toDouble(),
+      price: (json['price'] as num?)?.toDouble() ?? 0.0,
       isForSale: json['isForSale'] as bool? ?? false,
       isInAuction: json['isInAuction'] as bool? ?? false,
       status: _parseValidationStatus(json['status']),
@@ -371,8 +392,13 @@ class LogoNFT {
       reAuctionDuration: json['reAuctionDuration'] as int?,
       reAuctionNotes: json['reAuctionNotes'] as String?,
       ownershipType: json['ownershipType'] as String?,
+      nftVisible: json['nftVisible'] as bool? ?? true,
+      isPaymentProcessing: json['isPaymentProcessing'] as bool? ?? false,
+      isMetadataLocked: json['isMetadataLocked'] as bool? ?? false,
+      rejectedReason: json['rejectedReason'] as String?,
     );
   }
+
 
   // ============ Backward-Compatible Getters ============
   /// Legacy getter: logo.creator → creatorWallet
@@ -426,18 +452,28 @@ class LogoNFT {
   static String statusToString(ValidationStatus status) {
     switch (status) {
       case ValidationStatus.pending: return 'pending';
+      case ValidationStatus.approvedPendingMint: return 'approved_pending_mint';
       case ValidationStatus.approved: return 'approved';
       case ValidationStatus.rejected: return 'rejected';
       case ValidationStatus.disabled: return 'disabled';
+      case ValidationStatus.auction: return 'auction';
+      case ValidationStatus.available: return 'available';
+      case ValidationStatus.pendingPayment: return 'pending_payment';
+      case ValidationStatus.sold: return 'sold';
     }
   }
 
   /// Convert Firestore string back to ValidationStatus enum
   static ValidationStatus statusFromString(String status) {
-    switch (status) {
+    switch (status.toLowerCase()) {
+      case 'approved_pending_mint': return ValidationStatus.approvedPendingMint;
       case 'approved': return ValidationStatus.approved;
       case 'rejected': return ValidationStatus.rejected;
       case 'disabled': return ValidationStatus.disabled;
+      case 'auction': return ValidationStatus.auction;
+      case 'available': return ValidationStatus.available;
+      case 'pending_payment': return ValidationStatus.pendingPayment;
+      case 'sold': return ValidationStatus.sold;
       default: return ValidationStatus.pending;
     }
   }
@@ -493,6 +529,10 @@ class LogoNFT {
       'reAuctionDuration': reAuctionDuration,
       'reAuctionNotes': reAuctionNotes,
       'ownershipType': ownershipType,
+      'nftVisible': nftVisible,
+      'isPaymentProcessing': isPaymentProcessing,
+      'isMetadataLocked': isMetadataLocked,
+      if (rejectedReason != null) 'rejectedReason': rejectedReason,
     };
   }
 
@@ -578,10 +618,10 @@ class LogoNFT {
       imageUrl: imageUrl,
       imageHash: data['imageHash'] as String? ?? '',
       creatorId: creatorId,
-      creatorWallet: creatorWallet,
+      creatorWallet: creatorWallet.toLowerCase().trim(),
       creatorUsername: creatorUsername,
       ownerId: ownerId,
-      ownerWallet: ownerWallet,
+      ownerWallet: ownerWallet.toLowerCase().trim(),
       createdAt: parsedCreatedAt,
       price: (data['price'] as num?)?.toDouble() ?? 0.0,
       isForSale: data['isForSale'] as bool? ?? false,
@@ -620,6 +660,10 @@ class LogoNFT {
       reAuctionDuration: data['reAuctionDuration'] as int?,
       reAuctionNotes: data['reAuctionNotes'] as String?,
       ownershipType: data['ownershipType'] as String?,
+      nftVisible: data['nftVisible'] as bool? ?? true, // Legacy visible fallback
+      isPaymentProcessing: data['isPaymentProcessing'] as bool? ?? false,
+      isMetadataLocked: data['isMetadataLocked'] as bool? ?? false,
+      rejectedReason: data['rejectedReason'] as String?,
     );
   }
 }

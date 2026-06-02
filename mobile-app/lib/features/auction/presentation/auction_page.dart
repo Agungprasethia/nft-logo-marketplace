@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:shimmer/shimmer.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/shared/models/user_model.dart';
@@ -23,9 +25,9 @@ import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart'
 import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
 
 class AuctionPage extends StatefulWidget {
-  final int tokenId;
+  final LogoNFT logo;
 
-  const AuctionPage({super.key, required this.tokenId});
+  const AuctionPage({super.key, required this.logo});
 
   @override
   State<AuctionPage> createState() => _AuctionPageState();
@@ -34,6 +36,7 @@ class AuctionPage extends StatefulWidget {
 class _AuctionPageState extends State<AuctionPage> {
   final _web3 = Web3Service.instance;
   Timer? _timer;
+  Timer? _notificationResetTimer;
   StreamSubscription? _bidStreamSub;
   StreamSubscription? _auctionStreamSub;
   List<Bid> _firestoreBids = [];
@@ -42,12 +45,34 @@ class _AuctionPageState extends State<AuctionPage> {
   bool _hasNotified = false;
   DateTime? _lastBidAttempt;
   bool _hasEndedAuction = false; // Idempotent guard for auto-end
+  bool _hasTimedOut = false;
+  Timer? _timeoutTimer;
 
   @override
   void initState() {
     super.initState();
+    _timeoutTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) {
+        setState(() => _hasTimedOut = true);
+      }
+    });
     _web3.addListener(_refresh);
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _refresh());
+    _subscribeToBidStream();
+    _subscribeToAuctionStream();
+  }
+
+  void _retryLoading() {
+    setState(() => _hasTimedOut = false);
+    
+    _timeoutTimer?.cancel();
+    _timeoutTimer = Timer(const Duration(seconds: 10), () {
+      if (mounted) setState(() => _hasTimedOut = true);
+    });
+
+    _bidStreamSub?.cancel();
+    _auctionStreamSub?.cancel();
+    
     _subscribeToBidStream();
     _subscribeToAuctionStream();
   }
@@ -67,7 +92,7 @@ class _AuctionPageState extends State<AuctionPage> {
 
   void _subscribeToBidStream() {
     _bidStreamSub = FirestoreService.instance
-        .getAuctionBidsStream(widget.tokenId)
+        .getAuctionBidsStream(widget.logo.tokenId)
         .listen(
           (bids) {
             if (mounted) {
@@ -79,7 +104,7 @@ class _AuctionPageState extends State<AuctionPage> {
             debugPrint('⚠️ Bid stream error, trying fallback: $e');
             _bidStreamSub?.cancel();
             _bidStreamSub = FirestoreService.instance
-                .getAuctionBidsStreamFallback(widget.tokenId)
+                .getAuctionBidsStreamFallback(widget.logo.tokenId)
                 .listen(
                   (bids) {
                     if (mounted) {
@@ -96,7 +121,7 @@ class _AuctionPageState extends State<AuctionPage> {
 
   void _subscribeToAuctionStream() {
     _auctionStreamSub = FirestoreService.instance
-        .getAuctionStream(widget.tokenId)
+        .getAuctionStream(widget.logo.tokenId)
         .listen(
           (liveAuction) {
             if (mounted && liveAuction != null) {
@@ -168,6 +193,8 @@ class _AuctionPageState extends State<AuctionPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _timeoutTimer?.cancel();
+    _notificationResetTimer?.cancel();
     _bidStreamSub?.cancel();
     _auctionStreamSub?.cancel();
     _web3.removeListener(_refresh);
@@ -179,7 +206,7 @@ class _AuctionPageState extends State<AuctionPage> {
 
     try {
       final auction = _web3.allAuctions.firstWhere(
-        (a) => a.tokenId == widget.tokenId || a.auctionId == widget.tokenId,
+        (a) => a.tokenId == widget.logo.tokenId || a.auctionId == widget.logo.tokenId,
       );
       for (final bid in auction.bids) {
         bidMap[bid.bidderWallet.toLowerCase()] = bid;
@@ -207,9 +234,7 @@ class _AuctionPageState extends State<AuctionPage> {
     if (mounted) setState(() {});
 
     try {
-      final logo = _web3.allLogos.firstWhere(
-        (l) => l.tokenId == widget.tokenId,
-      );
+      final logo = widget.logo;
 
       // Auto-end auction when countdown reaches zero (idempotent)
       if (!_hasEndedAuction &&
@@ -218,27 +243,23 @@ class _AuctionPageState extends State<AuctionPage> {
           logo.status != ValidationStatus.rejected &&
           logo.endTime != null &&
           DateTime.now().isAfter(logo.endTime!)) {
-        debugPrint("Auction expired → calling endOffChainAuction()");
-        debugPrint("Token ID: ${logo.tokenId}");
-        debugPrint("Total bids: ${logo.totalBids}");
+        if (kDebugMode) { debugPrint("Auction expired → calling endOffChainAuction()"); }
+        if (kDebugMode) { debugPrint("Token ID: ${logo.tokenId}"); }
+        if (kDebugMode) { debugPrint("Total bids: ${logo.totalBids}"); }
         _hasEndedAuction = true;
-        debugPrint('⏰ Auto-ending auction #${widget.tokenId}');
+        if (kDebugMode) { debugPrint('⏰ Auto-ending auction #${widget.logo.tokenId}'); }
         FirestoreService.instance
-            .endOffChainAuction(widget.tokenId)
+            .endOffChainAuction(widget.logo.tokenId)
             .then((_) {
-              debugPrint('✅ Auto-end completed for auction #${widget.tokenId}');
+              if (kDebugMode) { debugPrint('✅ Auto-end completed for auction #${widget.logo.tokenId}'); }
             })
             .catchError((e) {
-              debugPrint('❌ Auto-end failed: $e');
+              if (kDebugMode) { debugPrint('❌ Auto-end failed: $e'); }
               // Reset guard so it can retry
               _hasEndedAuction = false;
             });
       }
       
-      // Expire check
-      FirestoreService.instance.closeExpiredAuctions();
-      FirestoreService.instance.expirePaymentDeadlines();
-
       // Winner notification
       if (!_hasNotified &&
           !(logo.isAuctionActive &&
@@ -250,11 +271,14 @@ class _AuctionPageState extends State<AuctionPage> {
               logo.highestBidderWallet?.toLowerCase()) {
         _hasNotified = true;
         NotificationService().showNotification(
-          id: widget.tokenId,
+          id: widget.logo.tokenId,
           title: 'Congratulations! You Won the Auction! 🏆',
-          body: 'Claim your NFT #${widget.tokenId} now in the app.',
+          body: 'Claim your NFT #${widget.logo.tokenId} now in the app.',
         );
-        Timer(const Duration(minutes: 5), () => _hasNotified = false);
+        _notificationResetTimer?.cancel();
+        _notificationResetTimer = Timer(const Duration(minutes: 5), () {
+          if (mounted) setState(() => _hasNotified = false);
+        });
       }
     } catch (_) {}
   }
@@ -290,19 +314,81 @@ class _AuctionPageState extends State<AuctionPage> {
 
   @override
   Widget build(BuildContext context) {
-    final logo = _web3.allLogos.cast<LogoNFT?>().firstWhere(
-      (l) => l!.tokenId == widget.tokenId,
-      orElse: () => null,
-    );
+    final logo = widget.logo;
 
     final auction = _liveAuction ?? _web3.allAuctions.cast<Auction?>().firstWhere(
-      (a) => a!.tokenId == widget.tokenId || a.auctionId == widget.tokenId,
+      (a) => a!.tokenId == widget.logo.tokenId || a.auctionId == widget.logo.tokenId,
       orElse: () => null,
     );
 
-    debugPrint('🔥 [AUCTION PAGE DEBUG] TokenID: ${widget.tokenId} | logo.highestBid: ${logo?.highestBid} | auction.highestBid: ${auction?.highestBid}');
+    debugPrint('🔥 [AUCTION PAGE DEBUG] TokenID: ${logo.tokenId} | logo.highestBid: ${logo.highestBid} | auction.highestBid: ${auction?.highestBid}');
+    debugPrint("Auction NFT: ${logo.tokenId}");
+    debugPrint("Status: ${logo.status}");
+    debugPrint("Auction Status: ${logo.auctionStatus}");
 
-    if (logo == null || auction == null) {
+    if (auction == null) {
+      if (_hasTimedOut) {
+        String displayImageUrl = logo.imageUrl;
+        if (displayImageUrl.contains('dweb.link/ipfs/')) {
+          displayImageUrl = displayImageUrl.replaceAll('dweb.link/ipfs/', 'ipfs.io/ipfs/');
+        } else if (displayImageUrl.contains('ipfs://')) {
+          displayImageUrl = displayImageUrl.replaceAll('ipfs://', 'https://ipfs.io/ipfs/');
+        }
+
+        return Scaffold(
+          backgroundColor: AppColors.background,
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            title: const Text('Live Auction', style: AppTextStyles.h3),
+            centerTitle: true,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
+              onPressed: () => Navigator.pop(context),
+            ),
+          ),
+          body: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                  child: displayImageUrl.isNotEmpty 
+                      ? Image.network(
+                          displayImageUrl, 
+                          width: 120, 
+                          height: 120, 
+                          fit: BoxFit.cover,
+                          errorBuilder: (ctx, err, stack) => const Icon(Icons.image, size: 120, color: AppColors.textSecondary),
+                        )
+                      : const Icon(Icons.image, size: 120, color: AppColors.textSecondary),
+                ),
+                const SizedBox(height: 16),
+                Text(logo.name, style: AppTextStyles.h3),
+                const SizedBox(height: 8),
+                Text(
+                  'Failed to load auction. Please try again.',
+                  style: AppTextStyles.bodyMedium.copyWith(color: AppColors.danger),
+                  textAlign: TextAlign.center,
+                ),
+                const SizedBox(height: 24),
+                PrimaryButton(
+                  text: 'Retry',
+                  onPressed: _retryLoading,
+                  icon: Icons.refresh,
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Go Back'),
+                ),
+              ],
+            ),
+          ),
+        );
+      }
+
+      // Show loading before timeout
       return Scaffold(
         backgroundColor: AppColors.background,
         appBar: AppBar(
@@ -322,7 +408,7 @@ class _AuctionPageState extends State<AuctionPage> {
               const CircularProgressIndicator(color: AppColors.primary),
               const SizedBox(height: 16),
               Text(
-                'Loading Auction #${widget.tokenId}...',
+                'Loading Auction #${widget.logo.tokenId}...',
                 style: AppTextStyles.bodyMedium.copyWith(
                   color: AppColors.textSecondary,
                 ),
@@ -1958,7 +2044,16 @@ class _AuctionPageState extends State<AuctionPage> {
                   });
                   return;
                 }
-                Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPaymentPage(tokenId: widget.tokenId)));
+                if (logo.isPaymentProcessing) {
+                  NotificationManager.show(
+                    context: context,
+                    title: 'Payment in Progress',
+                    message: 'A payment is currently being processed for this NFT.',
+                    type: NotificationType.warning,
+                  );
+                  return;
+                }
+                Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPaymentPage(tokenId: widget.logo.tokenId)));
               },
             ),
           ),
@@ -1974,7 +2069,7 @@ class _AuctionPageState extends State<AuctionPage> {
                 onPressed: () async {
                   try {
                     await FirestoreService.instance.endOffChainAuction(
-                      widget.tokenId,
+                      widget.logo.tokenId,
                     );
                     if (!mounted) return;
                     Navigator.pop(context);
@@ -2066,13 +2161,7 @@ class _AuctionPageState extends State<AuctionPage> {
             transitionBuilder: (Widget child, Animation<double> animation) {
               return FadeTransition(
                 opacity: animation,
-                child: SlideTransition(
-                  position: Tween<Offset>(
-                    begin: const Offset(0, 0.1),
-                    end: Offset.zero,
-                  ).animate(animation),
-                  child: child,
-                ),
+                child: child,
               );
             },
             child: _buildLeaderboardItem(
@@ -2122,7 +2211,7 @@ class _AuctionPageState extends State<AuctionPage> {
 
         Center(
           child: TextButton.icon(
-            onPressed: () => ReportDialog.show(context, widget.tokenId),
+            onPressed: () => ReportDialog.show(context, widget.logo.tokenId),
             icon: const Icon(
               Icons.flag_outlined,
               size: 16,
@@ -2368,7 +2457,7 @@ class _AuctionPageState extends State<AuctionPage> {
     _lastBidAttempt = DateTime.now();
 
     final currentWallet = _web3.currentAddress;
-    final logo = _web3.allLogos.firstWhere((l) => l.tokenId == widget.tokenId);
+    final logo = widget.logo;
     if (currentWallet != null &&
         currentWallet.toLowerCase().trim() ==
             logo.creatorWallet.toLowerCase().trim()) {
@@ -2400,7 +2489,7 @@ class _AuctionPageState extends State<AuctionPage> {
                   'offchain_${DateTime.now().millisecondsSinceEpoch}',
             );
             await FirestoreService.instance.placeBid(
-              widget.tokenId,
+              widget.logo.tokenId,
               bid,
               userBalance: _web3.balance,
             );
@@ -2448,13 +2537,17 @@ class _AuctionPageState extends State<AuctionPage> {
 
 
   Widget _placeholder() {
-    return Container(
-      color: AppColors.surface,
-      child: const Center(
-        child: Icon(
-          Icons.image_outlined,
-          size: 60,
-          color: AppColors.textSecondary,
+    return Shimmer.fromColors(
+      baseColor: AppColors.surface,
+      highlightColor: AppColors.border,
+      child: Container(
+        color: AppColors.surface,
+        child: const Center(
+          child: Icon(
+            Icons.image_outlined,
+            size: 60,
+            color: AppColors.textSecondary,
+          ),
         ),
       ),
     );

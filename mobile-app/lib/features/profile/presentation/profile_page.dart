@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:nft_logo_marketplace/core/utils/firestore_error_handler.dart';
 import 'package:flutter/services.dart';
 import 'dart:convert';
 import 'package:dio/dio.dart';
@@ -14,24 +13,45 @@ import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:cached_network_image/cached_network_image.dart';
-import 'package:nft_logo_marketplace/shared/widgets/logo_card.dart';
-import 'package:nft_logo_marketplace/shared/widgets/primary_button.dart';
-import 'package:nft_logo_marketplace/shared/widgets/glass_card.dart';
-import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
-import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
-import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
-import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/detail_logo_page.dart';
-import 'package:nft_logo_marketplace/features/auction/presentation/auction_page.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_payment_page.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/edit_profile_page.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
-import 'package:nft_logo_marketplace/features/profile/presentation/widgets/live_auction_monitoring.dart';
 import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:shimmer/shimmer.dart';
+
+// --- NEW DARK THEME DEFINITION ---
+class _ProfileColors {
+  static const Color bg = Color(0xFF07070F);
+  static const Color cardBg = Color(0xFF0F0F1D);
+  static const Color surface = Color(0xFF0D0D1F);
+  static const Color accent = Color(0xFF7C3AED); // Purple
+  static const Color textWhite = Color(0xFFF1F5F9);
+  static const Color textMuted = Color(0xFF6B7280);
+  static const Color border = Color(0xFF1A1A2E);
+  static const Color headerBtnBg = Color(0xFF13131F);
+  static const Color headerBtnBorder = Color(0xFF2A2A3F);
+
+  static const Color successBg = Color(0xFF052E16);
+  static const Color successText = Color(0xFF4ADE80);
+  static const Color warningBg = Color(0xFF451A03);
+  static const Color warningText = Color(0xFFFBBF24);
+  static const Color dangerBg = Color(0xFF450A0A);
+  static const Color dangerText = Color(0xFFF87171);
+  static const Color dangerBorder = Color(0xFF7F1D1D);
+  static const Color actionAmberBorder = Color(0xFF78350F);
+  static const Color actionAmberBtnBg = Color(0xFF92400E);
+  static const Color actionAmberBtnText = Color(0xFFFDE68A);
+  
+  static const Color tabActiveBg = Color(0xFF1E1B4B);
+  static const Color tabActiveText = Color(0xFFA78BFA);
+  
+  static const Color downloadBtnBorder = Color(0xFF1D4ED8);
+  static const Color downloadBtnText = Color(0xFF60A5FA);
+}
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({super.key});
@@ -47,20 +67,64 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   late TabController _tabController;
   
   bool _isDownloading = false;
-  int _auctionFilter = 0; // 0: All, 1: Live, 2: Ended, 3: Pending Payment, 4: Frozen
+  int _auctionTabFilter = 0; // 0: My Auctions, 1: Joined Auctions
+  ValidationStatus? _creationsFilter; // null means 'All'
+  bool _isLoading = false;
+
+  // Favorites dummy set
+  final Set<int> _favorites = {};
 
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 5, vsync: this);
+    _tabController.addListener(_onTabChanged);
     _web3.addListener(_onWeb3StateChanged);
-    FirestoreService.instance.closeExpiredAuctions();
-    FirestoreService.instance.expirePaymentDeadlines();
     _loadProfile();
+    _subscribeToCounts();
+  }
+
+  int _ownedCount = 0;
+  int _createdCount = 0;
+  StreamSubscription? _ownedSub;
+  StreamSubscription? _createdSub;
+
+  Stream<List<LogoNFT>>? _createdNFTsStream;
+  Stream<List<LogoNFT>>? _ownedNFTsStream;
+  Stream<Map<int, Map<String, dynamic>>>? _participatedBidsStream;
+
+  void _subscribeToCounts() async {
+    final wallet = _web3.currentAddress?.toLowerCase() ?? '';
+    if (wallet.isEmpty) return;
+
+    _createdNFTsStream = FirestoreService.instance.getUserCreatedNFTsStream(wallet).asBroadcastStream();
+    _ownedNFTsStream = FirestoreService.instance.getUserNFTsStream(wallet).asBroadcastStream();
+    
+    // Fetch counts efficiently using Firestore count()
+    final created = await FirestoreService.instance.getUserCreatedNFTsCount(wallet);
+    final owned = await FirestoreService.instance.getUserNFTsCount(wallet);
+    if (mounted) {
+      setState(() {
+        _createdCount = created;
+        _ownedCount = owned;
+      });
+    }
+  }
+
+  void _onTabChanged() {
+    if (_tabController.index == 2 || _tabController.index == 3) {
+      final wallet = _web3.currentAddress?.toLowerCase() ?? '';
+      if (wallet.isNotEmpty && _participatedBidsStream == null) {
+        setState(() {
+          _participatedBidsStream = FirestoreService.instance.getUserParticipatedBidsStream(wallet).asBroadcastStream();
+        });
+      }
+    }
   }
 
   void _onWeb3StateChanged() {
     _loadProfile();
+    _subscribeToCounts();
     if (mounted) setState(() {});
   }
 
@@ -83,18 +147,26 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         });
       }
     } else {
-      if (mounted) {
-        setState(() {
-          _userProfile = null;
-        });
-      }
+      if (mounted) setState(() => _userProfile = null);
     }
+  }
+
+  Future<void> _handleRefresh() async {
+    setState(() => _isLoading = true);
+    await Future.wait([
+      _loadProfile(),
+      Future.delayed(const Duration(milliseconds: 800)), // Simulate network delay for UI
+    ]);
+    if (mounted) setState(() => _isLoading = false);
   }
 
   @override
   void dispose() {
+    _tabController.removeListener(_onTabChanged);
     _tabController.dispose();
     _refreshTimer?.cancel();
+    _ownedSub?.cancel();
+    _createdSub?.cancel();
     _web3.removeListener(_onWeb3StateChanged);
     super.dispose();
   }
@@ -105,388 +177,489 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     if (mounted) setState(() {});
   }
 
-
   @override
   Widget build(BuildContext context) {
     final isAuthenticated = _web3.isConnected && (_web3.currentAddress?.isNotEmpty ?? false);
 
     return Scaffold(
-      backgroundColor: AppColors.background,
-      body: isAuthenticated 
-          ? Center(
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(maxWidth: 1200),
-                child: _buildProfile(),
-              ),
-            ) 
-          : _buildConnectPrompt(),
+      backgroundColor: _ProfileColors.bg,
+      body: SafeArea(
+        child: isAuthenticated 
+            ? RefreshIndicator(
+                onRefresh: _handleRefresh,
+                color: _ProfileColors.accent,
+                backgroundColor: _ProfileColors.cardBg,
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1200),
+                    child: _buildProfile(),
+                  ),
+                ),
+              ) 
+            : _buildConnectPrompt(),
+      ),
     );
   }
 
   Widget _buildProfile() {
     final currentWallet = _web3.currentAddress?.toLowerCase().trim() ?? '';
-    final myLogos = _web3.getMyLogos();
-    final myCreatedLogos = _web3.getMyCreatedLogos().where((logo) {
-      final isCreator = logo.creatorWallet.toLowerCase().trim() == currentWallet;
-      final stillOwnedByCreator = logo.auctionStatus != 'PAYMENT_COMPLETED';
-      return isCreator && stillOwnedByCreator;
-    }).toList();
-    final myAuctions = _web3.allAuctions.where((a) {
-      return a.sellerWallet.toLowerCase() == (_web3.currentAddress?.toLowerCase() ?? '');
-    }).toList();
+    final myAuctions = _web3.allAuctions.where((a) => a.sellerWallet.toLowerCase() == currentWallet).toList();
 
     return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
-        // ─── Profile Info ───
-        // ─── Profile Info ───
         SliverToBoxAdapter(
           child: SafeArea(
             bottom: false,
             child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.xl),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. HEADER PROFILE CARD
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: AppColors.surfaceLight,
-                      borderRadius: BorderRadius.circular(AppRadius.xxl),
-                      border: Border.all(color: AppColors.border),
-                      boxShadow: AppShadows.soft,
-                    ),
-                    child: Row(
-                      children: [
-                        // Avatar
-                        Container(
-                          width: 52,
-                          height: 52,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            gradient: AppColors.primaryGradient,
-                            border: Border.all(color: AppColors.border, width: 2),
-                            image: _userProfile?.profileImage != null && _userProfile!.profileImage!.startsWith('data:image')
-                                ? DecorationImage(
-                                    image: MemoryImage(base64Decode(_userProfile!.profileImage!.split(',')[1])),
-                                    fit: BoxFit.cover,
-                                  )
-                                : null,
-                          ),
-                          child: _userProfile?.profileImage == null || !_userProfile!.profileImage!.startsWith('data:image')
-                              ? const Icon(Icons.person, size: 32, color: AppColors.textPrimary)
-                              : null,
-                        ),
-                        const SizedBox(width: 16),
-                        // Wallet Info
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text(
-                                _userProfile?.displayName ?? 'My Wallet',
-                                style: AppTextStyles.h3,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                _shortenAddress(_web3.currentAddress ?? ''),
-                                style: AppTextStyles.mono.copyWith(color: AppColors.textSecondary),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 8),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                decoration: BoxDecoration(
-                                  color: AppColors.success.withValues(alpha: 0.15),
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                                  border: Border.all(color: AppColors.success.withValues(alpha: 0.5)),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Container(width: 6, height: 6, decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle)),
-                                    const SizedBox(width: 6),
-                                    Text('Sepolia Testnet', style: AppTextStyles.labelSmall.copyWith(color: AppColors.success)),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        // Actions
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            IconButton(
-                              icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
-                              onPressed: () async {
-                                final firebaseUser = FirebaseAuth.instance.currentUser;
-                                final walletAddress = _web3.currentAddress;
-                                final uid = firebaseUser?.uid ?? walletAddress?.toLowerCase();
-                                
-                                if (uid == null) {
-                                  NotificationManager.show(context: context, title: 'Wallet Required', message: 'Please connect wallet first', type: NotificationType.warning);
-                                  return;
-                                }
-                                
-                                UserModel userToEdit = _userProfile ?? UserModel(
-                                  uid: uid,
-                                  fullName: 'User',
-                                  email: firebaseUser?.email ?? '',
-                                  walletAddress: walletAddress,
-                                  createdAt: DateTime.now(),
-                                  lastLogin: DateTime.now(),
-                                );
-                                
-                                await Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfilePage(user: userToEdit)));
-                                _loadProfile();
-                              },
-                            ),
-
-                            IconButton(
-                              onPressed: _logout,
-                              icon: const Icon(Icons.logout, color: AppColors.danger),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                  
-                  if (_userProfile?.title?.isNotEmpty == true || 
-                      _userProfile?.country?.isNotEmpty == true || 
-                      _userProfile?.motto?.isNotEmpty == true || 
-                      _userProfile?.bio?.isNotEmpty == true) ...[
-                    const SizedBox(height: AppSpacing.lg),
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (_userProfile?.title?.isNotEmpty == true) ...[
-                            Row(
-                              children: [
-                                const Icon(Icons.badge_outlined, size: 16, color: AppColors.primary),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(_userProfile!.title!, style: AppTextStyles.labelMedium.copyWith(color: AppColors.primary))),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                          ],
-                          if (_userProfile?.country?.isNotEmpty == true) ...[
-                            Row(
-                              children: [
-                                const Icon(Icons.public, size: 16, color: AppColors.textSecondary),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text(_userProfile!.country!, style: AppTextStyles.bodyMedium)),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                          ],
-                          if (_userProfile?.motto?.isNotEmpty == true) ...[
-                            Row(
-                              children: [
-                                const Icon(Icons.format_quote, size: 16, color: AppColors.accentOrange),
-                                const SizedBox(width: 8),
-                                Expanded(child: Text('"${_userProfile!.motto!}"', style: AppTextStyles.bodyMedium.copyWith(fontStyle: FontStyle.italic))),
-                              ],
-                            ),
-                            const SizedBox(height: AppSpacing.sm),
-                          ],
-                          if (_userProfile?.bio?.isNotEmpty == true) ...[
-                            if (_userProfile?.title?.isNotEmpty == true || _userProfile?.country?.isNotEmpty == true || _userProfile?.motto?.isNotEmpty == true)
-                              const Padding(
-                                padding: EdgeInsets.symmetric(vertical: AppSpacing.xs),
-                                child: Divider(color: AppColors.border),
-                              ),
-                            Text(
-                              _userProfile!.bio!,
-                              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
-                            ),
-                          ],
-                        ],
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: AppSpacing.lg),
-                  
-                  // 2. BALANCE CARD
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      gradient: AppColors.cardGradient,
-                      borderRadius: BorderRadius.circular(AppRadius.xxl),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.5)),
-                      boxShadow: AppShadows.glowPrimary,
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Flexible(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Text('Total Balance', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-                              const SizedBox(height: 8),
-                              FittedBox(
-                                fit: BoxFit.scaleDown,
-                                alignment: Alignment.centerLeft,
-                                child: Text(
-                                  '${_web3.balance.toStringAsFixed(4)} ETH',
-                                  style: AppTextStyles.display.copyWith(fontSize: 28),
-                                  maxLines: 1,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text('~ \$${(_web3.balance * 3000).toStringAsFixed(2)} USD', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: AppSpacing.lg),
-
-                  // 3. STATISTICS SECTION
-                  LayoutBuilder(
-                    builder: (context, constraints) {
-                      return GridView.count(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        crossAxisCount: constraints.maxWidth < 350 ? 2 : 4,
-                        childAspectRatio: 1.2,
-                        crossAxisSpacing: 12,
-                        mainAxisSpacing: 12,
-                        children: [
-                          _buildStatBox('Created', '${myCreatedLogos.length}'),
-                          _buildStatBox('Owned', '${myLogos.length}'),
-                          _buildStatBox('Auctions', '${myAuctions.length}'),
-                          _buildStatBox('Balance', _web3.balance.toStringAsFixed(2)),
-                        ],
-                      );
-                    }
-                  ),
+                  _buildHeaderTopSection(),
+                  const SizedBox(height: 20),
+                  _buildBalanceStrip(),
+                  const SizedBox(height: 20),
+                  _buildStatsRow(myAuctions.length),
                 ],
               ),
             ),
           ),
         ),
 
-        // ─── Sticky Tabs ───
-        SliverAppBar(
+        // Custom Horizontal Scrollable Tab Bar
+        SliverPersistentHeader(
           pinned: true,
-          toolbarHeight: 0,
-          backgroundColor: AppColors.background,
-          elevation: 0,
-          bottom: TabBar(
-            controller: _tabController,
-            indicatorColor: AppColors.primary,
-            indicatorWeight: 3,
-            labelColor: AppColors.textPrimary,
-            unselectedLabelColor: AppColors.textSecondary,
-            labelStyle: AppTextStyles.labelMedium,
-            unselectedLabelStyle: AppTextStyles.labelMedium,
-            isScrollable: true,
-            tabAlignment: TabAlignment.start,
-            tabs: [
-              Tab(text: 'My Creations (${myCreatedLogos.length})'),
-              Tab(text: 'My Collection (${myLogos.length})'),
-              const Tab(text: 'Bids'),
-              Tab(text: 'Auctions (${myAuctions.length})'),
-              const Tab(text: 'Wallet'),
-            ],
+          delegate: _SliverAppBarDelegate(
+            minHeight: 56.0,
+            maxHeight: 56.0,
+            child: Container(
+              color: _ProfileColors.bg,
+              child: _buildTabBar(),
+            ),
           ),
         ),
 
-        // ─── Tab Content ───
+        // Tab Content
         SliverFillRemaining(
-          child: AnimatedBuilder(
-            animation: _tabController,
-            builder: (context, _) {
-              return IndexedStack(
-                index: _tabController.index,
-                children: [
-                  _LazyIndexedTab(isActive: _tabController.index == 0, builder: () => _buildMyCreationsTab(myCreatedLogos)),
-                  _LazyIndexedTab(isActive: _tabController.index == 1, builder: () => _buildMyCollectionTab(myLogos)),
-                  _LazyIndexedTab(isActive: _tabController.index == 2, builder: () => _buildBidsTab()),
-                  _LazyIndexedTab(isActive: _tabController.index == 3, builder: () => _buildAuctionsManagementTab(myAuctions)),
-                  _LazyIndexedTab(isActive: _tabController.index == 4, builder: () => _buildWalletTab()),
-                ],
-              );
-            },
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 120),
+            child: AnimatedBuilder(
+              animation: _tabController,
+              builder: (context, _) {
+                return IndexedStack(
+                  index: _tabController.index,
+                  children: [
+                    _LazyIndexedTab(isActive: _tabController.index == 0, builder: () => _buildCreationsTab()),
+                    _LazyIndexedTab(isActive: _tabController.index == 1, builder: () => _buildCollectionTab()),
+                    _LazyIndexedTab(isActive: _tabController.index == 2, builder: () => _buildPaymentTab()),
+                    _LazyIndexedTab(isActive: _tabController.index == 3, builder: () => _buildAuctionsTab()),
+                    _LazyIndexedTab(isActive: _tabController.index == 4, builder: () => _buildWalletTab()),
+                  ],
+                );
+              },
+            ),
           ),
         ),
       ],
     );
   }
 
-  // ── Tab 1: My Creations — Pure Creator Portfolio ──
-  Widget _buildMyCreationsTab(List<LogoNFT> initialLogos) {
-    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
-    
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirestoreService.instance.db
-          .collection('nfts')
-          .where('creatorWallet', isEqualTo: _web3.currentAddress)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return CustomScrollView(
-            slivers: [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: Text('Error loading creations', style: AppTextStyles.bodyMedium)),
+  // --- HEADER WIDGETS ---
+
+  Widget _buildHeaderTopSection() {
+    final displayName = _userProfile?.displayName ?? 'My Wallet';
+    final address = _web3.currentAddress ?? '';
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          child: Row(
+            children: [
+            // Avatar
+            if (_userProfile == null)
+              Shimmer.fromColors(
+                baseColor: _ProfileColors.cardBg,
+                highlightColor: _ProfileColors.surface,
+                child: Container(
+                  width: 64,
+                  height: 64,
+                  decoration: const BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white,
+                  ),
+                ),
+              )
+            else
+              Stack(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      border: Border.all(color: const Color(0xFF4C1D95), width: 2),
+                      image: _userProfile?.profileImage != null && _userProfile!.profileImage!.startsWith('data:image')
+                          ? DecorationImage(
+                              image: MemoryImage(base64Decode(_userProfile!.profileImage!.split(',')[1])),
+                              fit: BoxFit.cover,
+                            )
+                          : null,
+                    ),
+                    child: _userProfile?.profileImage == null || !_userProfile!.profileImage!.startsWith('data:image')
+                        ? Center(
+                            child: Text(
+                              displayName.substring(0, 1).toUpperCase(),
+                              style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 24, fontWeight: FontWeight.bold),
+                            ),
+                          )
+                        : null,
+                  ),
+                  Positioned(
+                    bottom: 2,
+                    right: 2,
+                    child: Container(
+                      width: 12,
+                      height: 12,
+                      decoration: BoxDecoration(
+                        color: _ProfileColors.successText,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: _ProfileColors.bg, width: 2),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(width: 16),
+              // Name & Wallet
+              Expanded(
+                child: _userProfile == null
+                    ? Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Shimmer.fromColors(
+                            baseColor: _ProfileColors.cardBg,
+                            highlightColor: _ProfileColors.surface,
+                            child: Container(height: 20, width: 120, color: Colors.white),
+                          ),
+                          const SizedBox(height: 8),
+                          Shimmer.fromColors(
+                            baseColor: _ProfileColors.cardBg,
+                            highlightColor: _ProfileColors.surface,
+                            child: Container(height: 14, width: 200, color: Colors.white),
+                          ),
+                        ],
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            displayName,
+                            style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 17, fontWeight: FontWeight.bold),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          const SizedBox(height: 6),
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  _shortenAddress(address),
+                                  style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 12),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              GestureDetector(
+                                onTap: () {
+                                  Clipboard.setData(ClipboardData(text: address));
+                                  NotificationManager.show(context: context, title: 'Copied', message: 'Address copied to clipboard', type: NotificationType.success);
+                                },
+                                child: const Icon(Icons.copy, size: 12, color: _ProfileColors.textMuted),
+                              ),
+                              const SizedBox(width: 8),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                decoration: BoxDecoration(
+                                  color: _ProfileColors.successBg,
+                                  borderRadius: BorderRadius.circular(10),
+                                ),
+                                child: const Text('Sepolia', style: TextStyle(color: _ProfileColors.successText, fontSize: 9, fontWeight: FontWeight.bold)),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
               ),
             ],
-          );
+          ),
+        ),
+        const SizedBox(width: 8),
+        // Action Icons
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildTopIconButton(Icons.share_outlined, () {
+               SharePlus.instance.share(ShareParams(text: 'Check out my NFT Profile on LEO Marketplace!'));
+            }),
+            const SizedBox(width: 8),
+            _buildTopIconButton(Icons.settings_outlined, () {}),
+            const SizedBox(width: 8),
+            _buildTopIconButton(Icons.edit_outlined, () async {
+              final firebaseUser = FirebaseAuth.instance.currentUser;
+              final walletAddress = _web3.currentAddress;
+              final uid = firebaseUser?.uid ?? walletAddress?.toLowerCase();
+              if (uid == null) return;
+              
+              UserModel userToEdit = _userProfile ?? UserModel(
+                uid: uid,
+                fullName: 'User',
+                email: firebaseUser?.email ?? '',
+                walletAddress: walletAddress,
+                createdAt: DateTime.now(),
+                lastLogin: DateTime.now(),
+              );
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfilePage(user: userToEdit)));
+              _loadProfile();
+            }),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildTopIconButton(IconData icon, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: _ProfileColors.headerBtnBg,
+          borderRadius: BorderRadius.circular(10),
+          border: Border.all(color: _ProfileColors.headerBtnBorder, width: 0.5),
+        ),
+        child: Icon(icon, size: 16, color: _ProfileColors.textWhite),
+      ),
+    );
+  }
+
+  Widget _buildBalanceStrip() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: BoxDecoration(
+        color: _ProfileColors.headerBtnBg,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: const Color(0xFF1E1E30), width: 0.5),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text('Total balance', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 9)),
+              const SizedBox(height: 2),
+              Wrap(
+                crossAxisAlignment: WrapCrossAlignment.end,
+                spacing: 6,
+                children: [
+                  Text(
+                    '${_web3.balance.toStringAsFixed(4)} ETH',
+                    style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  Text(
+                    '~ \$${(_web3.balance * 3000).toStringAsFixed(2)}',
+                    style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10),
+                  ),
+                ],
+              ),
+            ],
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildPillButton('Send', _ProfileColors.accent),
+              const SizedBox(width: 4),
+              _buildPillButton('Receive', const Color(0xFF3B82F6)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPillButton(String text, Color color) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: color.withValues(alpha: 0.5), width: 0.5),
+      ),
+      child: Text(text, style: TextStyle(color: color, fontSize: 11, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  Widget _buildStatsRow(int auctionCount) {
+    return Row(
+      children: [
+        Expanded(child: _buildStatCard('Created', '$_createdCount')),
+        const SizedBox(width: 8),
+        Expanded(child: _buildStatCard('Owned', '$_ownedCount')),
+        const SizedBox(width: 8),
+        Expanded(child: _buildStatCard('Auctions', '$auctionCount')),
+        const SizedBox(width: 8),
+        Expanded(child: _buildStatCard('Bids', '--')), // Will be dynamic later if needed
+      ],
+    );
+  }
+
+  Widget _buildStatCard(String label, String value) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      decoration: BoxDecoration(
+        color: _ProfileColors.headerBtnBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF1E1E30), width: 0.5),
+      ),
+      child: Column(
+        children: [
+          Text(value, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 15, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 2),
+          Text(label, style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 8)),
+        ],
+      ),
+    );
+  }
+
+  // --- TAB BAR WIDGET ---
+
+  Widget _buildTabBar() {
+    return SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Row(
+        children: [
+          _buildTabItem(0, Icons.palette_outlined, 'Creations'),
+          _buildTabItem(1, Icons.inventory_2_outlined, 'Collection'),
+          _buildTabItem(2, Icons.credit_card_outlined, 'Payment'),
+          _buildTabItem(3, Icons.gavel_outlined, 'Auction'),
+          _buildTabItem(4, Icons.account_balance_wallet_outlined, 'Wallet'),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabItem(int index, IconData icon, String label) {
+    final isActive = _tabController.index == index;
+    return GestureDetector(
+      onTap: () => setState(() => _tabController.animateTo(index)),
+      child: Container(
+        padding: const EdgeInsets.only(bottom: 12, top: 12),
+        margin: const EdgeInsets.only(right: 24),
+        decoration: BoxDecoration(
+          border: Border(
+            bottom: BorderSide(
+              color: isActive ? _ProfileColors.accent : Colors.transparent,
+              width: 2,
+            ),
+          ),
+        ),
+        child: Row(
+          children: [
+            Icon(icon, size: 16, color: isActive ? _ProfileColors.tabActiveText : _ProfileColors.textMuted),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? _ProfileColors.tabActiveText : _ProfileColors.textMuted,
+                fontSize: 14,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- TAB 1: CREATIONS ---
+
+  Widget _buildCreationsTab() {
+    return StreamBuilder<List<LogoNFT>>(
+      stream: _createdNFTsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting || _isLoading) {
+          return _buildShimmerGrid();
         }
 
-        List<LogoNFT> displayLogos = initialLogos;
-        
+        if (snapshot.hasError) {
+          return _buildEmptyState(Icons.error_outline, 'Error loading creations');
+        }
+
+        List<LogoNFT> displayLogos = [];
         if (snapshot.hasData) {
-          displayLogos = snapshot.data!.docs.where((doc) {
-            final data = doc.data() as Map<String, dynamic>? ?? {};
-            final creatorW = (data['creatorWallet'] as String? ?? data['creator'] as String? ?? '').toLowerCase().trim();
-            final ownerW = (data['ownerWallet'] as String? ?? data['owner'] as String? ?? '').toLowerCase().trim();
-            final auctionStatus = (data['auctionStatus'] as String? ?? '').toUpperCase().trim();
-            
-            debugPrint('[MY CREATIONS DEBUG] TokenID: ${data['tokenId']} | creatorWallet: $creatorW | ownerWallet: $ownerW | currentWallet: $currentWallet | auctionStatus: $auctionStatus');
-            
-            return creatorW == currentWallet && ownerW == currentWallet;
-          }).map((doc) {
-            final data = doc.data() as Map<String, dynamic>? ?? {};
-            return LogoNFT.fromFirestore(data);
+          final uniqueIds = <String>{};
+          displayLogos = snapshot.data!.where((logo) {
+            return uniqueIds.add(logo.tokenId.toString());
           }).toList();
         }
 
+        // Apply local filter
+        final filteredList = displayLogos.where((logo) {
+          if (_creationsFilter == null) return true; // Show ALL
+          return logo.status == _creationsFilter; 
+        }).toList();
+        
         return CustomScrollView(
           slivers: [
-            const SliverToBoxAdapter(
+            SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.lg, top: AppSpacing.xl, bottom: AppSpacing.sm),
-                child: Row(
-                  children: [
-                    Icon(Icons.brush, color: AppColors.primary, size: 20),
-                    SizedBox(width: 8),
-                    Text('Creator Portfolio', style: AppTextStyles.h3),
-                  ],
+                padding: const EdgeInsets.only(left: 16, right: 16, top: 20, bottom: 16),
+                child: SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      _buildCreationsFilterChip('All', null),
+                      const SizedBox(width: 8),
+                      _buildCreationsFilterChip('Pending', ValidationStatus.pending),
+                      const SizedBox(width: 8),
+                      _buildCreationsFilterChip('Approved', ValidationStatus.approved),
+                      const SizedBox(width: 8),
+                      _buildCreationsFilterChip('Rejected', ValidationStatus.rejected),
+                    ],
+                  ),
                 ),
               ),
             ),
-            _buildLogoSliverGrid(displayLogos, 'You haven\'t created any NFTs yet'),
+            if (filteredList.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(Icons.palette_outlined, 'No creations found for this filter.'),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.75,
+                    crossAxisSpacing: 9,
+                    mainAxisSpacing: 9,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      final logo = filteredList[index];
+                      return _buildCreationCard(logo);
+                    },
+                    childCount: filteredList.length,
+                  ),
+                ),
+              ),
             const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
           ],
         );
@@ -494,478 +667,328 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
-  // ── Tab 2: My Collection — STRICT Ownership (Blockchain-Verified Only) ──
-  Widget _buildMyCollectionTab(List<LogoNFT> myLogos) {
-    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
-    if (currentWallet.isEmpty) {
-      return CustomScrollView(
-        slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xxl),
-                child: _buildEmptyState(Icons.account_balance_wallet, 'Connect wallet to view collection'),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: FirestoreService.instance.db
-          .collection('nfts')
-          .where('ownerWallet', isEqualTo: _web3.currentAddress)
-          .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-        }
-
-        if (snapshot.hasError) {
-          return CustomScrollView(
-            slivers: [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(child: Text('Error loading collection', style: AppTextStyles.bodyMedium)),
-              ),
-            ],
-          );
-        }
-
-        // ═══ STRICT OWNERSHIP FILTER ═══
-        // Only show NFTs where ownership is VERIFIED:
-        // - auctionStatus is PAYMENT_COMPLETED, sold, or normal (no pending auction)
-        // - NEVER show PAYMENT_PENDING or PAYMENT_EXPIRED
-        final verifiedLogos = (snapshot.data?.docs ?? []).where((doc) {
-          final data = doc.data() as Map<String, dynamic>? ?? {};
-          final auctionStatus = (data['auctionStatus'] as String? ?? '').toUpperCase().trim();
-          final ownerW = (data['ownerWallet'] as String? ?? data['owner'] as String? ?? '').toLowerCase().trim();
-          final paymentStatus = (data['paymentStatus'] as String? ?? '').toUpperCase().trim();
-
-          debugPrint('[MY COLLECTION DEBUG] TokenID: ${data['tokenId']} | ownerWallet: $ownerW | currentWallet: $currentWallet | auctionStatus: $auctionStatus | paymentStatus: $paymentStatus');
-
-          return ownerW == currentWallet && (
-            auctionStatus == 'COMPLETED' ||
-            auctionStatus == 'PAYMENT_COMPLETED' ||
-            (data['status'] as String? ?? '').toLowerCase().trim() == 'sold'
-          );
-        }).map((doc) {
-          final data = doc.data() as Map<String, dynamic>? ?? {};
-          return LogoNFT.fromFirestore(data);
-        }).toList();
-
-        return CustomScrollView(
-          slivers: [
-            SliverToBoxAdapter(
-              child: Padding(
-                padding: const EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.lg, top: AppSpacing.xl, bottom: AppSpacing.sm),
-                child: Row(
-                  children: [
-                    const Icon(Icons.collections_bookmark, color: AppColors.primary, size: 20),
-                    const SizedBox(width: 8),
-                    Text('Owned NFTs (${verifiedLogos.length})', style: AppTextStyles.h3),
-                  ],
-                ),
-              ),
-            ),
-            _buildCollectionSliverGrid(verifiedLogos, 'No NFTs owned yet'),
-            const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
-          ],
-        );
-      },
-    );
-  }
-
-  Widget _buildLogoSliverGrid(List<LogoNFT> logos, String emptyText) {
-    if (logos.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
-            child: _buildEmptyState(Icons.image_outlined, emptyText),
-          ),
+  Widget _buildCreationsFilterChip(String label, ValidationStatus? status) {
+    final isActive = _creationsFilter == status;
+    return GestureDetector(
+      onTap: () => setState(() => _creationsFilter = status),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? _ProfileColors.tabActiveBg : Colors.transparent,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isActive ? _ProfileColors.accent : _ProfileColors.headerBtnBorder),
         ),
-      );
-    }
-
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 240,
-          mainAxisExtent: 430, // Increased to accommodate the warning card
-          crossAxisSpacing: AppSpacing.lg,
-          mainAxisSpacing: AppSpacing.lg,
-        ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final logo = logos[index];
-            return Column(
-              children: [
-                Expanded(
-                  child: Stack(
-                    children: [
-                      GestureDetector(
-                        onLongPress: () => _showLongPressMenu(logo, isMyCreations: true),
-                        child: LogoCard(
-                          logo: logo,
-                          onTap: () {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(tokenId: logo.tokenId)));
-                          },
-                        ),
-                      ),
-                      if (logo.status == ValidationStatus.rejected)
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.background.withValues(alpha: 0.7),
-                              borderRadius: BorderRadius.circular(AppRadius.xxl),
-                            ),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.danger,
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                                ),
-                                child: const Text('REJECTED', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.5, fontSize: 12)),
-                              ),
-                            ),
-                          ),
-                        )
-                      else if (logo.isAppealed)
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.background.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(AppRadius.xxl),
-                            ),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.primary,
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                                ),
-                                child: const Text('APPEAL SUBMITTED', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.0, fontSize: 10), textAlign: TextAlign.center,),
-                              ),
-                            ),
-                          ),
-                        )
-                      else if (logo.isFrozen)
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: AppColors.background.withValues(alpha: 0.6),
-                              borderRadius: BorderRadius.circular(AppRadius.xxl),
-                            ),
-                            child: Center(
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                                decoration: BoxDecoration(
-                                  color: AppColors.accentOrange,
-                                  borderRadius: BorderRadius.circular(AppRadius.sm),
-                                ),
-                                child: const Text('UNDER INVESTIGATION', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, letterSpacing: 1.0, fontSize: 10), textAlign: TextAlign.center,),
-                              ),
-                            ),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (logo.isFrozen)
-                  FutureBuilder<Map<String, dynamic>?>(
-                    future: FirestoreService.instance.getLatestReportForToken(logo.tokenId),
-                    builder: (context, snapshot) {
-                      if (!snapshot.hasData || snapshot.data == null) return const SizedBox.shrink();
-                      final report = snapshot.data!;
-                      return Container(
-                        margin: const EdgeInsets.only(top: 8),
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.accentOrange.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(AppRadius.md),
-                          border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                const Icon(Icons.warning, size: 12, color: AppColors.accentOrange),
-                                const SizedBox(width: 4),
-                                Text('INVESTIGATION', style: AppTextStyles.caption.copyWith(color: AppColors.accentOrange, fontWeight: FontWeight.bold)),
-                              ],
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              report['reason'] ?? 'A marketplace report is being investigated.',
-                              style: AppTextStyles.caption.copyWith(color: AppColors.textPrimary),
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                  ),
-              ],
-            );
-          },
-          childCount: logos.length,
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? _ProfileColors.tabActiveText : const Color(0xFF555555),
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
         ),
       ),
     );
   }
 
-  // ── My Collection Grid with Exclusive Download ──
-  Widget _buildCollectionSliverGrid(List<LogoNFT> logos, String emptyText) {
-    if (logos.isEmpty) {
-      return SliverFillRemaining(
-        hasScrollBody: false,
-        child: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(AppSpacing.xxl),
-            child: _buildEmptyState(Icons.collections_bookmark_outlined, emptyText),
-          ),
-        ),
-      );
+  Widget _buildCreationCard(LogoNFT logo) {
+    Color badgeBg;
+    Color badgeText;
+    switch (logo.status) {
+      case ValidationStatus.pending:
+        badgeBg = _ProfileColors.warningBg;
+        badgeText = _ProfileColors.warningText;
+        break;
+      case ValidationStatus.approved:
+        badgeBg = _ProfileColors.successBg;
+        badgeText = _ProfileColors.successText;
+        break;
+      case ValidationStatus.rejected:
+        badgeBg = _ProfileColors.dangerBg;
+        badgeText = _ProfileColors.dangerText;
+        break;
+      default:
+        badgeBg = _ProfileColors.headerBtnBg;
+        badgeText = _ProfileColors.textMuted;
     }
 
-    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
+    final isFav = _favorites.contains(logo.tokenId);
 
-    return SliverPadding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
-      sliver: SliverGrid(
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 240,
-          mainAxisExtent: 420,
-          crossAxisSpacing: AppSpacing.lg,
-          mainAxisSpacing: AppSpacing.lg,
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo))),
+      onLongPress: () => _showLongPressMenu(logo, isMyCreations: true),
+      child: Container(
+        decoration: BoxDecoration(
+          color: _ProfileColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _ProfileColors.border, width: 0.5),
         ),
-        delegate: SliverChildBuilderDelegate(
-          (context, index) {
-            final logo = logos[index];
-            final bool isVerifiedOwner = currentWallet == logo.ownerWallet.toLowerCase();
-            final bool canDownload = isVerifiedOwner && !logo.isFrozen && !logo.isAuctionActive;
-
-            return Column(
-              children: [
-                // NFT Card
-                Expanded(
-                  child: GestureDetector(
-                    onLongPress: () => _showLongPressMenu(logo, isMyCreations: false),
-                    child: LogoCard(
-                      logo: logo,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image Area
+            Container(
+              height: 104,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0A0A14),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Stack(
+                children: [
+                  Center(
+                    child: _buildNetworkImage(logo.imageUrl),
+                  ),
+                  // Heart Icon
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: GestureDetector(
                       onTap: () {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(tokenId: logo.tokenId, openedFromMyCollection: true)));
+                        setState(() {
+                          if (isFav) {
+                            _favorites.remove(logo.tokenId);
+                          } else {
+                            _favorites.add(logo.tokenId);
+                          }
+                        });
                       },
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 8),
-                // Exclusive Owner Download Button
-                if (canDownload)
-                  Container(
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      gradient: LinearGradient(
-                        colors: [
-                          AppColors.primary.withValues(alpha: 0.15),
-                          AppColors.secondary.withValues(alpha: 0.10),
-                        ],
-                        begin: Alignment.topLeft,
-                        end: Alignment.bottomRight,
-                      ),
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(color: AppColors.primary.withValues(alpha: 0.4)),
-                    ),
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: _isDownloading ? null : () => _downloadImage(logo.imageUrl, logo.name),
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                          child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              Icon(
-                                _isDownloading ? Icons.hourglass_top : Icons.download_rounded,
-                                size: 16,
-                                color: AppColors.primary,
-                              ),
-                              const SizedBox(width: 6),
-                              Flexible(
-                                child: Text(
-                                  _isDownloading ? 'Downloading...' : 'Download Original',
-                                  style: AppTextStyles.labelSmall.copyWith(
-                                    color: AppColors.primary,
-                                    fontWeight: FontWeight.bold,
-                                  ),
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                      child: Icon(
+                        isFav ? Icons.favorite : Icons.favorite_border,
+                        size: 16,
+                        color: isFav ? _ProfileColors.dangerText : _ProfileColors.textWhite,
                       ),
                     ),
-                  )
-                else
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      borderRadius: BorderRadius.circular(AppRadius.lg),
-                      border: Border.all(color: AppColors.border),
-                    ),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.lock_outline, size: 14, color: AppColors.textSecondary),
-                        const SizedBox(width: 6),
-                        Flexible(
-                          child: Text(
-                            logo.isFrozen ? 'Frozen' : (logo.isAuctionActive ? 'In Auction' : 'Owner Only'),
-                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        ),
-                      ],
+                  ),
+                  // Status Badge
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: badgeBg,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text(
+                        logo.status.name.toUpperCase(),
+                        style: TextStyle(color: badgeText, fontSize: 8, fontWeight: FontWeight.bold),
+                      ),
                     ),
                   ),
-              ],
-            );
-          },
-          childCount: logos.length,
+                ],
+              ),
+            ),
+            // Body Area
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    logo.name,
+                    style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 11, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Token #${logo.tokenId}',
+                    style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 9),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
       ),
     );
   }
 
-  // ── Tab 3: Bids — Participation Tracking ──
-  Widget _buildBidsTab() {
+  // --- TAB 2: COLLECTION ---
+
+  Widget _buildCollectionTab() {
     final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
-    if (currentWallet.isEmpty) {
-      return CustomScrollView(
-        slivers: [
-          SliverFillRemaining(
-            hasScrollBody: false,
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(AppSpacing.xxl),
-                child: _buildEmptyState(Icons.account_balance_wallet, 'Please connect your wallet to view bids'),
-              ),
-            ),
-          ),
-        ],
-      );
-    }
+    if (currentWallet.isEmpty) return _buildEmptyState(Icons.account_balance_wallet, 'Connect wallet to view collection');
 
-    return StreamBuilder<Map<int, Map<String, dynamic>>>(
-      stream: FirestoreService.instance.getUserParticipatedBidsStream(currentWallet),
+    return StreamBuilder<List<LogoNFT>>(
+      stream: _ownedNFTsStream,
       builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator(color: AppColors.primary));
-        }
+        if (snapshot.connectionState == ConnectionState.waiting || _isLoading) return _buildShimmerGrid();
+        if (snapshot.hasError) return _buildEmptyState(Icons.error, 'Error loading collection');
 
-        if (snapshot.hasError) {
-          return FirestoreErrorHandler.buildErrorWidget(
-            snapshot.error,
-            onRetry: () {
-              if (context is Element) {
-                context.markNeedsBuild();
-              }
-            },
-          );
-        }
-
-        final bidsMap = snapshot.data ?? {};
-        if (bidsMap.isEmpty) {
-          return CustomScrollView(
-            slivers: [
-              SliverFillRemaining(
-                hasScrollBody: false,
-                child: Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(AppSpacing.xxl),
-                    child: _buildEmptyState(Icons.gavel, 'You haven\'t placed any bids yet'),
-                  ),
-                ),
-              ),
-            ],
-          );
-        }
-
-        // Sort bids by timestamp
-        final sortedEntries = bidsMap.entries.toList()
-          ..sort((a, b) {
-            final tA = a.value['timestamp'];
-            final tB = b.value['timestamp'];
-            if (tA == null || tB == null) return 0;
-            return tB.compareTo(tA);
-          });
+        final uniqueIds = <String>{};
+        final verifiedLogos = (snapshot.data ?? []).where((logo) {
+          return uniqueIds.add(logo.tokenId.toString());
+        }).toList();
 
         return CustomScrollView(
           slivers: [
             const SliverToBoxAdapter(
               child: Padding(
-                padding: EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.lg, top: AppSpacing.xl, bottom: AppSpacing.sm),
-                child: Row(
+                padding: EdgeInsets.only(left: 16, top: 20, bottom: 12),
+                child: Text('Logos you own', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
+              ),
+            ),
+            if (verifiedLogos.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: _buildEmptyState(Icons.inventory_2_outlined, "You don't own any purchased NFTs yet."),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                sliver: SliverGrid(
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    childAspectRatio: 0.55, // Adjusted to fit the download button
+                    crossAxisSpacing: 9,
+                    mainAxisSpacing: 9,
+                  ),
+                  delegate: SliverChildBuilderDelegate(
+                    (context, index) {
+                      return _buildCollectionCard(verifiedLogos[index]);
+                    },
+                    childCount: verifiedLogos.length,
+                  ),
+                ),
+              ),
+            const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
+          ],
+        );
+      }
+    );
+  }
+
+  Widget _buildCollectionCard(LogoNFT logo) {
+    final isFav = _favorites.contains(logo.tokenId);
+    
+    return GestureDetector(
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo, openedFromMyCollection: true))),
+      onLongPress: () => _showLongPressMenu(logo, isMyCreations: false),
+      child: Container(
+        decoration: BoxDecoration(
+          color: _ProfileColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _ProfileColors.border, width: 0.5),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Image Area
+            Container(
+              height: 104,
+              width: double.infinity,
+              decoration: const BoxDecoration(
+                color: Color(0xFF0A0A14),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+              ),
+              child: Stack(
+                children: [
+                  Center(child: _buildNetworkImage(logo.imageUrl)),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: GestureDetector(
+                      onTap: () => setState(() {
+                        if (isFav) {
+                          _favorites.remove(logo.tokenId);
+                        } else {
+                          _favorites.add(logo.tokenId);
+                        }
+                      }),
+                      child: Icon(
+                        isFav ? Icons.favorite : Icons.favorite_border,
+                        size: 16,
+                        color: isFav ? _ProfileColors.dangerText : _ProfileColors.textWhite,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            // Body Area
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.all(10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Icon(Icons.gavel, color: AppColors.primary, size: 20),
-                    SizedBox(width: 8),
-                    Text('Bidding Activity', style: AppTextStyles.h3),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 11, fontWeight: FontWeight.bold), maxLines: 1, overflow: TextOverflow.ellipsis),
+                        const SizedBox(height: 4),
+                        const Text('Owned since recently', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 9)),
+                        const SizedBox(height: 2),
+                        Text('${logo.price > 0 ? logo.price : logo.highestBid} ETH paid', style: const TextStyle(color: _ProfileColors.accent, fontSize: 10)),
+                      ],
+                    ),
+                    // Download Button
+                    GestureDetector(
+                      onTap: _isDownloading ? null : () => _downloadImage(logo.imageUrl, logo.name),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(7),
+                          border: Border.all(color: _ProfileColors.downloadBtnBorder),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            Icon(_isDownloading ? Icons.hourglass_empty : Icons.download, size: 12, color: _ProfileColors.downloadBtnText),
+                            const SizedBox(width: 4),
+                            Text(
+                              _isDownloading ? 'Downloading...' : 'Download',
+                              style: const TextStyle(color: _ProfileColors.downloadBtnText, fontSize: 10, fontWeight: FontWeight.bold),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
                   ],
                 ),
               ),
             ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // --- TAB 3: PAYMENT ---
+
+  Widget _buildPaymentTab() {
+    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
+    if (currentWallet.isEmpty) return _buildEmptyState(Icons.account_balance_wallet, 'Connect wallet to view bids');
+
+    return StreamBuilder<Map<int, Map<String, dynamic>>>(
+      stream: _participatedBidsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting || _isLoading) return _buildShimmerGrid();
+        if (snapshot.hasError) return _buildEmptyState(Icons.error, 'Error loading bids');
+
+        final bidsMap = snapshot.data ?? {};
+        if (bidsMap.isEmpty) return _buildEmptyState(Icons.gavel_outlined, 'No bids found.');
+
+        final sortedEntries = bidsMap.entries.toList()..sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
+
+        return CustomScrollView(
+          slivers: [
             SliverPadding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               sliver: SliverList(
                 delegate: SliverChildBuilderDelegate(
                   (context, index) {
                     final entry = sortedEntries[index];
-                    final tokenId = entry.key;
-                    final bidData = entry.value;
-                    final myBidAmount = (bidData['amount'] as num).toDouble();
-
                     return StreamBuilder<DocumentSnapshot>(
-                      stream: FirestoreService.instance.db.collection('nfts').doc(tokenId.toString()).snapshots(),
+                      stream: FirestoreService.instance.db.collection('nfts').doc(entry.key.toString()).snapshots(),
                       builder: (context, snapshot) {
-                        if (snapshot.connectionState == ConnectionState.waiting && !snapshot.hasData) {
-                          return const SizedBox(height: 100, child: Center(child: CircularProgressIndicator(color: AppColors.primary)));
-                        }
-                        
-                        if (!snapshot.hasData || !snapshot.data!.exists) {
-                          return const SizedBox.shrink();
-                        }
-
-                        final data = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-                        final logo = LogoNFT.fromFirestore(data);
-
-                        // Check if it's already paid / completed
-                        final auctionStatus = (data['auctionStatus'] as String? ?? '').toUpperCase().trim();
-                        final ownerW = (data['ownerWallet'] as String? ?? '').toLowerCase();
-                        
-                        final isCompleted = auctionStatus == 'COMPLETED' || auctionStatus == 'PAYMENT_COMPLETED' || ownerW == currentWallet;
-
-                        // Filter: If paid, auto-remove from Bids tab
-                        if (isCompleted) {
-                          return const SizedBox.shrink();
-                        }
-
+                        if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox.shrink();
+                        final logo = LogoNFT.fromFirestore(snapshot.data!.data() as Map<String, dynamic>? ?? {});
                         final auction = _web3.getAuctionForLogo(logo.tokenId);
-                        
-                        return _buildBidCard(logo, auction, myBidAmount, currentWallet);
+                        return _buildPaymentCard(logo, auction, (entry.value['amount'] as num).toDouble(), currentWallet);
                       },
                     );
                   },
@@ -980,766 +1003,479 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
-  Widget _buildBidCard(LogoNFT logo, Auction? auction, double myBidAmount, String currentWallet) {
-    // Determine status
-    String statusText = 'UNKNOWN';
-    Color statusColor = AppColors.textSecondary;
-    IconData statusIcon = Icons.help_outline;
-    
-    final bool isLive = logo.isAuctionActive && logo.endTime != null && DateTime.now().isBefore(logo.endTime!);
-    final highestBidder = logo.highestBidderWallet?.toLowerCase() ?? '';
-    final isHighestBidder = highestBidder == currentWallet;
-    final bool hasWinner = highestBidder.isNotEmpty;
-    
-    // Status Logic
+  Widget _buildPaymentCard(LogoNFT logo, Auction? auction, double myBid, String currentWallet) {
+    String status = 'UNKNOWN';
+    final isLive = logo.isAuctionActive && logo.endTime != null && DateTime.now().isBefore(logo.endTime!);
+    final isHighest = logo.highestBidderWallet?.toLowerCase() == currentWallet;
+
     if (logo.status == ValidationStatus.rejected || logo.isFrozen || auction?.status == AuctionStatus.cancelled) {
-      statusText = 'CANCELLED';
-      statusColor = AppColors.danger;
-      statusIcon = Icons.cancel;
+      status = 'CANCELLED';
     } else if (isLive) {
-      if (isHighestBidder) {
-        statusText = 'WINNING';
-        statusColor = AppColors.success;
-        statusIcon = Icons.emoji_events;
+      status = isHighest ? 'WINNING' : 'OUTBID';
+    } else if (logo.highestBidderWallet?.isNotEmpty == true && isHighest) {
+      if (auction?.status == AuctionStatus.claimed || logo.ownerWallet.toLowerCase() == currentWallet) {
+        status = 'PAID/CLAIMED';
       } else {
-        statusText = 'OUTBID';
-        statusColor = AppColors.accentOrange;
-        statusIcon = Icons.trending_down;
+        status = 'ACTION REQUIRED';
       }
+    } else if (logo.highestBidderWallet?.isNotEmpty == true && !isHighest) {
+      status = 'LOST';
     } else {
-      // Auction Ended
-      if (hasWinner && isHighestBidder) {
-        if (auction?.status == AuctionStatus.paymentPending) {
-          statusText = 'WON - PAYMENT REQUIRED';
-          statusColor = AppColors.accentOrange;
-          statusIcon = Icons.payment;
-        } else if (auction?.status == AuctionStatus.claimed || logo.ownerWallet.toLowerCase() == currentWallet) {
-          statusText = 'PAID / CLAIMED';
-          statusColor = AppColors.primary;
-          statusIcon = Icons.check_circle;
-        } else {
-          statusText = 'WON - PAYMENT REQUIRED';
-          statusColor = AppColors.accentOrange;
-          statusIcon = Icons.payment;
-        }
-      } else if (hasWinner && !isHighestBidder) {
-        statusText = 'LOST';
-        statusColor = AppColors.textSecondary;
-        statusIcon = Icons.close;
-      } else if (!hasWinner) {
-        statusText = 'ENDED (NO BIDS)';
-        statusColor = AppColors.textSecondary;
-        statusIcon = Icons.timer_off;
-      }
+      status = 'CANCELLED';
     }
 
-    String displayImageUrl = logo.imageUrl;
-    if (displayImageUrl.contains('dweb.link/ipfs/')) {
-       displayImageUrl = displayImageUrl.replaceAll('dweb.link/ipfs/', 'ipfs.io/ipfs/');
-    } else if (displayImageUrl.contains('ipfs://')) {
-       displayImageUrl = displayImageUrl.replaceAll('ipfs://', 'https://ipfs.io/ipfs/');
-    }
+    // Auto-hide PAID/CLAIMED as per old logic? 
+    // New design specifies "Section: History" with PAID/CLAIMED, LOST, CANCELLED.
+    // For simplicity, I'll group them mentally, but render them sequentially.
+    // I'll style based on status.
 
-    return GestureDetector(
-      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(tokenId: logo.tokenId))),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: AppSpacing.md),
-        padding: const EdgeInsets.all(AppSpacing.md),
+    if (status == 'ACTION REQUIRED') {
+      return Container(
+        margin: const EdgeInsets.only(bottom: 12),
         decoration: BoxDecoration(
-          color: AppColors.surface,
-          borderRadius: BorderRadius.circular(AppRadius.xl),
-          border: Border.all(color: AppColors.border),
-          boxShadow: [
-            BoxShadow(
-              color: statusColor.withValues(alpha: 0.05),
-              blurRadius: 10,
-              spreadRadius: 1,
-            )
-          ],
+          color: _ProfileColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _ProfileColors.actionAmberBorder, width: 1.5), // Thicker border for warning
         ),
         child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Top Section: Image + Info
-            Row(
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: const BoxDecoration(
+                color: Color(0xFF2A1508),
+                borderRadius: BorderRadius.vertical(top: Radius.circular(15)),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 14, color: _ProfileColors.warningText),
+                  SizedBox(width: 6),
+                  Text('Action required', style: TextStyle(color: _ProfileColors.warningText, fontSize: 10, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(width: 38, height: 38, child: _buildNetworkImage(logo.imageUrl)),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        Text('You won · $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
+                      ],
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPaymentPage(tokenId: logo.tokenId))),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                      decoration: BoxDecoration(color: _ProfileColors.actionAmberBtnBg, borderRadius: BorderRadius.circular(20)),
+                      child: const Text('Pay Now', style: TextStyle(color: _ProfileColors.actionAmberBtnText, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    // Default Bid Card (Active or History)
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: _ProfileColors.cardBg,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: _ProfileColors.border, width: 0.5),
+      ),
+      child: Row(
+        children: [
+          ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: SizedBox(width: 38, height: 38, child: _buildNetworkImage(logo.imageUrl)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image
-                Container(
-                  width: 80,
-                  height: 80,
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    border: Border.all(color: AppColors.border),
-                    color: AppColors.surfaceLight,
-                  ),
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    child: displayImageUrl.isNotEmpty
-                      ? (displayImageUrl.startsWith('data:image') 
-                          ? Image.memory(base64Decode(displayImageUrl.split(',').last), fit: BoxFit.cover) 
-                          : CachedNetworkImage(
-                              imageUrl: displayImageUrl,
-                              fit: BoxFit.cover,
-                              errorWidget: (context, url, error) => const Icon(Icons.image_outlined, color: AppColors.textSecondary),
-                            ))
-                      : const Icon(Icons.image_outlined, color: AppColors.textSecondary),
-                  ),
+                Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 2),
+                Text('My bid: $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
+              ],
+            ),
+          ),
+          _buildBidStatusBadge(status),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBidStatusBadge(String status) {
+    if (status == 'WINNING') {
+      return _buildPill(status, _ProfileColors.successBg, _ProfileColors.successText, false);
+    } else if (status == 'OUTBID') {
+      return _buildPill(status, Colors.transparent, _ProfileColors.dangerText, true, borderColor: _ProfileColors.dangerBorder);
+    } else if (status == 'PAID/CLAIMED') {
+      return _buildPill(status, const Color(0xFF1E3A8A), const Color(0xFF93C5FD), false);
+    } else if (status == 'LOST') {
+      return _buildPill(status, _ProfileColors.headerBtnBg, _ProfileColors.textMuted, false);
+    } else { // CANCELLED
+      return _buildPill(status, _ProfileColors.dangerBg, _ProfileColors.dangerText, false);
+    }
+  }
+
+  Widget _buildPill(String text, Color bg, Color textColor, bool isOutlined, {Color? borderColor}) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(20),
+        border: isOutlined ? Border.all(color: borderColor ?? textColor, width: 1) : null,
+      ),
+      child: Text(text, style: TextStyle(color: textColor, fontSize: 10, fontWeight: FontWeight.bold)),
+    );
+  }
+
+  // --- TAB 4: AUCTION ---
+
+  Widget _buildAuctionsTab() {
+    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
+    
+    return Column(
+      children: [
+        // Sub-tabs
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 20, bottom: 12),
+          child: Row(
+            children: [
+              Expanded(child: _buildSubTab('My Auctions', 0)),
+              const SizedBox(width: 12),
+              Expanded(child: _buildSubTab('Joined Auctions', 1)),
+            ],
+          ),
+        ),
+        // Content
+        Expanded(
+          child: _auctionTabFilter == 0 
+            ? _buildMyAuctionsList(currentWallet)
+            : _buildJoinedAuctionsList(currentWallet),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSubTab(String label, int index) {
+    final isActive = _auctionTabFilter == index;
+    return GestureDetector(
+      onTap: () => setState(() => _auctionTabFilter = index),
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: isActive ? _ProfileColors.tabActiveBg : _ProfileColors.cardBg,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: isActive ? _ProfileColors.accent : _ProfileColors.border),
+        ),
+        child: Text(
+          label,
+          style: TextStyle(
+            color: isActive ? _ProfileColors.tabActiveText : _ProfileColors.textMuted,
+            fontSize: 12,
+            fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildMyAuctionsList(String currentWallet) {
+    final myAuctions = _web3.allAuctions.where((a) => a.sellerWallet.toLowerCase() == currentWallet).toList();
+    if (myAuctions.isEmpty) return _buildEmptyState(Icons.gavel, 'No auctions found');
+
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: myAuctions.length,
+      itemBuilder: (context, index) {
+        final auction = myAuctions[index];
+        LogoNFT? logo;
+        try { logo = _web3.allLogos.firstWhere((l) => l.tokenId == auction.tokenId); } catch (_) {}
+        
+        final bool isLive = auction.isOngoing;
+        final bool canReAuction = !isLive && logo != null && !logo.isFrozen && logo.status != ValidationStatus.rejected &&
+                (auction.status == AuctionStatus.ended || auction.status == AuctionStatus.endedNoBids || auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired || logo.auctionStatus == 'ENDED_NO_BID') &&
+                (logo.highestBidderWallet == null || logo.highestBidderWallet!.isEmpty || auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired);
+
+        return _buildAuctionCard(
+          logo: logo,
+          auction: auction,
+          isMyAuction: true,
+          isLive: isLive,
+          canReAuction: canReAuction,
+        );
+      },
+    );
+  }
+
+  Widget _buildJoinedAuctionsList(String currentWallet) {
+    // Requires streaming participations
+    return StreamBuilder<Map<int, Map<String, dynamic>>>(
+      stream: _participatedBidsStream,
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) return _buildShimmerGrid();
+        final bids = snapshot.data ?? {};
+        if (bids.isEmpty) return _buildEmptyState(Icons.group_outlined, 'No joined auctions');
+
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: bids.length,
+          itemBuilder: (context, index) {
+            final entry = bids.entries.elementAt(index);
+            return StreamBuilder<DocumentSnapshot>(
+              stream: FirestoreService.instance.db.collection('nfts').doc(entry.key.toString()).snapshots(),
+              builder: (context, snap) {
+                if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
+                final logo = LogoNFT.fromFirestore(snap.data!.data() as Map<String, dynamic>? ?? {});
+                final auction = _web3.getAuctionForLogo(logo.tokenId);
+                final myBid = (entry.value['amount'] as num).toDouble();
+                final isLive = logo.isAuctionActive;
+                final status = logo.highestBidderWallet?.toLowerCase() == currentWallet ? 'WINNING' : 'OUTBID';
+
+                return _buildAuctionCard(
+                  logo: logo,
+                  auction: auction,
+                  isMyAuction: false,
+                  isLive: isLive,
+                  myBid: myBid,
+                  joinedStatus: status,
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildAuctionCard({
+    LogoNFT? logo, 
+    Auction? auction, 
+    required bool isMyAuction, 
+    required bool isLive, 
+    bool canReAuction = false,
+    double? myBid,
+    String? joinedStatus,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: _ProfileColors.cardBg,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: _ProfileColors.border, width: 0.5),
+      ),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(10),
+                  child: SizedBox(width: 42, height: 42, child: _buildNetworkImage(logo?.imageUrl ?? '')),
                 ),
-                const SizedBox(width: AppSpacing.md),
-                // Info
+                const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Expanded(
-                            child: Text(
-                              logo.name,
-                              style: AppTextStyles.h3.copyWith(fontSize: 16),
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                            decoration: BoxDecoration(
-                              color: statusColor.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(AppRadius.sm),
-                              border: Border.all(color: statusColor.withValues(alpha: 0.3)),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(statusIcon, size: 12, color: statusColor),
-                                const SizedBox(width: 4),
-                                Text(
-                                  statusText,
-                                  style: AppTextStyles.labelSmall.copyWith(color: statusColor, fontWeight: FontWeight.bold),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      Text('Token #${logo.tokenId}', style: AppTextStyles.caption),
-                      const SizedBox(height: AppSpacing.sm),
-                      Row(
-                        children: [
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('Your Bid', style: AppTextStyles.caption),
-                                Text('${myBidAmount.toStringAsFixed(4)} ETH', style: AppTextStyles.labelMedium),
-                              ],
-                            ),
-                          ),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Text('Current Highest', style: AppTextStyles.caption),
-                                Text('${logo.highestBid > 0 ? logo.highestBid.toStringAsFixed(4) : logo.price.toStringAsFixed(4)} ETH', style: AppTextStyles.labelMedium.copyWith(color: AppColors.primary)),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
+                      Text(logo?.name ?? 'Token', style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 2),
+                      if (isMyAuction)
+                        Text('${auction?.totalBids ?? 0} bidders · ${auction?.highestBid ?? 0} ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10))
+                      else
+                        Text('My bid: $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
                     ],
                   ),
                 ),
+                if (isLive)
+                  Row(
+                    children: [
+                      const Icon(Icons.access_time, size: 12, color: _ProfileColors.successText),
+                      const SizedBox(width: 4),
+                      Text(auction?.timeRemainingFormatted ?? '--', style: const TextStyle(color: _ProfileColors.successText, fontSize: 10, fontWeight: FontWeight.bold)),
+                    ],
+                  ),
               ],
             ),
-            // Bottom Section: Actions
-            if (statusText == 'WON - PAYMENT REQUIRED') ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: Divider(color: AppColors.border),
-              ),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(AppSpacing.sm),
-                decoration: BoxDecoration(
-                  color: AppColors.accentOrange.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(AppRadius.lg),
-                  border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'Congratulations! You won this auction.',
-                      style: AppTextStyles.labelMedium.copyWith(color: AppColors.accentOrange),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'Complete your Sepolia payment to claim ownership.',
-                      style: AppTextStyles.bodySmall.copyWith(color: AppColors.accentOrange),
-                    ),
-                    const SizedBox(height: AppSpacing.sm),
-                    SizedBox(
-                      width: double.infinity,
-                      // Prevent tap from bubbling up to the card's GestureDetector
-                      child: GestureDetector(
-                        onTap: () {},
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            debugPrint('[PAYMENT FLOW] Opening AuctionPaymentPage');
-                            debugPrint('[PAYMENT FLOW] Current auction status: ${auction?.status}');
-                            debugPrint('[PAYMENT FLOW] Highest bidder: ${auction?.highestBidderWallet}');
-                            debugPrint('[PAYMENT FLOW] Current wallet: $currentWallet');
-                            
-                            // Force route to AuctionPaymentPage
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPaymentPage(tokenId: logo.tokenId)));
-                          },
-                          icon: const Icon(Icons.payment, size: 16),
-                          label: const Text('Complete Payment'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.accentOrange,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+          ),
+          const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
+          Padding(
+            padding: const EdgeInsets.all(12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                if (isMyAuction) ...[
+                  if (isLive) ...[
+                    _buildPill('LIVE', _ProfileColors.successBg, _ProfileColors.successText, false),
+                    const Text('No action needed', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
+                  ] else ...[
+                    _buildPill('ENDED', _ProfileColors.dangerBg, _ProfileColors.dangerText, false),
+                    if (canReAuction)
+                      GestureDetector(
+                        onTap: () => _showReAuctionBottomSheet(context, auction!, logo!),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            border: Border.all(color: _ProfileColors.accent, width: 1),
+                          ),
+                          child: const Row(
+                            children: [
+                              Icon(Icons.refresh, size: 12, color: _ProfileColors.accent),
+                              SizedBox(width: 4),
+                              Text('Re-Auction', style: TextStyle(color: _ProfileColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                            ],
                           ),
                         ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-            if (statusText == 'PAID / CLAIMED') ...[
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: AppSpacing.sm),
-                child: Divider(color: AppColors.border),
-              ),
-              SizedBox(
-                width: double.infinity,
-                child: OutlinedButton.icon(
-                  onPressed: () {
-                    // Navigate to collection or detail
-                    Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(tokenId: logo.tokenId, openedFromMyCollection: true)));
-                  },
-                  icon: const Icon(Icons.collections_bookmark, size: 16, color: AppColors.primary),
-                  label: Text('View in Collection', style: AppTextStyles.labelMedium.copyWith(color: AppColors.primary)),
-                  style: OutlinedButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(vertical: 12),
-                    side: const BorderSide(color: AppColors.primary),
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+                      )
+                  ]
+                ] else ...[
+                  if (joinedStatus != null) _buildBidStatusBadge(joinedStatus),
+                  GestureDetector(
+                    onTap: () {
+                      if (logo != null) {
+                        Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo)));
+                      }
+                    },
+                    child: const Text('Tap to view', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
                   ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ── Download Image (Owner Exclusive) ──
-  Future<void> _downloadImage(String imageUrl, String name) async {
-    // Real-time ownership validation
-    final currentWallet = _web3.currentAddress?.toLowerCase();
-    if (currentWallet == null) {
-      if (mounted) {
-        NotificationManager.show(context: context, title: 'Wallet Not Connected', message: 'Wallet not connected', type: NotificationType.error);
-      }
-      return;
-    }
-
-    setState(() => _isDownloading = true);
-    try {
-      // Backend ownership validation
-      final isOwner = await FirestoreService.instance.verifyNFTOwnership(
-        imageUrl,
-        currentWallet,
-      );
-      if (!isOwner) {
-        throw Exception('Ownership verification failed. You are not the verified owner of this NFT.');
-      }
-
-      Uint8List bytes;
-      if (imageUrl.startsWith('http')) {
-        var response = await Dio().get(
-          imageUrl,
-          options: Options(responseType: ResponseType.bytes),
-        );
-        bytes = Uint8List.fromList(response.data);
-      } else if (imageUrl.startsWith('data:image')) {
-        final base64String = imageUrl.split(',').last;
-        bytes = base64Decode(base64String);
-      } else {
-        bytes = base64Decode(imageUrl);
-      }
-
-      await Gal.putImageBytes(bytes);
-
-      if (!mounted) return;
-      NotificationManager.show(
-        context: context,
-        title: 'Download Successful',
-        message: 'Original logo saved to gallery!',
-        type: NotificationType.success,
-      );
-    } catch (e) {
-      if (!mounted) return;
-      NotificationManager.show(
-        context: context,
-        title: 'Download Failed',
-        message: e.toString().replaceFirst("Exception: ", ""),
-        type: NotificationType.error,
-      );
-    } finally {
-      if (mounted) setState(() => _isDownloading = false);
-    }
-  }
-
-  void _showLongPressMenu(LogoNFT logo, {required bool isMyCreations}) {
-    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
-    final isCreator = logo.creatorWallet.toLowerCase() == currentWallet;
-    final isOwner = logo.ownerWallet.toLowerCase() == currentWallet;
-
-    final canDelete = isMyCreations &&
-        isCreator &&
-        logo.status != ValidationStatus.rejected &&
-        !logo.isAuctionActive &&
-        !logo.isFrozen &&
-        logo.auctionStatus != 'PAYMENT_PENDING' &&
-        logo.previousWinnerWallet == null;
-
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (BuildContext context) {
-        return Container(
-          padding: const EdgeInsets.only(top: AppSpacing.sm, bottom: AppSpacing.xl),
-          decoration: BoxDecoration(
-            color: AppColors.background,
-            borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
-            border: Border.all(color: AppColors.border),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Handle bar
-              Container(
-                width: 40,
-                height: 4,
-                margin: const EdgeInsets.only(top: 8, bottom: AppSpacing.lg),
-                decoration: BoxDecoration(
-                  color: AppColors.textSecondary.withValues(alpha: 0.5),
-                  borderRadius: BorderRadius.circular(2),
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.sm),
-                child: Row(
-                  children: [
-                    ClipRRect(
-                      borderRadius: BorderRadius.circular(AppRadius.md),
-                      child: CachedNetworkImage(
-                        imageUrl: logo.imageUrl,
-                        width: 48,
-                        height: 48,
-                        fit: BoxFit.cover,
-                        errorWidget: (context, url, error) => const Icon(Icons.image, color: AppColors.textSecondary),
-                      ),
-                    ),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(logo.name.isNotEmpty ? logo.name : 'Token #${logo.tokenId}', style: AppTextStyles.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          Text(isMyCreations ? 'My Creation' : 'My Collection', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const Divider(color: AppColors.border, height: 24),
-              // Share Action
-              ListTile(
-                leading: const Icon(Icons.share, color: AppColors.primary),
-                title: const Text('Share NFT', style: AppTextStyles.bodyLarge),
-                onTap: () {
-                  Navigator.pop(context);
-                  SharePlus.instance.share(ShareParams(text: 'Check out this amazing NFT Logo "${logo.name}" on the LEO Marketplace! Token ID: #${logo.tokenId}\n\nImage: ${logo.imageUrl}'));
-                },
-              ),
-              // Download Action (Only if authorized)
-              if (isOwner)
-                ListTile(
-                  leading: const Icon(Icons.download_rounded, color: AppColors.success),
-                  title: const Text('Download Logo to Gallery', style: AppTextStyles.bodyLarge),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _downloadImage(logo.imageUrl, logo.name);
-                  },
-                ),
-              // Delete Action
-              if (canDelete)
-                ListTile(
-                  leading: const Icon(Icons.delete_outline, color: AppColors.danger),
-                  title: Text('Delete NFT', style: AppTextStyles.bodyLarge.copyWith(color: AppColors.danger)),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showDeleteConfirmationDialog(logo);
-                  },
-                ),
-              const SizedBox(height: AppSpacing.sm),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  void _showDeleteConfirmationDialog(LogoNFT logo) {
-    showDialog(
-      context: context,
-      builder: (context) {
-        bool isDeleting = false;
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            return AlertDialog(
-              backgroundColor: AppColors.surface,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
-              title: const Text('Delete NFT?', style: AppTextStyles.h2),
-              content: const Text(
-                'Deleting this NFT removes it from your portfolio and marketplace. This action cannot be fully undone.',
-                style: AppTextStyles.bodyMedium,
-              ),
-              actions: [
-                TextButton(
-                  onPressed: isDeleting ? null : () => Navigator.pop(context),
-                  child: Text('Cancel', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-                ),
-                ElevatedButton(
-                  onPressed: isDeleting ? null : () async {
-                    setStateDialog(() => isDeleting = true);
-                    try {
-                      final currentWallet = _web3.currentAddress ?? '';
-                      await FirestoreService.instance.softDeleteNFT(logo.tokenId, currentWallet);
-                      if (context.mounted) {
-                        Navigator.pop(context);
-                        NotificationManager.show(
-                          context: context,
-                          title: 'Success',
-                          message: 'NFT deleted successfully',
-                          type: NotificationType.success,
-                        );
-                      }
-                    } catch (e) {
-                      if (context.mounted) {
-                        setStateDialog(() => isDeleting = false);
-                        NotificationManager.show(
-                          context: context,
-                          title: 'Error',
-                          message: e.toString().replaceFirst("Exception: ", ""),
-                          type: NotificationType.error,
-                        );
-                      }
-                    }
-                  },
-                  style: ElevatedButton.styleFrom(backgroundColor: AppColors.danger),
-                  child: isDeleting 
-                      ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2))
-                      : const Text('Delete', style: TextStyle(color: Colors.white)),
-                ),
+                ],
               ],
-            );
-          }
-        );
-      },
-    );
-  }
-
-  Widget _buildStatBox(String label, String value) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: AppColors.surface,
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.border),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text(label, style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
-          const SizedBox(height: 4),
-          Text(value, style: AppTextStyles.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
+            ),
+          ),
         ],
       ),
     );
   }
 
-  // ── Tab 2: My Auctions ──
-  // ── Tab 3: Auctions Management Center ──
-  Widget _buildAuctionsManagementTab(List<Auction> allAuctions) {
-    if (allAuctions.isEmpty) {
-      return _buildEmptyState(Icons.gavel_outlined, 'No auctions yet');
-    }
+  // --- TAB 5: WALLET ---
 
-    // Filter auctions based on selected filter
-    final List<Auction> filtered;
-    switch (_auctionFilter) {
-      case 1: filtered = allAuctions.where((a) => a.isOngoing).toList(); break;
-      case 2: filtered = allAuctions.where((a) => a.status == AuctionStatus.ended || a.status == AuctionStatus.endedNoBids || a.status == AuctionStatus.failedPayment || a.status == AuctionStatus.paymentExpired).toList(); break;
-      case 3: filtered = allAuctions.where((a) => a.status == AuctionStatus.paymentPending || a.status == AuctionStatus.claimed).toList(); break;
-      case 4: filtered = allAuctions.where((a) => a.status == AuctionStatus.frozen || a.status == AuctionStatus.cancelled).toList(); break;
-      case 5:
-        filtered = allAuctions.where((a) {
-          LogoNFT? logo;
-          try { logo = _web3.allLogos.firstWhere((l) => l.tokenId == a.tokenId); } catch (_) {}
-          return logo?.status == ValidationStatus.rejected;
-        }).toList();
-        break;
-      default: filtered = allAuctions;
-    }
-
-    return CustomScrollView(
-      slivers: [
-        const SliverToBoxAdapter(
-          child: Padding(
-            padding: EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.lg, top: AppSpacing.xl, bottom: AppSpacing.sm),
-            child: Text('Live Auction Monitoring', style: AppTextStyles.h3),
-          ),
-        ),
-        const LiveAuctionMonitoring(),
-        SliverToBoxAdapter(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.lg, vertical: AppSpacing.md),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(children: [
-                _buildFilterChip('All', 0, Icons.list_alt),
-                const SizedBox(width: 8),
-                _buildFilterChip('Live', 1, Icons.play_circle_outline),
-                const SizedBox(width: 8),
-                _buildFilterChip('Ended', 2, Icons.timer_off_outlined),
-                const SizedBox(width: 8),
-                _buildFilterChip('Payment', 3, Icons.payment),
-                const SizedBox(width: 8),
-                _buildFilterChip('Frozen', 4, Icons.ac_unit),
-                const SizedBox(width: 8),
-                _buildFilterChip('Rejected', 5, Icons.block),
-              ]),
-            ),
-          ),
-        ),
-        if (filtered.isEmpty)
-          SliverToBoxAdapter(child: Padding(padding: const EdgeInsets.all(AppSpacing.xxl), child: _buildEmptyState(Icons.filter_alt_outlined, 'No auctions in this category')))
-        else
-          SliverList(delegate: SliverChildBuilderDelegate((context, index) {
-            final auction = filtered[index];
-            LogoNFT? logo;
-            try { logo = _web3.allLogos.firstWhere((l) => l.tokenId == auction.tokenId); } catch (_) {}
-
-            String statusText; Color statusColor; IconData statusIcon;
-            if (auction.isOngoing) {
-              statusText = auction.timeRemainingFormatted; statusColor = AppColors.primary; statusIcon = Icons.timer_outlined;
-            } else {
-              switch (auction.status) {
-                case AuctionStatus.paymentPending: statusText = 'Payment Pending'; statusColor = AppColors.accentOrange; statusIcon = Icons.payment; break;
-                case AuctionStatus.claimed: statusText = 'Claimed'; statusColor = AppColors.success; statusIcon = Icons.check_circle_outline; break;
-                case AuctionStatus.failedPayment: statusText = 'Payment Failed'; statusColor = AppColors.danger; statusIcon = Icons.error_outline; break;
-                case AuctionStatus.paymentExpired: statusText = 'Payment Expired'; statusColor = AppColors.danger; statusIcon = Icons.error_outline; break;
-                case AuctionStatus.frozen: statusText = 'Frozen'; statusColor = AppColors.frozenBlue; statusIcon = Icons.ac_unit; break;
-                case AuctionStatus.cancelled: statusText = 'Cancelled'; statusColor = AppColors.textSecondary; statusIcon = Icons.cancel_outlined; break;
-                case AuctionStatus.endedNoBids: statusText = 'No Bids'; statusColor = AppColors.danger; statusIcon = Icons.not_interested; break;
-                default:
-                  if (auction.totalBids == 0) { statusText = 'No Bids'; statusColor = AppColors.danger; statusIcon = Icons.not_interested; }
-                  else { statusText = 'Ended'; statusColor = AppColors.textSecondary; statusIcon = Icons.timer_off_outlined; }
-              }
-            }
-
-            final bool canReAuction = !auction.isOngoing && logo != null && !logo.isFrozen &&
-                logo.status != ValidationStatus.rejected &&
-                (auction.status == AuctionStatus.ended || auction.status == AuctionStatus.endedNoBids || auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired || logo.auctionStatus == 'ENDED_NO_BID') &&
-                (logo.highestBidderWallet == null || logo.highestBidderWallet!.isEmpty || auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired);
-
-            return Container(
-              margin: const EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.lg, bottom: AppSpacing.md),
-              decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-                border: Border.all(color: auction.isOngoing ? AppColors.primary.withValues(alpha: 0.3) : AppColors.border),
-                boxShadow: auction.isOngoing ? [BoxShadow(color: AppColors.primary.withValues(alpha: 0.05), blurRadius: 10, spreadRadius: 1)] : null,
-              ),
-              child: InkWell(
-                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(tokenId: auction.tokenId))),
-                borderRadius: BorderRadius.circular(AppRadius.xl),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  child: Column(children: [
-                    Row(children: [
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        child: SizedBox(width: 80, height: 80,
-                          child: logo != null && logo.imageUrl.isNotEmpty
-                            ? CachedNetworkImage(imageUrl: logo.imageUrl, fit: BoxFit.cover, errorWidget: (_, __, ___) => Container(color: AppColors.surfaceLight, child: const Icon(Icons.image_outlined, color: AppColors.textSecondary)), placeholder: (_, __) => Container(color: AppColors.surfaceLight, child: const CustomLoadingIndicator(size: 20)))
-                            : Container(color: AppColors.surfaceLight, child: const Icon(Icons.image_outlined, color: AppColors.textSecondary)),
-                        ),
-                      ),
-                      const SizedBox(width: AppSpacing.lg),
-                      Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text(logo?.name ?? 'Token #${auction.tokenId}', style: AppTextStyles.h3, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        const SizedBox(height: 8),
-                        Row(children: [
-                          Icon(statusIcon, size: 16, color: statusColor),
-                          const SizedBox(width: 6),
-                          Flexible(child: Text(statusText, style: AppTextStyles.labelMedium.copyWith(color: statusColor), overflow: TextOverflow.ellipsis)),
-                        ]),
-                        Builder(builder: (_) {
-                          final reAuctionCount = logo?.auctionCount ?? 0;
-                          if (reAuctionCount > 0) {
-                            return Padding(
-                              padding: const EdgeInsets.only(top: 4),
-                              child: Text('Re-Auctioned ${reAuctionCount}x', style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary)),
-                            );
-                          }
-                          return const SizedBox.shrink();
-                        }),
-                      ])),
-                      Column(crossAxisAlignment: CrossAxisAlignment.end, children: [
-                        Text('${(auction.highestBid > 0 ? auction.highestBid : auction.startingPrice).toStringAsFixed(4)} ETH', style: AppTextStyles.h3),
-                        if (auction.totalBids > 0) ...[const SizedBox(height: 4), Text('${auction.totalBids} bids', style: AppTextStyles.bodySmall)],
-                      ]),
-                      const SizedBox(width: AppSpacing.sm),
-                      const Icon(Icons.chevron_right, color: AppColors.textSecondary),
-                    ]),
-                    if (canReAuction) ...[
-                      const SizedBox(height: AppSpacing.md),
-                      const Divider(color: AppColors.border),
-                      const SizedBox(height: AppSpacing.sm),
-                      SizedBox(width: double.infinity, child: OutlinedButton.icon(
-                        onPressed: () {
-                          _showReAuctionBottomSheet(context, auction, logo!);
-                        },
-                        icon: const Icon(Icons.refresh, size: 18),
-                        label: const Text('Request Re-Auction'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-                        ),
-                      )),
-                    ],
-                  ]),
-                ),
-              ),
-            );
-          }, childCount: filtered.length)),
-        const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
-      ],
-    );
-  }
-
-  Widget _buildFilterChip(String label, int value, IconData icon) {
-    final bool isSelected = _auctionFilter == value;
-    return FilterChip(
-      label: Row(mainAxisSize: MainAxisSize.min, children: [
-        Icon(icon, size: 14, color: isSelected ? AppColors.background : AppColors.textSecondary),
-        const SizedBox(width: 4),
-        Text(label),
-      ]),
-      selected: isSelected,
-      onSelected: (_) => setState(() => _auctionFilter = value),
-      selectedColor: AppColors.primary,
-      backgroundColor: AppColors.surface,
-      checkmarkColor: AppColors.background,
-      labelStyle: TextStyle(color: isSelected ? AppColors.background : AppColors.textSecondary, fontSize: 13),
-      side: BorderSide(color: isSelected ? AppColors.primary : AppColors.border),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-    );
-  }
-
-  // ── Tab 5: Wallet Info ──
   Widget _buildWalletTab() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.only(left: AppSpacing.lg, right: AppSpacing.lg, top: AppSpacing.lg, bottom: 40),
+    return Padding(
+      padding: const EdgeInsets.all(16),
       child: Column(
         children: [
-          GlassCard(
+          Container(
+            decoration: BoxDecoration(
+              color: _ProfileColors.cardBg,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: _ProfileColors.border, width: 0.5),
+            ),
             child: Column(
               children: [
-                _buildInfoRow('Wallet Address', _web3.currentAddress ?? 'Not connected', Icons.account_balance_wallet_outlined, AppColors.primary),
-                const Divider(color: AppColors.border, height: 32),
-                _buildInfoRow('Balance', '${_web3.balance.toStringAsFixed(4)} ETH', Icons.monetization_on_outlined, AppColors.success),
-                const Divider(color: AppColors.border, height: 32),
-                _buildInfoRow('Network', _web3.isOnSepolia ? 'Sepolia Testnet' : 'Unknown', Icons.language, AppColors.frozenBlue),
-                const Divider(color: AppColors.border, height: 32),
-                _buildInfoRow('Connection', _web3.connectionType, Icons.link_outlined, AppColors.accentOrange),
+                _buildWalletInfoRow('Address', _shortenAddress(_web3.currentAddress ?? ''), isPurple: true, icon: Icons.copy),
+                const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
+                _buildWalletInfoRow('Balance', '${_web3.balance.toStringAsFixed(4)} ETH'),
+                const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
+                _buildWalletInfoRow('Network', _web3.isOnSepolia ? 'Sepolia Testnet' : 'Unknown', isGreen: true),
+                const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
+                _buildWalletInfoRow('Connection', _web3.connectionType),
+                const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
+                Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.history, size: 14, color: _ProfileColors.downloadBtnText),
+                      const SizedBox(width: 8),
+                      Text('View transaction history', style: TextStyle(color: _ProfileColors.downloadBtnText, fontSize: 12)),
+                    ],
+                  ),
+                ),
               ],
             ),
           ),
-          const SizedBox(height: AppSpacing.xxl),
-          PrimaryButton(
-            text: 'Logout & Disconnect',
-            icon: Icons.logout,
-            backgroundColor: AppColors.danger,
-            onPressed: _logout,
+          const SizedBox(height: 24),
+          GestureDetector(
+            onTap: _logout,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(vertical: 14),
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: _ProfileColors.dangerBorder, width: 0.5),
+              ),
+              child: const Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.logout, size: 16, color: _ProfileColors.dangerText),
+                  SizedBox(width: 8),
+                  Text('Logout & disconnect wallet', style: TextStyle(color: _ProfileColors.dangerText, fontSize: 13, fontWeight: FontWeight.bold)),
+                ],
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildInfoRow(String label, String value, IconData icon, Color color) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(10),
-          decoration: BoxDecoration(
-            color: color.withValues(alpha: 0.15),
-            borderRadius: BorderRadius.circular(AppRadius.md),
+  Widget _buildWalletInfoRow(String label, String value, {bool isPurple = false, bool isGreen = false, IconData? icon}) {
+    Color valColor = _ProfileColors.textWhite;
+    if (isPurple) valColor = _ProfileColors.accent;
+    if (isGreen) valColor = _ProfileColors.successText;
+
+    return Padding(
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 12)),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    value,
+                    style: TextStyle(color: valColor, fontSize: 12, fontWeight: FontWeight.bold),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                if (icon != null) ...[
+                  const SizedBox(width: 6),
+                  Icon(icon, size: 12, color: valColor),
+                ]
+              ],
+            ),
           ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        const SizedBox(width: AppSpacing.md),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(label, style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-              const SizedBox(height: 4),
-              Text(value, style: AppTextStyles.bodyLarge, maxLines: 1, overflow: TextOverflow.ellipsis),
-            ],
-          ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 
-  Widget _buildEmptyState(IconData icon, String text, {String? ctaText, VoidCallback? onCtaPressed}) {
+  // --- HELPERS & DIALOGS ---
+
+  Widget _buildEmptyState(IconData icon, String msg) {
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Container(
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: AppColors.surface,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.border),
-            ),
-            child: Icon(icon, size: 48, color: AppColors.textSecondary),
-          ),
-          const SizedBox(height: AppSpacing.lg),
-          Text(text, style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
-          if (ctaText != null && onCtaPressed != null) ...[
-            const SizedBox(height: AppSpacing.xl),
-            PrimaryButton(
-              text: ctaText,
-              onPressed: onCtaPressed,
-            ),
-          ],
+          Icon(icon, size: 48, color: _ProfileColors.textMuted.withValues(alpha: 0.5)),
+          const SizedBox(height: 16),
+          Text(msg, style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 12)),
         ],
       ),
     );
@@ -1747,280 +1483,65 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   Widget _buildConnectPrompt() {
     return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(AppSpacing.xxl),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: AppColors.accentOrange.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-                border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
-              ),
-              child: const Icon(Icons.account_balance_wallet_outlined, size: 64, color: AppColors.accentOrange),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const Icon(Icons.account_balance_wallet, size: 64, color: _ProfileColors.textMuted),
+          const SizedBox(height: 16),
+          const Text('Wallet Not Connected', style: TextStyle(color: _ProfileColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+          const SizedBox(height: 24),
+          GestureDetector(
+            onTap: () async {
+              try {
+                await WalletUtils.showConnectDialog(context, _web3);
+              } catch (e) {
+                if (!mounted) return;
+                NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+              }
+            },
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+              decoration: BoxDecoration(color: _ProfileColors.accent, borderRadius: BorderRadius.circular(20)),
+              child: const Text('Connect Wallet', style: TextStyle(color: _ProfileColors.textWhite, fontWeight: FontWeight.bold)),
             ),
-            const SizedBox(height: AppSpacing.xxl),
-            const Text('Wallet Not Connected', style: AppTextStyles.h2),
-            const SizedBox(height: AppSpacing.sm),
-            Text('Connect your wallet to view your profile and manage your NFTs.', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary), textAlign: TextAlign.center),
-            const SizedBox(height: AppSpacing.xxl),
-            PrimaryButton(
-              text: 'Connect Wallet',
-              icon: Icons.link,
-              backgroundColor: AppColors.accentOrange,
-              onPressed: () async {
-                try {
-                  await WalletUtils.showConnectDialog(context, _web3);
-                } catch (e) {
-                  if (!mounted) return;
-                  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
-                }
-              },
-            ),
-          ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShimmerGrid() {
+    return Shimmer.fromColors(
+      baseColor: _ProfileColors.cardBg,
+      highlightColor: _ProfileColors.headerBtnBg,
+      child: GridView.builder(
+        padding: const EdgeInsets.all(16),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          childAspectRatio: 0.75,
+          crossAxisSpacing: 9,
+          mainAxisSpacing: 9,
+        ),
+        itemCount: 4,
+        itemBuilder: (_, __) => Container(
+          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
         ),
       ),
     );
   }
 
-
-
-  void _showReAuctionBottomSheet(BuildContext context, Auction auction, LogoNFT logo) {
-    final TextEditingController priceController = TextEditingController(text: auction.startingPrice.toString());
-    final TextEditingController notesController = TextEditingController();
-    int selectedDuration = 86400; // default 24h
-
-    final List<Map<String, dynamic>> durationOptions = [
-      {'label': '30 Seconds (Demo)', 'value': 30},
-      {'label': '1 Minute (Demo)', 'value': 60},
-      {'label': '5 Minutes (Demo)', 'value': 300},
-      {'label': '1 Hour', 'value': 3600},
-      {'label': '24 Hours', 'value': 86400},
-      {'label': '3 Days', 'value': 259200},
-      {'label': '7 Days', 'value': 604800},
-    ];
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (BuildContext bottomSheetContext) {
-        bool isSubmitting = false;
-
-        return StatefulBuilder(
-          builder: (BuildContext context, StateSetter setModalState) {
-            return Container(
-              padding: EdgeInsets.only(
-                top: AppSpacing.xl,
-                left: AppSpacing.xl,
-                right: AppSpacing.xl,
-                bottom: MediaQuery.of(context).viewInsets.bottom + AppSpacing.xl,
-              ),
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(AppRadius.xxl)),
-                border: Border.all(color: AppColors.border),
-              ),
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Handle Bar
-                    Center(
-                      child: Container(
-                        width: 40,
-                        height: 4,
-                        margin: const EdgeInsets.only(bottom: AppSpacing.xl),
-                        decoration: BoxDecoration(
-                          color: AppColors.border,
-                          borderRadius: BorderRadius.circular(2),
-                        ),
-                      ),
-                    ),
-                    
-                    Text('Request Re-Auction', style: AppTextStyles.h2),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    // NFT Preview Header
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.surface,
-                        borderRadius: BorderRadius.circular(AppRadius.xl),
-                        border: Border.all(color: AppColors.border),
-                      ),
-                      child: Row(
-                        children: [
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(AppRadius.md),
-                            child: CachedNetworkImage(
-                              imageUrl: logo.imageUrl,
-                              width: 60,
-                              height: 60,
-                              fit: BoxFit.cover,
-                              errorWidget: (_, __, ___) => Container(
-                                width: 60, height: 60, color: AppColors.surfaceLight,
-                                child: const Icon(Icons.image, color: AppColors.textSecondary),
-                              ),
-                              placeholder: (_, __) => Container(
-                                width: 60, height: 60, color: AppColors.surfaceLight,
-                                child: const CustomLoadingIndicator(size: 20),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(logo.name.isNotEmpty ? logo.name : 'Token #${logo.tokenId}', style: AppTextStyles.h3),
-                                const SizedBox(height: 4),
-                                Text(
-                                  'Prev Highest Bid: ${(auction.highestBid > 0 ? auction.highestBid : 0).toStringAsFixed(4)} ETH',
-                                  style: AppTextStyles.caption.copyWith(color: AppColors.textSecondary),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-
-                    // Form Fields
-                    Text('New Starting Price (ETH)', style: AppTextStyles.labelMedium),
-                    const SizedBox(height: AppSpacing.sm),
-                    TextFormField(
-                      controller: priceController,
-                      keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.lg), borderSide: BorderSide.none),
-                        hintText: '0.00',
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    Text('Auction Duration', style: AppTextStyles.labelMedium),
-                    const SizedBox(height: AppSpacing.sm),
-                    DropdownButtonFormField<int>(
-                      initialValue: selectedDuration,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.lg), borderSide: BorderSide.none),
-                      ),
-                      dropdownColor: AppColors.surface,
-                      items: durationOptions.map((opt) {
-                        return DropdownMenuItem<int>(
-                          value: opt['value'] as int,
-                          child: Text(opt['label'] as String, style: AppTextStyles.bodyMedium),
-                        );
-                      }).toList(),
-                      onChanged: (val) {
-                        if (val != null) setModalState(() => selectedDuration = val);
-                      },
-                    ),
-                    const SizedBox(height: AppSpacing.lg),
-
-                    Text('Creator Notes (Optional)', style: AppTextStyles.labelMedium),
-                    const SizedBox(height: AppSpacing.sm),
-                    TextFormField(
-                      controller: notesController,
-                      maxLines: 3,
-                      decoration: InputDecoration(
-                        filled: true,
-                        fillColor: AppColors.surface,
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(AppRadius.lg), borderSide: BorderSide.none),
-                        hintText: 'e.g. Relisting after payment failed.',
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-
-                    // Marketplace Warning Box
-                    Container(
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentOrange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.info_outline, color: AppColors.accentOrange),
-                          const SizedBox(width: AppSpacing.md),
-                          Expanded(
-                            child: Text(
-                              'This NFT will return to Admin Review before becoming publicly visible again.',
-                              style: AppTextStyles.bodySmall.copyWith(color: AppColors.accentOrange),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: AppSpacing.xl),
-
-                    // Submit Button
-                    SizedBox(
-                      width: double.infinity,
-                      child: PrimaryButton(
-                        text: 'Submit Re-Auction Request',
-                        isLoading: isSubmitting,
-                        onPressed: isSubmitting ? null : () async {
-                          final priceStr = priceController.text.trim();
-                          if (priceStr.isEmpty) {
-                            NotificationManager.show(context: context, title: 'Invalid Input', message: 'Please enter a starting price', type: NotificationType.warning);
-                            return;
-                          }
-                          final price = double.tryParse(priceStr);
-                          if (price == null || price <= 0) {
-                            NotificationManager.show(context: context, title: 'Invalid Input', message: 'Invalid price', type: NotificationType.warning);
-                            return;
-                          }
-
-                          setModalState(() => isSubmitting = true);
-                          try {
-                            await FirestoreService.instance.requestReAuctionWithSettings(
-                              auction.tokenId,
-                              selectedDuration,
-                              price,
-                              notes: notesController.text.trim().isEmpty ? null : notesController.text.trim(),
-                            );
-                            if (bottomSheetContext.mounted) {
-                              Navigator.pop(bottomSheetContext);
-                              NotificationManager.show(
-                                context: context,
-                                title: 'Success',
-                                message: 'Re-auction request submitted successfully!',
-                                type: NotificationType.success,
-                              );
-                              setState(() {}); // Refresh Auctions tab
-                            }
-                          } catch (e) {
-                            if (bottomSheetContext.mounted) {
-                              setModalState(() => isSubmitting = false);
-                              NotificationManager.show(
-                                context: context,
-                                title: 'Error',
-                                message: e.toString().replaceFirst("Exception: ", ""),
-                                type: NotificationType.error,
-                              );
-                            }
-                          }
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
+  Widget _buildNetworkImage(String imageUrl) {
+    String finalUrl = imageUrl.replaceFirst('dweb.link/ipfs/', 'ipfs.io/ipfs/').replaceFirst('ipfs://', 'https://ipfs.io/ipfs/');
+    if (finalUrl.isEmpty) return const Icon(Icons.image, color: _ProfileColors.textMuted);
+    if (finalUrl.startsWith('data:image')) {
+      return Image.memory(base64Decode(finalUrl.split(',').last), fit: BoxFit.cover, width: double.infinity, height: double.infinity);
+    }
+    return CachedNetworkImage(
+      imageUrl: finalUrl,
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorWidget: (_, __, ___) => const Icon(Icons.image, color: _ProfileColors.textMuted),
     );
   }
 
@@ -2029,32 +1550,164 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
   }
 
+  // --- EXISTING LOGIC KEEPS ---
 
+  Future<void> _downloadImage(String imageUrl, String name) async {
+    final currentWallet = _web3.currentAddress?.toLowerCase();
+    if (currentWallet == null) return;
+
+    setState(() => _isDownloading = true);
+    try {
+      final isOwner = await FirestoreService.instance.verifyNFTOwnership(imageUrl, currentWallet);
+      if (!isOwner) throw Exception('Ownership verification failed.');
+
+      Uint8List bytes;
+      if (imageUrl.startsWith('http')) {
+        var response = await Dio().get(imageUrl, options: Options(responseType: ResponseType.bytes));
+        bytes = Uint8List.fromList(response.data);
+      } else if (imageUrl.startsWith('data:image')) {
+        bytes = base64Decode(imageUrl.split(',').last);
+      } else {
+        bytes = base64Decode(imageUrl);
+      }
+      await Gal.putImageBytes(bytes);
+      if (!mounted) return;
+      NotificationManager.show(context: context, title: 'Success', message: 'Saved to gallery!', type: NotificationType.success);
+    } catch (e) {
+      if (!mounted) return;
+      NotificationManager.show(context: context, title: 'Failed', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+
+  void _showLongPressMenu(LogoNFT logo, {required bool isMyCreations}) {
+    final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
+    final isOwner = logo.ownerWallet.toLowerCase() == currentWallet;
+
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: _ProfileColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (BuildContext context) {
+        return Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const SizedBox(height: 8),
+            Container(width: 40, height: 4, decoration: BoxDecoration(color: _ProfileColors.textMuted, borderRadius: BorderRadius.circular(2))),
+            const SizedBox(height: 16),
+            ListTile(
+              leading: const Icon(Icons.share, color: _ProfileColors.accent),
+              title: const Text('Share NFT', style: TextStyle(color: _ProfileColors.textWhite)),
+              onTap: () {
+                Navigator.pop(context);
+                SharePlus.instance.share(ShareParams(text: 'Check out ${logo.name} on LEO!'));
+              },
+            ),
+            if (isOwner)
+              ListTile(
+                leading: const Icon(Icons.download, color: _ProfileColors.successText),
+                title: const Text('Download Logo', style: TextStyle(color: _ProfileColors.textWhite)),
+                onTap: () {
+                  Navigator.pop(context);
+                  _downloadImage(logo.imageUrl, logo.name);
+                },
+              ),
+            const SizedBox(height: 16),
+          ],
+        );
+      },
+    );
+  }
+
+  void _showReAuctionBottomSheet(BuildContext context, Auction auction, LogoNFT logo) {
+    final TextEditingController priceController = TextEditingController(text: auction.startingPrice.toString());
+    int selectedDuration = 86400; // 24h
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: _ProfileColors.surface,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (BuildContext bottomSheetContext) {
+        bool isSubmitting = false;
+        return StatefulBuilder(
+          builder: (context, setModalState) {
+            return Padding(
+              padding: EdgeInsets.only(top: 20, left: 16, right: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Request Re-Auction', style: TextStyle(color: _ProfileColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: priceController,
+                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                    style: const TextStyle(color: _ProfileColors.textWhite),
+                    decoration: const InputDecoration(labelText: 'Starting Price (ETH)'),
+                  ),
+                  const SizedBox(height: 16),
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: isSubmitting ? null : () async {
+                        final price = double.tryParse(priceController.text);
+                        if (price == null || price <= 0) return;
+                        setModalState(() => isSubmitting = true);
+                        try {
+                          await FirestoreService.instance.requestReAuctionWithSettings(auction.tokenId, selectedDuration, price);
+                          if (bottomSheetContext.mounted) {
+                            Navigator.pop(bottomSheetContext);
+                            setState(() {}); 
+                          }
+                        } catch (e) {
+                          setModalState(() => isSubmitting = false);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(backgroundColor: _ProfileColors.accent),
+                      child: isSubmitting ? const CustomLoadingIndicator(size: 20) : const Text('Submit Request'),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+}
+
+class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
+  final double minHeight;
+  final double maxHeight;
+  final Widget child;
+  _SliverAppBarDelegate({required this.minHeight, required this.maxHeight, required this.child});
+
+  @override
+  double get minExtent => minHeight;
+  @override
+  double get maxExtent => maxHeight;
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => SizedBox.expand(child: child);
+  @override
+  bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
 }
 
 class _LazyIndexedTab extends StatefulWidget {
   final Widget Function() builder;
   final bool isActive;
-
   const _LazyIndexedTab({required this.builder, required this.isActive});
-
   @override
   State<_LazyIndexedTab> createState() => _LazyIndexedTabState();
 }
-
 class _LazyIndexedTabState extends State<_LazyIndexedTab> {
   bool _hasInitialized = false;
-
   @override
   Widget build(BuildContext context) {
-    if (widget.isActive) {
-      _hasInitialized = true;
-    }
-
-    if (!_hasInitialized) {
-      return const SizedBox.shrink();
-    }
-
+    if (widget.isActive) _hasInitialized = true;
+    if (!_hasInitialized) return const SizedBox.shrink();
     return widget.builder();
   }
 }

@@ -8,8 +8,8 @@ const getDb = () => {
 
 const closeExpiredAuctions = async () => {
     const db = getDb();
-    if(!db) return;
-    
+    if (!db) return;
+
     try {
         console.log('Checking for expired auctions...');
         const now = Date.now();
@@ -86,8 +86,8 @@ const closeExpiredAuctions = async () => {
 
 const expirePaymentDeadlines = async () => {
     const db = getDb();
-    if(!db) return;
-    
+    if (!db) return;
+
     try {
         console.log('Checking for expired payments...');
         const now = Date.now();
@@ -103,8 +103,9 @@ const expirePaymentDeadlines = async () => {
         for (const doc of pendingPayments.docs) {
             const data = doc.data();
             const paymentDeadline = data.paymentDeadline || 0;
+            const isPaymentProcessing = data.isPaymentProcessing === true;
 
-            if (paymentDeadline > 0 && now >= paymentDeadline) {
+            if (paymentDeadline > 0 && now >= paymentDeadline && !isPaymentProcessing) {
                 const auctionRef = db.collection('auctions').doc(doc.id);
 
                 batch.update(doc.ref, {
@@ -138,11 +139,25 @@ const expirePaymentDeadlines = async () => {
     }
 };
 
+let isProcessing = false;
+
 exports.startCronJobs = () => {
     // Run every minute
-    cron.schedule('* * * * *', () => {
-        closeExpiredAuctions();
-        expirePaymentDeadlines();
+    cron.schedule('* * * * *', async () => {
+        if (isProcessing) {
+            console.log('Cron skipped: previous job still running');
+            return;
+        }
+
+        try {
+            isProcessing = true;
+            await closeExpiredAuctions();
+            await expirePaymentDeadlines();
+        } catch (error) {
+            console.error('Cron job error:', error);
+        } finally {
+            isProcessing = false;
+        }
     });
     console.log('Cron jobs started');
 };

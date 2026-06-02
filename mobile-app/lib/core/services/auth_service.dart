@@ -43,7 +43,7 @@ class AuthService {
         return UserModel.fromFirestore(doc.data() as Map<String, dynamic>);
       }
     } catch (e) {
-      debugPrint('Error fetching user data: $e');
+      if (kDebugMode) { debugPrint('Error fetching user data: $e'); }
     }
     return null;
   }
@@ -117,7 +117,7 @@ class AuthService {
     try {
       Web3Service.instance.disconnectWallet();
     } catch (e) {
-      debugPrint('Error disconnecting wallet: $e');
+      if (kDebugMode) { debugPrint('Error disconnecting wallet: $e'); }
     }
 
     // 3. Firebase sign out
@@ -144,7 +144,7 @@ class AuthService {
         'walletAddress': newWalletAddress,
       });
     } catch (e) {
-      debugPrint('Error updating wallet address: $e');
+      if (kDebugMode) { debugPrint('Error updating wallet address: $e'); }
       throw Exception('Failed to update wallet address: $e');
     }
   }

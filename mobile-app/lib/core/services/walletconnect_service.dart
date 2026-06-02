@@ -60,23 +60,23 @@ class WalletConnectService extends ChangeNotifier {
           _extractAddressFromSession();
           
           if (_chainId != ContractConfig.chainId) {
-            debugPrint('⚠️ Restored session is on wrong network (Chain $_chainId). Expected ${ContractConfig.chainId}. Clearing...');
+            if (kDebugMode) { debugPrint('⚠️ Restored session is on wrong network (Chain $_chainId). Expected ${ContractConfig.chainId}. Clearing...'); }
             await app_session.SessionService.instance.clearSession();
             _session = null;
             _connectedAddress = null;
             _chainId = null;
           } else {
-            debugPrint('✅ WalletConnect session restored securely on correct network');
+            if (kDebugMode) { debugPrint('✅ WalletConnect session restored securely on correct network'); }
           }
         } catch (e) {
-          debugPrint('⚠️ Stored session topic not found in active WalletConnect sessions');
+          if (kDebugMode) { debugPrint('⚠️ Stored session topic not found in active WalletConnect sessions'); }
           await app_session.SessionService.instance.clearSession();
           _session = null;
         }
       } else {
         // We have a WalletConnect session but no secure app session.
         // This might happen if the app was uninstalled or secure storage was cleared.
-        debugPrint('⚠️ WalletConnect session exists but no secure session found. Disconnecting...');
+        if (kDebugMode) { debugPrint('⚠️ WalletConnect session exists but no secure session found. Disconnecting...'); }
         for (var s in sessions) {
           await _web3App!.disconnectSession(
             topic: s.topic,
@@ -89,7 +89,7 @@ class WalletConnectService extends ChangeNotifier {
       await app_session.SessionService.instance.clearSession();
     }
     
-    debugPrint('✅ WalletConnect initialized');
+    if (kDebugMode) { debugPrint('✅ WalletConnect initialized'); }
   }
   
   void _onSessionConnect(SessionConnect? event) {
@@ -97,7 +97,7 @@ class WalletConnectService extends ChangeNotifier {
       _session = event!.session;
       _extractAddressFromSession();
       notifyListeners();
-      debugPrint('✅ Session connected: $_connectedAddress');
+      if (kDebugMode) { debugPrint('✅ Session connected: $_connectedAddress'); }
     }
   }
   
@@ -107,7 +107,7 @@ class WalletConnectService extends ChangeNotifier {
     _chainId = null;
     await app_session.SessionService.instance.clearSession();
     notifyListeners();
-    debugPrint('🔌 Session deleted by wallet');
+    if (kDebugMode) { debugPrint('🔌 Session deleted by wallet'); }
   }
 
   void _onSessionExpire(SessionExpire? event) async {
@@ -116,12 +116,12 @@ class WalletConnectService extends ChangeNotifier {
     _chainId = null;
     await app_session.SessionService.instance.clearSession();
     notifyListeners();
-    debugPrint('🔌 Session expired naturally');
+    if (kDebugMode) { debugPrint('🔌 Session expired naturally'); }
   }
 
   void _onSessionUpdate(SessionUpdate? event) {
     if (event?.namespaces != null) {
-      debugPrint('🔄 Session updated (e.g. account/network change)');
+      if (kDebugMode) { debugPrint('🔄 Session updated (e.g. account/network change)'); }
       _extractAddressFromSession();
       notifyListeners();
     }
@@ -129,7 +129,7 @@ class WalletConnectService extends ChangeNotifier {
 
   void _onSessionEvent(SessionEvent? event) {
     if (event?.name == 'chainChanged' || event?.name == 'accountsChanged') {
-      debugPrint('🔄 Session event received: ${event?.name}');
+      if (kDebugMode) { debugPrint('🔄 Session event received: ${event?.name}'); }
       // Trigger a re-extraction of state if needed
       _extractAddressFromSession();
       notifyListeners();
@@ -180,7 +180,7 @@ class WalletConnectService extends ChangeNotifier {
       // Get the URI for deep linking
       final uri = connectResponse.uri;
       if (uri != null) {
-        debugPrint('🔗 WalletConnect URI: $uri');
+        if (kDebugMode) { debugPrint('🔗 WalletConnect URI: $uri'); }
         
         // Open specific wallet with the WalletConnect URI
         Uri appUri;
@@ -206,16 +206,16 @@ class WalletConnectService extends ChangeNotifier {
         }
 
         if (await canLaunchUrl(appUri)) {
-          debugPrint('🚀 Opening $walletName via deep link...');
+          if (kDebugMode) { debugPrint('🚀 Opening $walletName via deep link...'); }
           await launchUrl(appUri, mode: LaunchMode.externalApplication);
         } else {
           // Fallback to universal link
-          debugPrint('🌐 Fallback to universal link...');
+          if (kDebugMode) { debugPrint('🌐 Fallback to universal link...'); }
           await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
         }
         
         // Wait for session approval with timeout
-        debugPrint('⏳ Waiting for session approval...');
+        if (kDebugMode) { debugPrint('⏳ Waiting for session approval...'); }
         try {
           final session = await connectResponse.session.future.timeout(
             const Duration(minutes: 2),
@@ -239,18 +239,18 @@ class WalletConnectService extends ChangeNotifier {
             );
           }
           
-          debugPrint('✅ Session approved! Address: $_connectedAddress');
+          if (kDebugMode) { debugPrint('✅ Session approved! Address: $_connectedAddress'); }
           notifyListeners();
           return true;
         } catch (e) {
-          debugPrint('❌ Session approval failed: $e');
+          if (kDebugMode) { debugPrint('❌ Session approval failed: $e'); }
           rethrow;
         }
       }
       
       return false;
     } catch (e) {
-      debugPrint('❌ WalletConnect error: $e');
+      if (kDebugMode) { debugPrint('❌ WalletConnect error: $e'); }
       rethrow;
     }
   }
@@ -264,7 +264,7 @@ class WalletConnectService extends ChangeNotifier {
           reason: const WalletConnectError(code: 0, message: 'User disconnected'),
         );
       } catch (e) {
-        debugPrint('Error disconnecting WalletConnect session: $e');
+        if (kDebugMode) { debugPrint('Error disconnecting WalletConnect session: $e'); }
       }
     }
     _session = null;
@@ -282,7 +282,7 @@ class WalletConnectService extends ChangeNotifier {
       final sessions = _web3App!.sessions.getAll();
       return sessions.any((s) => s.topic == _session!.topic);
     } catch (e) {
-      debugPrint('Session validation error: $e');
+      if (kDebugMode) { debugPrint('Session validation error: $e'); }
       return false;
     }
   }
@@ -290,7 +290,7 @@ class WalletConnectService extends ChangeNotifier {
   /// Ensure we have a valid session, reconnect if needed
   Future<void> ensureConnected() async {
     if (!await _isSessionValid()) {
-      debugPrint('⚠️ Session invalid, clearing and requiring reconnect...');
+      if (kDebugMode) { debugPrint('⚠️ Session invalid, clearing and requiring reconnect...'); }
       _session = null;
       _connectedAddress = null;
       _chainId = null;
@@ -356,22 +356,22 @@ class WalletConnectService extends ChangeNotifier {
       }
       
       // ── Debug: Log full transaction payload ──
-      debugPrint('╔══════════════════════════════════════════════════');
-      debugPrint('║ 📤 TRANSACTION PAYLOAD');
-      debugPrint('║ from: ${txParams['from']}');
-      debugPrint('║ to:   ${txParams['to']}');
+      if (kDebugMode) { debugPrint('╔══════════════════════════════════════════════════'); }
+      if (kDebugMode) { debugPrint('║ 📤 TRANSACTION PAYLOAD'); }
+      if (kDebugMode) { debugPrint('║ from: ${txParams['from']}'); }
+      if (kDebugMode) { debugPrint('║ to:   ${txParams['to']}'); }
       if (txParams.containsKey('data')) {
         final dataStr = txParams['data'] as String;
-        debugPrint('║ data: ${dataStr.length > 10 ? '${dataStr.substring(0, 10)}...' : dataStr} (${(dataStr.length - 2) ~/ 2} bytes)');
+        if (kDebugMode) { debugPrint('║ data: ${dataStr.length > 10 ? '${dataStr.substring(0, 10)}...' : dataStr} (${(dataStr.length - 2) ~/ 2} bytes)'); }
       } else {
-        debugPrint('║ data: none');
+        if (kDebugMode) { debugPrint('║ data: none'); }
       }
       if (txParams.containsKey('value')) {
-        debugPrint('║ value: ${txParams['value']}');
+        if (kDebugMode) { debugPrint('║ value: ${txParams['value']}'); }
       }
-      debugPrint('║ gas:  ⛽ MetaMask auto-estimate (no manual override)');
-      debugPrint('║ keys: ${txParams.keys.toList()}');
-      debugPrint('╚══════════════════════════════════════════════════');
+      if (kDebugMode) { debugPrint('║ gas:  ⛽ MetaMask auto-estimate (no manual override)'); }
+      if (kDebugMode) { debugPrint('║ keys: ${txParams.keys.toList()}'); }
+      if (kDebugMode) { debugPrint('╚══════════════════════════════════════════════════'); }
       
       // ── Send via WalletConnect ──
       final txFuture = _web3App!.request(
@@ -387,15 +387,18 @@ class WalletConnectService extends ChangeNotifier {
       // This is CRITICAL — without this, the user won't see the popup!
       await _openMetaMaskForTransaction();
       
-      debugPrint('⏳ Waiting for user approval in MetaMask...');
+      if (kDebugMode) { debugPrint('⏳ Waiting for user approval in MetaMask...'); }
       
       // Wait for user to approve/reject in MetaMask
-      final txHash = await txFuture;
+      final txHash = await txFuture.timeout(
+        const Duration(minutes: 3),
+        onTimeout: () => throw Exception('Transaction request timed out in MetaMask'),
+      );
       
-      debugPrint('✅ Transaction approved! Hash: $txHash');
+      if (kDebugMode) { debugPrint('✅ Transaction approved! Hash: $txHash'); }
       return txHash.toString();
     } catch (e) {
-      debugPrint('❌ Transaction failed: $e');
+      if (kDebugMode) { debugPrint('❌ Transaction failed: $e'); }
       // If session error, clear session and ask to reconnect
       if (e.toString().contains('session') || e.toString().contains('topic')) {
         _session = null;
@@ -427,21 +430,21 @@ class WalletConnectService extends ChangeNotifier {
       }
       
       if (await canLaunchUrl(walletUri)) {
-        debugPrint('🦊 Opening MetaMask for transaction approval...');
+        if (kDebugMode) { debugPrint('🦊 Opening MetaMask for transaction approval...'); }
         await launchUrl(walletUri, mode: LaunchMode.externalApplication);
       } else {
         // Fallback to universal link with topic
         final universalUri = topic != null
             ? Uri.parse('https://metamask.app.link/wc?topic=$topic')
             : Uri.parse('https://metamask.app.link/');
-        debugPrint('🌐 Fallback: Opening MetaMask via universal link...');
+        if (kDebugMode) { debugPrint('🌐 Fallback: Opening MetaMask via universal link...'); }
         await launchUrl(universalUri, mode: LaunchMode.externalApplication);
       }
       
       // Small delay to allow MetaMask to open and display the pending tx
       await Future.delayed(const Duration(milliseconds: 500));
     } catch (e) {
-      debugPrint('⚠️ Could not open MetaMask: $e');
+      if (kDebugMode) { debugPrint('⚠️ Could not open MetaMask: $e'); }
       // Don't throw - the transaction request was still sent,
       // user can manually switch to MetaMask
     }
@@ -475,7 +478,7 @@ class WalletConnectService extends ChangeNotifier {
       }
       return 0;
     } catch (e) {
-      debugPrint('Error getting balance: $e');
+      if (kDebugMode) { debugPrint('Error getting balance: $e'); }
       return 0;
     }
   }

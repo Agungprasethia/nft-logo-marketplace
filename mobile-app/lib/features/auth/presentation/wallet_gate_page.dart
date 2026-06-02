@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
@@ -101,7 +102,7 @@ class _WalletGatePageState extends State<WalletGatePage>
 
     try {
       // Ensure Web3 contracts are initialized before connecting wallet
-      debugPrint('[WEB3] Ensuring Web3 initialization before wallet connect...');
+      if (kDebugMode) { debugPrint('[WEB3] Ensuring Web3 initialization before wallet connect...'); }
       await Web3Service.instance.initialize();
 
       if (!mounted) return;

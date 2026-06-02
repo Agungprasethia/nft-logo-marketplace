@@ -62,38 +62,38 @@ class Web3Service extends Web3ServiceBase {
   Future<void> initialize() async {
     // Hot-reload safety: allow re-init if contracts are null
     if (_isInitialized && _nftContract != null) {
-      debugPrint('[WEB3] Already initialized, skipping');
+      if (kDebugMode) { debugPrint('[WEB3] Already initialized, skipping'); }
       return;
     }
 
-    debugPrint('[WEB3] ═══════════════════════════════════════');
-    debugPrint('[WEB3] Mobile Web3Service initialization started');
-    debugPrint('[WEB3] RPC URL: ${ContractConfig.rpcUrl}');
+    if (kDebugMode) { debugPrint('[WEB3] ═══════════════════════════════════════'); }
+    if (kDebugMode) { debugPrint('[WEB3] Mobile Web3Service initialization started'); }
+    if (kDebugMode) { debugPrint('[WEB3] RPC URL: ${ContractConfig.rpcUrl}'); }
     
     _client = Web3Client(ContractConfig.rpcUrl, http.Client());
     _rpcReady = true;
-    debugPrint('[WEB3] ✅ RPC client created');
+    if (kDebugMode) { debugPrint('[WEB3] ✅ RPC client created'); }
 
     // Initialize Notification Service
     await NotificationService().initialize();
-    debugPrint('[WEB3] ✅ Notification service initialized');
+    if (kDebugMode) { debugPrint('[WEB3] ✅ Notification service initialized'); }
 
     // Initialize contract instances for reading
     _initContracts();
-    debugPrint('[WEB3] NFT Contract ready: ${_nftContract != null}');
-    debugPrint('[WEB3] Auction Contract ready: ${_auctionContract != null}');
+    if (kDebugMode) { debugPrint('[WEB3] NFT Contract ready: ${_nftContract != null}'); }
+    if (kDebugMode) { debugPrint('[WEB3] Auction Contract ready: ${_auctionContract != null}'); }
     
     // Load cached data from SharedPreferences
     await _loadFromStorage();
-    debugPrint('[WEB3] ✅ Cached data loaded');
+    if (kDebugMode) { debugPrint('[WEB3] ✅ Cached data loaded'); }
     
     // Start polling for auction wins
     _startWinnerPolling();
     _startBalancePolling();
     
     _isInitialized = true;
-    debugPrint('[WEB3] ✅ Initialization complete');
-    debugPrint('[WEB3] ═══════════════════════════════════════');
+    if (kDebugMode) { debugPrint('[WEB3] ✅ Initialization complete'); }
+    if (kDebugMode) { debugPrint('[WEB3] ═══════════════════════════════════════'); }
     notifyListeners();
   }
 
@@ -121,17 +121,17 @@ class Web3Service extends Web3ServiceBase {
 
   void _initContracts() {
     // Initialize each contract independently so one failure doesn't block the other
-    debugPrint('[WEB3] Loading contract ABIs...');
+    if (kDebugMode) { debugPrint('[WEB3] Loading contract ABIs...'); }
     try {
       _nftContract = DeployedContract(
         ContractAbi.fromJson(_logoNftAbi, 'LogoNFT'),
         EthereumAddress.fromHex(ContractConfig.logoNFTAddress),
       );
-      debugPrint('[WEB3] ✅ NFT Contract initialized at ${ContractConfig.logoNFTAddress}');
-      debugPrint('[WEB3] ✅ NFT ABI loaded successfully');
+      if (kDebugMode) { debugPrint('[WEB3] ✅ NFT Contract initialized at ${ContractConfig.logoNFTAddress}'); }
+      if (kDebugMode) { debugPrint('[WEB3] ✅ NFT ABI loaded successfully'); }
     } catch (e) {
-      debugPrint('[WEB3] ❌ NFT Contract init FAILED: $e');
-      debugPrint('[WEB3] ❌ Contract address: ${ContractConfig.logoNFTAddress}');
+      if (kDebugMode) { debugPrint('[WEB3] ❌ NFT Contract init FAILED: $e'); }
+      if (kDebugMode) { debugPrint('[WEB3] ❌ Contract address: ${ContractConfig.logoNFTAddress}'); }
     }
 
     try {
@@ -139,11 +139,11 @@ class Web3Service extends Web3ServiceBase {
         ContractAbi.fromJson(_logoAuctionAbi, 'LogoAuction'),
         EthereumAddress.fromHex(ContractConfig.logoAuctionAddress),
       );
-      debugPrint('[WEB3] ✅ Auction Contract initialized at ${ContractConfig.logoAuctionAddress}');
-      debugPrint('[WEB3] ✅ Auction ABI loaded successfully');
+      if (kDebugMode) { debugPrint('[WEB3] ✅ Auction Contract initialized at ${ContractConfig.logoAuctionAddress}'); }
+      if (kDebugMode) { debugPrint('[WEB3] ✅ Auction ABI loaded successfully'); }
     } catch (e) {
-      debugPrint('[WEB3] ❌ Auction Contract init FAILED: $e');
-      debugPrint('[WEB3] ❌ Contract address: ${ContractConfig.logoAuctionAddress}');
+      if (kDebugMode) { debugPrint('[WEB3] ❌ Auction Contract init FAILED: $e'); }
+      if (kDebugMode) { debugPrint('[WEB3] ❌ Contract address: ${ContractConfig.logoAuctionAddress}'); }
     }
   }
 
@@ -151,11 +151,11 @@ class Web3Service extends Web3ServiceBase {
   Future<void> ensureContractsInitialized() async {
     if (_nftContract != null && _auctionContract != null) return;
 
-    debugPrint('[WEB3] ⚠️ Contract recovery triggered...');
+    if (kDebugMode) { debugPrint('[WEB3] ⚠️ Contract recovery triggered...'); }
 
     // Ensure RPC client is ready
     if (!_rpcReady) {
-      debugPrint('[WEB3] Re-creating RPC client...');
+      if (kDebugMode) { debugPrint('[WEB3] Re-creating RPC client...'); }
       _client = Web3Client(ContractConfig.rpcUrl, http.Client());
       _rpcReady = true;
     }
@@ -163,9 +163,9 @@ class Web3Service extends Web3ServiceBase {
     _initContracts();
 
     if (_nftContract == null) {
-      debugPrint('[WEB3] ❌ Contract recovery FAILED — _nftContract still null');
+      if (kDebugMode) { debugPrint('[WEB3] ❌ Contract recovery FAILED — _nftContract still null'); }
     } else {
-      debugPrint('[WEB3] ✅ Contract recovery succeeded');
+      if (kDebugMode) { debugPrint('[WEB3] ✅ Contract recovery succeeded'); }
     }
   }
 
@@ -174,7 +174,44 @@ class Web3Service extends Web3ServiceBase {
   /// Load all logos and auctions from the blockchain
   @override
   Future<void> loadFromChain() async {
-    debugPrint('🔄 Loading data from blockchain...');
+    if (kDebugMode) { debugPrint('🔄 Loading data from API/Firestore (Fast Path)...'); }
+    try {
+      // 1. FAST PATH: Fetch API / Firestore data immediately
+      final apiService = ApiService.instance;
+      final apiLogos = await apiService.fetchAllNFTs(forceRefresh: true);
+      
+      _allLogos.clear();
+      _allLogos.addAll(apiLogos);
+      
+      // Load Firestore auctions to populate activeAuctions for fast load
+      await _mergeFirestoreAuctions();
+      
+      // Auto-close any expired auctions
+      await FirestoreService.instance.closeExpiredAuctions();
+      
+      notifyListeners();
+      if (kDebugMode) { debugPrint('✅ Fast data loaded & UI updated'); }
+      
+      // FALLBACK: If Firestore is empty, do a one-time sync to populate it
+      if (_allLogos.isEmpty) {
+        if (kDebugMode) { debugPrint('⚠️ Firestore is empty, running one-time fallback blockchain sync...'); }
+        Future.delayed(const Duration(milliseconds: 800), () {
+          _syncBlockchainInBackground();
+        });
+      }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('⚠️ Error loading from API/Firestore: $e'); }
+      // Fallback to background sync if API completely fails and we have no local cache
+      if (_allLogos.isEmpty) {
+        Future.delayed(const Duration(milliseconds: 800), () {
+          _syncBlockchainInBackground();
+        });
+      }
+    }
+  }
+
+  Future<void> _syncBlockchainInBackground() async {
+    if (kDebugMode) { debugPrint('🔄 Background syncing with blockchain...'); }
     try {
       await _loadLogosFromChain();
       await _loadAuctionsFromChain();
@@ -194,14 +231,11 @@ class Web3Service extends Web3ServiceBase {
       // and "Bid Now" / "View Live Auction" buttons never appear.
       await _mergeFirestoreAuctions();
       
-      // Auto-close any expired auctions
-      await FirestoreService.instance.closeExpiredAuctions();
-      
       await _saveToStorage();
       notifyListeners();
-      debugPrint('✅ Blockchain data loaded & merged: ${_allLogos.length} logos, ${_allAuctions.length} auctions');
+      if (kDebugMode) { debugPrint('✅ Background blockchain sync complete: ${_allLogos.length} logos, ${_allAuctions.length} auctions'); }
     } catch (e) {
-      debugPrint('⚠️ Error loading from chain: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error background syncing: $e'); }
     }
   }
 
@@ -250,12 +284,12 @@ class Web3Service extends Web3ServiceBase {
             }
           }
         } catch (e) {
-          debugPrint('⚠️ Error merging API data for token #${logo.tokenId}: $e');
+          if (kDebugMode) { debugPrint('⚠️ Error merging API data for token #${logo.tokenId}: $e'); }
         }
       }
-      debugPrint('🔄 Backend API metadata merged into ${_allLogos.length} logos');
+      if (kDebugMode) { debugPrint('🔄 Backend API metadata merged into ${_allLogos.length} logos'); }
     } catch (e) {
-      debugPrint('⚠️ _mergeFirestoreData error: $e');
+      if (kDebugMode) { debugPrint('⚠️ _mergeFirestoreData error: $e'); }
     }
   }
 
@@ -267,8 +301,8 @@ class Web3Service extends Web3ServiceBase {
     try {
       final firestore = FirestoreService.instance;
       for (final logo in _allLogos) {
-        // Only check logos that have an auction created in Firestore
-        if (!logo.auctionCreated && !logo.isAuctionActive) continue;
+        // Only check logos that might have an auction
+        if (!logo.auctionCreated && !logo.isAuctionActive && logo.status != ValidationStatus.auction) continue;
 
         // Skip if we already have this auction from the blockchain
         final alreadyLoaded = _allAuctions.any(
@@ -280,12 +314,22 @@ class Web3Service extends Web3ServiceBase {
         final auction = await firestore.getAuction(logo.tokenId);
         if (auction != null) {
           _allAuctions.add(auction);
-          debugPrint('📦 Loaded Firestore-only auction for token #${logo.tokenId} (status: ${auction.status})');
+          if (kDebugMode) { debugPrint('📦 Loaded Firestore-only auction for token #${logo.tokenId} (status: ${auction.status})'); }
+          
+          // Ensure the logo object reflects the active auction
+          final int index = _allLogos.indexWhere((l) => l.tokenId == logo.tokenId);
+          if (index != -1) {
+            _allLogos[index] = _allLogos[index].copyWith(
+              isAuctionActive: auction.isOngoing,
+              endTime: auction.endTime,
+              status: auction.isOngoing ? ValidationStatus.auction : _allLogos[index].status,
+            );
+          }
         }
       }
-      debugPrint('🔄 Firestore auctions merged: ${_allAuctions.length} total auctions');
+      if (kDebugMode) { debugPrint('🔄 Firestore auctions merged: ${_allAuctions.length} total auctions'); }
     } catch (e) {
-      debugPrint('⚠️ _mergeFirestoreAuctions error: $e');
+      if (kDebugMode) { debugPrint('⚠️ _mergeFirestoreAuctions error: $e'); }
     }
   }
 
@@ -301,7 +345,7 @@ class Web3Service extends Web3ServiceBase {
         params: [],
       );
       final totalSupply = (totalSupplyResult[0] as BigInt).toInt();
-      debugPrint('📊 Total NFTs on chain: $totalSupply');
+      if (kDebugMode) { debugPrint('📊 Total NFTs on chain: $totalSupply'); }
 
       if (totalSupply == 0) return;
 
@@ -313,88 +357,104 @@ class Web3Service extends Web3ServiceBase {
 
       final List<LogoNFT> chainLogos = [];
 
-      for (int i = 0; i < totalSupply; i++) {
-        try {
-          // Get tokenId by index
-          final tokenIdResult = await _client.call(
-            contract: _nftContract!,
-            function: _nftContract!.function('tokenByIndex'),
-            params: [BigInt.from(i)],
-          );
-          final tokenId = (tokenIdResult[0] as BigInt).toInt();
+      const int chunkSize = 10;
+      for (int i = 0; i < totalSupply; i += chunkSize) {
+        final int end = (i + chunkSize < totalSupply) ? i + chunkSize : totalSupply;
+        final chunkFutures = <Future<LogoNFT?>>[];
 
-          // Get owner
-          final ownerResult = await _client.call(
-            contract: _nftContract!,
-            function: _nftContract!.function('ownerOf'),
-            params: [BigInt.from(tokenId)],
-          );
-          final owner = (ownerResult[0] as EthereumAddress).hexEip55;
+        for (int j = i; j < end; j++) {
+          chunkFutures.add(() async {
+            try {
+              // Get tokenId by index
+              final tokenIdResult = await _client.call(
+                contract: _nftContract!,
+                function: _nftContract!.function('tokenByIndex'),
+                params: [BigInt.from(j)],
+              );
+              final tokenId = (tokenIdResult[0] as BigInt).toInt();
 
-          // Get logo data using getLogo(uint256) via web3dart ABI decoder
-          final logoResult = await _client.call(
-            contract: _nftContract!,
-            function: _nftContract!.function('getLogo'),
-            params: [BigInt.from(tokenId)],
-          );
+              // Get owner
+              final ownerResult = await _client.call(
+                contract: _nftContract!,
+                function: _nftContract!.function('ownerOf'),
+                params: [BigInt.from(tokenId)],
+              );
+              final owner = (ownerResult[0] as EthereumAddress).hexEip55;
 
-          // logoResult[0] is a List<dynamic> representing the Logo struct tuple
-          final tuple = logoResult[0] as List<dynamic>;
-          
-          // Parse struct fields:
-          // [0] uint256 tokenId, [1] string name, [2] string description,
-          // [3] string imageHash, [4] address creator, [5] uint256 createdAt,
-          // [6] uint256 price, [7] bool isForSale, [8] bool isInAuction,
-          // [9] uint8 status
-          final name = tuple[1] as String;
-          final description = tuple[2] as String;
-          final imageHash = tuple[3] as String;
-          final creator = (tuple[4] as EthereumAddress).hexEip55;
-          final createdAtTimestamp = (tuple[5] as BigInt).toInt();
-          final priceWei = tuple[6] as BigInt;
-          final isForSale = tuple[7] as bool;
-          final isInAuction = tuple[8] as bool;
-          final statusInt = (tuple[9] as BigInt).toInt();
+              // Get logo data using getLogo(uint256) via web3dart ABI decoder
+              final logoResult = await _client.call(
+                contract: _nftContract!,
+                function: _nftContract!.function('getLogo'),
+                params: [BigInt.from(tokenId)],
+              );
 
-          // Convert values
-          final price = (priceWei / BigInt.from(10).pow(18)).toDouble();
-          final createdAt = DateTime.fromMillisecondsSinceEpoch(createdAtTimestamp * 1000);
-          
-          ValidationStatus status;
-          switch (statusInt) {
-            case 0: status = ValidationStatus.pending; break;
-            case 1: status = ValidationStatus.approved; break;
-            case 2: status = ValidationStatus.rejected; break;
-            case 3: status = ValidationStatus.disabled; break;
-            default: status = ValidationStatus.pending;
+              // logoResult[0] is a List<dynamic> representing the Logo struct tuple
+              final tuple = logoResult[0] as List<dynamic>;
+              
+              // Parse struct fields:
+              // [0] uint256 tokenId, [1] string name, [2] string description,
+              // [3] string imageHash, [4] address creator, [5] uint256 createdAt,
+              // [6] uint256 price, [7] bool isForSale, [8] bool isInAuction,
+              // [9] uint8 status
+              final name = tuple[1] as String;
+              final description = tuple[2] as String;
+              final imageHash = tuple[3] as String;
+              final creator = (tuple[4] as EthereumAddress).hexEip55;
+              final createdAtTimestamp = (tuple[5] as BigInt).toInt();
+              final priceWei = tuple[6] as BigInt;
+              final isForSale = tuple[7] as bool;
+              final isInAuction = tuple[8] as bool;
+              final statusInt = (tuple[9] as BigInt).toInt();
+
+              // Convert values
+              final price = (priceWei / BigInt.from(10).pow(18)).toDouble();
+              final createdAt = DateTime.fromMillisecondsSinceEpoch(createdAtTimestamp * 1000);
+              
+              ValidationStatus status;
+              switch (statusInt) {
+                case 0: status = ValidationStatus.pending; break;
+                case 1: status = ValidationStatus.approved; break;
+                case 2: status = ValidationStatus.rejected; break;
+                case 3: status = ValidationStatus.disabled; break;
+                default: status = ValidationStatus.pending;
+              }
+
+              // Preserve local metadata (txHash, category) if we had it before
+              final existing = existingLogos[tokenId];
+              
+              final logo = LogoNFT(
+                tokenId: tokenId,
+                name: name.isNotEmpty ? name : 'Logo #$tokenId',
+                description: description,
+                imageUrl: imageHash, // imageHash stores the IPFS URL
+                imageHash: imageHash,
+                creatorId: existing?.creatorId ?? '',
+                creatorWallet: creator,
+                ownerId: existing?.ownerId ?? '',
+                ownerWallet: owner,
+                createdAt: createdAt,
+                price: price,
+                isForSale: isForSale,
+                isInAuction: isInAuction,
+                status: status,
+                txHash: existing?.txHash,
+                category: existing?.category ?? 'Technology',
+              );
+
+              if (kDebugMode) { debugPrint('📦 Loaded logo #$tokenId: "$name" [${status.name}]'); }
+              return logo;
+            } catch (e) {
+              if (kDebugMode) { debugPrint('⚠️ Error loading token index $j: $e'); }
+              return null;
+            }
+          }());
+        }
+        
+        final results = await Future.wait(chunkFutures);
+        for (final result in results) {
+          if (result != null) {
+            chainLogos.add(result);
           }
-
-          // Preserve local metadata (txHash, category) if we had it before
-          final existing = existingLogos[tokenId];
-          
-          final logo = LogoNFT(
-            tokenId: tokenId,
-            name: name.isNotEmpty ? name : 'Logo #$tokenId',
-            description: description,
-            imageUrl: imageHash, // imageHash stores the IPFS URL
-            imageHash: imageHash,
-            creatorId: existing?.creatorId ?? '',
-            creatorWallet: creator,
-            ownerId: existing?.ownerId ?? '',
-            ownerWallet: owner,
-            createdAt: createdAt,
-            price: price,
-            isForSale: isForSale,
-            isInAuction: isInAuction,
-            status: status,
-            txHash: existing?.txHash,
-            category: existing?.category ?? 'Technology',
-          );
-
-          chainLogos.add(logo);
-          debugPrint('📦 Loaded logo #$tokenId: "$name" [${status.name}]');
-        } catch (e) {
-          debugPrint('⚠️ Error loading token index $i: $e');
         }
       }
 
@@ -409,9 +469,9 @@ class Web3Service extends Web3ServiceBase {
       _allLogos.addAll(chainLogos);
       _allLogos.addAll(localOnlyLogos); // Keep locally-minted not yet on chain
       _tokenIdCounter = totalSupply;
-      debugPrint('📦 Merged: ${chainLogos.length} chain + ${localOnlyLogos.length} local-only logos');
+      if (kDebugMode) { debugPrint('📦 Merged: ${chainLogos.length} chain + ${localOnlyLogos.length} local-only logos'); }
     } catch (e) {
-      debugPrint('⚠️ Error loading logos from chain: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error loading logos from chain: $e'); }
     }
   }
 
@@ -427,81 +487,97 @@ class Web3Service extends Web3ServiceBase {
         params: [],
       );
       final totalAuctions = (totalResult[0] as BigInt).toInt();
-      debugPrint('📊 Total auctions on chain: $totalAuctions');
+      if (kDebugMode) { debugPrint('📊 Total auctions on chain: $totalAuctions'); }
 
       if (totalAuctions == 0) return;
 
       final List<Auction> chainAuctions = [];
 
-      for (int aId = 1; aId <= totalAuctions; aId++) {
-        try {
-          final auctionResult = await _client.call(
-            contract: _auctionContract!,
-            function: _auctionContract!.function('getAuction'),
-            params: [BigInt.from(aId)],
-          );
+      const int chunkSize = 10;
+      for (int i = 1; i <= totalAuctions; i += chunkSize) {
+        final int end = (i + chunkSize <= totalAuctions + 1) ? i + chunkSize : totalAuctions + 1;
+        final chunkFutures = <Future<Auction?>>[];
 
-          // getAuction returns a tuple (struct)
-          final tuple = auctionResult[0] as List<dynamic>;
-          
-          final auctionId = (tuple[0] as BigInt).toInt();
-          final tokenId = (tuple[1] as BigInt).toInt();
-          final seller = (tuple[2] as EthereumAddress).hexEip55;
-          // tuple[3] = creator (address) - not used in Auction model
-          final startingPriceWei = tuple[4] as BigInt;
-          // tuple[5] = reservePrice
-          final highestBidWei = tuple[6] as BigInt;
-          final highestBidder = (tuple[7] as EthereumAddress);
-          final startTimeUnix = (tuple[8] as BigInt).toInt();
-          final endTimeUnix = (tuple[9] as BigInt).toInt();
-          final isActive = tuple[10] as bool;
-          final isEnded = tuple[11] as bool;
-
-          final startingPrice = startingPriceWei / BigInt.from(10).pow(18);
-          final highestBid = highestBidWei / BigInt.from(10).pow(18);
-          final highestBidderHex = highestBidder.hexEip55;
-          final isZeroAddress = highestBidderHex == '0x0000000000000000000000000000000000000000';
-
-          // Fetch bids for this auction
-          List<Bid> bids = [];
-          try {
-            final bidsResult = await _client.call(
-              contract: _auctionContract!,
-              function: _auctionContract!.function('getAuctionBids'),
-              params: [BigInt.from(aId)],
-            );
-            final bidsList = bidsResult[0] as List<dynamic>;
-            bids = bidsList.map((bidTuple) {
-              final b = bidTuple as List<dynamic>;
-              return Bid.fromBlockchain(
-                bidder: (b[0] as EthereumAddress).hexEip55,
-                amount: ((b[1] as BigInt) / BigInt.from(10).pow(18)).toDouble(),
-                timestamp: DateTime.fromMillisecondsSinceEpoch(
-                  (b[2] as BigInt).toInt() * 1000,
-                ),
+        for (int aId = i; aId < end; aId++) {
+          chunkFutures.add(() async {
+            try {
+              final auctionResult = await _client.call(
+                contract: _auctionContract!,
+                function: _auctionContract!.function('getAuction'),
+                params: [BigInt.from(aId)],
               );
-            }).toList();
-          } catch (e) {
-            debugPrint('⚠️ Error fetching bids for auction $aId: $e');
+
+              // getAuction returns a tuple (struct)
+              final tuple = auctionResult[0] as List<dynamic>;
+              
+              final auctionId = (tuple[0] as BigInt).toInt();
+              final tokenId = (tuple[1] as BigInt).toInt();
+              final seller = (tuple[2] as EthereumAddress).hexEip55;
+              // tuple[3] = creator (address) - not used in Auction model
+              final startingPriceWei = tuple[4] as BigInt;
+              // tuple[5] = reservePrice
+              final highestBidWei = tuple[6] as BigInt;
+              final highestBidder = (tuple[7] as EthereumAddress);
+              final startTimeUnix = (tuple[8] as BigInt).toInt();
+              final endTimeUnix = (tuple[9] as BigInt).toInt();
+              final isActive = tuple[10] as bool;
+              final isEnded = tuple[11] as bool;
+
+              final startingPrice = startingPriceWei / BigInt.from(10).pow(18);
+              final highestBid = highestBidWei / BigInt.from(10).pow(18);
+              final highestBidderHex = highestBidder.hexEip55;
+              final isZeroAddress = highestBidderHex == '0x0000000000000000000000000000000000000000';
+
+              // Fetch bids for this auction
+              List<Bid> bids = [];
+              try {
+                final bidsResult = await _client.call(
+                  contract: _auctionContract!,
+                  function: _auctionContract!.function('getAuctionBids'),
+                  params: [BigInt.from(aId)],
+                );
+                final bidsList = bidsResult[0] as List<dynamic>;
+                bids = bidsList.map((bidTuple) {
+                  final b = bidTuple as List<dynamic>;
+                  return Bid.fromBlockchain(
+                    bidder: (b[0] as EthereumAddress).hexEip55,
+                    amount: ((b[1] as BigInt) / BigInt.from(10).pow(18)).toDouble(),
+                    timestamp: DateTime.fromMillisecondsSinceEpoch(
+                      (b[2] as BigInt).toInt() * 1000,
+                    ),
+                  );
+                }).toList();
+              } catch (e) {
+                if (kDebugMode) { debugPrint('⚠️ Error fetching bids for auction $aId: $e'); }
+              }
+
+              final auction = Auction.fromBlockchain(
+                auctionId: auctionId,
+                tokenId: tokenId,
+                seller: seller,
+                startingPrice: startingPrice.toDouble(),
+                highestBid: highestBid.toDouble(),
+                highestBidder: isZeroAddress ? null : highestBidderHex,
+                startTime: DateTime.fromMillisecondsSinceEpoch(startTimeUnix * 1000),
+                endTime: DateTime.fromMillisecondsSinceEpoch(endTimeUnix * 1000),
+                isActive: isActive,
+                isEnded: isEnded,
+                bids: bids,
+              );
+
+              return auction;
+            } catch (e) {
+              if (kDebugMode) { debugPrint('⚠️ Error loading auction $aId: $e'); }
+              return null;
+            }
+          }());
+        }
+
+        final results = await Future.wait(chunkFutures);
+        for (final result in results) {
+          if (result != null) {
+            chainAuctions.add(result);
           }
-
-          final auction = Auction.fromBlockchain(
-            auctionId: auctionId,
-            tokenId: tokenId,
-            seller: seller,
-            startingPrice: startingPrice.toDouble(),
-            highestBid: highestBid.toDouble(),
-            highestBidder: isZeroAddress ? null : highestBidderHex,
-            startTime: DateTime.fromMillisecondsSinceEpoch(startTimeUnix * 1000),
-            endTime: DateTime.fromMillisecondsSinceEpoch(endTimeUnix * 1000),
-            isActive: isActive,
-            isEnded: isEnded,
-            bids: bids,
-          );
-
-          chainAuctions.add(auction);
-        } catch (e) {
-          debugPrint('⚠️ Error loading auction $aId: $e');
         }
       }
 
@@ -516,9 +592,9 @@ class Web3Service extends Web3ServiceBase {
       _allAuctions.addAll(chainAuctions);
       _allAuctions.addAll(localOnlyAuctions); // Keep locally-created not yet on chain
       _auctionIdCounter = totalAuctions;
-      debugPrint('📦 Merged: ${chainAuctions.length} chain + ${localOnlyAuctions.length} local-only auctions');
+      if (kDebugMode) { debugPrint('📦 Merged: ${chainAuctions.length} chain + ${localOnlyAuctions.length} local-only auctions'); }
     } catch (e) {
-      debugPrint('⚠️ Error loading auctions from chain: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error loading auctions from chain: $e'); }
     }
   }
 
@@ -537,9 +613,9 @@ class Web3Service extends Web3ServiceBase {
       );
       await prefs.setInt('web3_tokenIdCounter', _tokenIdCounter);
       await prefs.setInt('web3_auctionIdCounter', _auctionIdCounter);
-      debugPrint('💾 Data saved to storage');
+      if (kDebugMode) { debugPrint('💾 Data saved to storage'); }
     } catch (e) {
-      debugPrint('⚠️ Error saving to storage: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error saving to storage: $e'); }
     }
   }
 
@@ -552,7 +628,7 @@ class Web3Service extends Web3ServiceBase {
         final List<dynamic> list = jsonDecode(logosJson);
         _allLogos.clear();
         _allLogos.addAll(list.map((j) => LogoNFT.fromJson(j)));
-        debugPrint('📦 Loaded ${_allLogos.length} logos from storage');
+        if (kDebugMode) { debugPrint('📦 Loaded ${_allLogos.length} logos from storage'); }
       }
 
       final auctionsJson = prefs.getString('web3_auctions');
@@ -560,13 +636,13 @@ class Web3Service extends Web3ServiceBase {
         final List<dynamic> list = jsonDecode(auctionsJson);
         _allAuctions.clear();
         _allAuctions.addAll(list.map((j) => Auction.fromFirestore(j)));
-        debugPrint('📦 Loaded ${_allAuctions.length} auctions from storage');
+        if (kDebugMode) { debugPrint('📦 Loaded ${_allAuctions.length} auctions from storage'); }
       }
 
       _tokenIdCounter = prefs.getInt('web3_tokenIdCounter') ?? 0;
       _auctionIdCounter = prefs.getInt('web3_auctionIdCounter') ?? 0;
     } catch (e) {
-      debugPrint('⚠️ Error loading from storage: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error loading from storage: $e'); }
     }
   }
 
@@ -597,7 +673,7 @@ class Web3Service extends Web3ServiceBase {
                 );
                 
                 _notifiedAuctionIds.add(auction.auctionId);
-                debugPrint('🔔 Notification sent for auction ${auction.auctionId}');
+                if (kDebugMode) { debugPrint('🔔 Notification sent for auction ${auction.auctionId}'); }
             }
         }
     });
@@ -677,11 +753,11 @@ class Web3Service extends Web3ServiceBase {
         // Check if WalletConnect already restored the session during initialize()
         connected = _walletConnect.isConnected;
         if (connected) {
-          debugPrint('✅ WalletConnect session still alive, restoring...');
+          if (kDebugMode) { debugPrint('✅ WalletConnect session still alive, restoring...'); }
           // Refresh the lastConnectedAt timestamp to prevent staleness
           await SessionService.instance.updateLastConnected();
         } else {
-          debugPrint('⚠️ WalletConnect session not alive, cannot restore silently');
+          if (kDebugMode) { debugPrint('⚠️ WalletConnect session not alive, cannot restore silently'); }
           // Clear stale session data so we don't retry on next launch
           await SessionService.instance.fullLogout();
           return false;
@@ -731,7 +807,7 @@ class Web3Service extends Web3ServiceBase {
       }
       return false;
     } catch (e) {
-      debugPrint('❌ _loadState error: $e');
+      if (kDebugMode) { debugPrint('❌ _loadState error: $e'); }
       if (e.toString().contains('WALLET_MISMATCH')) {
         rethrow; // Preserve the specific mismatch exception
       }
@@ -803,7 +879,7 @@ class Web3Service extends Web3ServiceBase {
   String _encodeMintCall(String name, String description, String imageHash, BigInt priceWei) {
     if (_nftContract == null) {
       // Auto-recovery attempt
-      debugPrint('[WEB3] ⚠️ _nftContract is null in _encodeMintCall, attempting recovery...');
+      if (kDebugMode) { debugPrint('[WEB3] ⚠️ _nftContract is null in _encodeMintCall, attempting recovery...'); }
       _initContracts();
     }
     if (_nftContract == null) {
@@ -827,22 +903,25 @@ class Web3Service extends Web3ServiceBase {
     required String imageUrl,
     required double price,
     String category = 'Technology',
+    String? metadataUrl,
+    String? copyrightHash,
+    String? hashAlgorithm,
   }) async {
     // ═══ STRICT PRE-FLIGHT VALIDATION ═══
-    debugPrint('[WEB3] ═══ Mint Pre-flight Check ═══');
-    debugPrint('[WEB3] Wallet: $_currentAddress');
-    debugPrint('[WEB3] Connected: $_isConnected');
-    debugPrint('[WEB3] Chain ID: $_chainId');
-    debugPrint('[WEB3] RPC ready: $_rpcReady');
-    debugPrint('[WEB3] NFT Contract ready: ${_nftContract != null}');
-    debugPrint('[WEB3] Initialized: $_isInitialized');
+    if (kDebugMode) { debugPrint('[MINT START] ═══════════════════════════════'); }
+    if (kDebugMode) { debugPrint('[MINT START] Wallet: $_currentAddress'); }
+    if (kDebugMode) { debugPrint('[MINT START] Connected: $_isConnected'); }
+    if (kDebugMode) { debugPrint('[MINT START] Chain ID: $_chainId'); }
+    if (kDebugMode) { debugPrint('[MINT START] RPC ready: $_rpcReady'); }
+    if (kDebugMode) { debugPrint('[MINT START] NFT Contract ready: ${_nftContract != null}'); }
+    if (kDebugMode) { debugPrint('[MINT START] Initialized: $_isInitialized'); }
 
     if (_currentAddress == null) throw Exception('Wallet not connected');
     if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia network in MetaMask');
 
     // Ensure contracts are ready (auto-recovery for hot reload)
     if (_nftContract == null) {
-      debugPrint('[WEB3] ⚠️ Contract null at mint — running ensureContractsInitialized()');
+      if (kDebugMode) { debugPrint('[MINT START] ⚠️ Contract null — running ensureContractsInitialized()'); }
       await ensureContractsInitialized();
     }
     if (_nftContract == null) {
@@ -859,26 +938,29 @@ class Web3Service extends Web3ServiceBase {
     final txData = _encodeMintCall(name, description, imageHash, priceWei);
 
     try {
-      debugPrint('🚀 Sending mint transaction to LogoNFT contract...');
-      debugPrint('📄 Contract: ${ContractConfig.logoNFTAddress}');
+      if (kDebugMode) { debugPrint('[TX SENT] 🚀 Sending mint transaction to LogoNFT contract...'); }
+      if (kDebugMode) { debugPrint('[TX SENT] 📄 Contract: ${ContractConfig.logoNFTAddress}'); }
       
       final txHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoNFTAddress,
         data: txData,
       );
       
-      debugPrint('✅ Mint transaction sent: $txHash');
-      debugPrint('🔗 View on Etherscan: ${ContractConfig.getEtherscanTxUrl(txHash)}');
+      if (kDebugMode) { debugPrint('[TX SENT] ✅ Mint transaction sent: $txHash'); }
+      if (kDebugMode) { debugPrint('[TX SENT] 🔗 Etherscan: ${ContractConfig.getEtherscanTxUrl(txHash)}'); }
       
-      debugPrint('⏳ Waiting for confirmation...');
+      if (kDebugMode) { debugPrint('[WAITING CONFIRMATION] ⏳ Waiting for blockchain confirmation...'); }
       final receipt = await _waitForReceipt(txHash);
 
-      if (receipt == null || receipt.status == false) {
-          throw Exception('Transaction failed on-chain');
+      if (receipt == null || receipt.status != true) {
+        if (kDebugMode) { debugPrint('[TX FAILED] ❌ Transaction failed on-chain'); }
+        throw Exception('Transaction failed on-chain');
       }
       
+      if (kDebugMode) { debugPrint('[TX CONFIRMED] ✅ Transaction confirmed on-chain'); }
+      
       final realTokenId = _parseTokenIdFromReceipt(receipt);
-      debugPrint('🎉 Minted Token ID: $realTokenId');
+      if (kDebugMode) { debugPrint('[TOKEN ID PARSED] 🎉 Real Token ID from blockchain: $realTokenId'); }
 
       final firebaseUid = AuthService.instance.currentUser?.uid ?? _currentAddress?.toLowerCase() ?? '';
       
@@ -896,8 +978,27 @@ class Web3Service extends Web3ServiceBase {
         price: price,
         txHash: txHash,
         category: category,
-        // NFT starts as pending on-chain, but we track it locally
+        status: ValidationStatus.pending,
+        metadataUrl: metadataUrl,
+        copyrightHash: copyrightHash ?? '',
+        hashAlgorithm: hashAlgorithm ?? 'SHA-256',
+        copyrightVerifiedAt: DateTime.now(),
+        nftVisible: false,
+        auctionStatus: 'NONE',
+        isAuctionActive: false,
+        isInAuction: false,
+        isMetadataLocked: false,
       );
+
+      // ═══ ATOMIC FIRESTORE WRITE — ONLY AFTER BLOCKCHAIN SUCCESS ═══
+      try {
+        if (kDebugMode) { debugPrint('[FIRESTORE SAVE START] 🔥 Saving NFT #$realTokenId to Firestore...'); }
+        await FirestoreService.instance.saveNFT(logo);
+        if (kDebugMode) { debugPrint('[FIRESTORE SAVE SUCCESS] ✅ NFT #$realTokenId saved to Firestore'); }
+      } catch (fsError) {
+        if (kDebugMode) { debugPrint('[FIRESTORE SAVE] ⚠️ Firestore write failed: $fsError'); }
+        throw Exception('Firestore fail: $fsError');
+      }
 
       // Remove any existing entry with same tokenId (from chain load)
       _allLogos.removeWhere((l) => l.tokenId == realTokenId);
@@ -913,15 +1014,78 @@ class Web3Service extends Web3ServiceBase {
       await _updateBalance();
       await _saveToStorage();
       notifyListeners();
+      
+      if (kDebugMode) { debugPrint('[MINT COMPLETE] ✅ Token #$realTokenId minted and saved successfully'); }
+      if (kDebugMode) { debugPrint('[MINT COMPLETE] ═══════════════════════════════'); }
       return logo;
     } catch (e) {
-      debugPrint('❌ Mint failed: $e');
-      if (e.toString().contains('User rejected')) {
+      if (kDebugMode) { debugPrint('[MINT FAILED] ❌ Mint failed: $e'); }
+      if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
         throw Exception('Transaction cancelled by user');
       }
       throw Exception('Mint failed: $e');
     }
   }
+
+  String _encodeCreateAuctionCall(BigInt tokenId, EthereumAddress creator, BigInt startingPriceWei, BigInt reservePriceWei, BigInt durationSeconds) {
+    if (_auctionContract == null) {
+      if (kDebugMode) { debugPrint('[WEB3] ⚠️ _auctionContract is null in _encodeCreateAuctionCall, attempting recovery...'); }
+      _initContracts();
+    }
+    if (_auctionContract == null) {
+      throw Exception('Auction Contract initialization failed.');
+    }
+    final function = _auctionContract!.function('createAuction');
+    final data = function.encodeCall([tokenId, creator, startingPriceWei, reservePriceWei, durationSeconds]);
+    return '0x${bytesToHex(data)}';
+  }
+
+  @override
+  Future<String> createAuctionOnChain({
+    required int tokenId,
+    required String creatorAddress,
+    required double startingPrice,
+    required int durationSeconds,
+  }) async {
+    if (kDebugMode) { debugPrint('[WEB3] ═══ Create Auction Pre-flight Check ═══'); }
+    if (_currentAddress == null) throw Exception('Wallet not connected');
+    if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia network in MetaMask');
+
+    if (_auctionContract == null) {
+      await ensureContractsInitialized();
+    }
+    if (_auctionContract == null) {
+      throw Exception('Auction Contract not initialized.');
+    }
+
+    final tokenIdBigInt = BigInt.from(tokenId);
+    final creatorEthAddress = EthereumAddress.fromHex(creatorAddress);
+    final startingPriceWei = BigInt.from(startingPrice * 1e18);
+    final reservePriceWei = BigInt.zero;
+    final durationBigInt = BigInt.from(durationSeconds);
+    
+    final txData = _encodeCreateAuctionCall(tokenIdBigInt, creatorEthAddress, startingPriceWei, reservePriceWei, durationBigInt);
+
+    try {
+      if (kDebugMode) { debugPrint('🚀 Sending createAuction transaction to LogoAuction contract...'); }
+      final txHash = await _walletConnect.sendTransaction(
+        to: ContractConfig.logoAuctionAddress,
+        data: txData,
+      );
+      if (kDebugMode) { debugPrint('✅ createAuction transaction sent: $txHash'); }
+      
+      final receipt = await _waitForReceipt(txHash);
+      if (receipt == null || receipt.status != true) {
+          throw Exception('Transaction failed on-chain');
+      }
+      return txHash;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ createAuction failed: $e'); }
+      throw Exception('Create auction failed: $e');
+    }
+  }
+
+
   
   Future<void> _updateBalance() async {
     if (_currentAddress == null) return;
@@ -932,7 +1096,7 @@ class Web3Service extends Web3ServiceBase {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('Error updating balance: $e');
+      if (kDebugMode) { debugPrint('Error updating balance: $e'); }
     }
   }
 
@@ -1055,14 +1219,14 @@ class Web3Service extends Web3ServiceBase {
   Future<void> approveNFT(int tokenId) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
     
-    debugPrint('🚀 Approving NFT $tokenId...');
+    if (kDebugMode) { debugPrint('🚀 Approving NFT $tokenId...'); }
     final data = _encodeApproveNFTCall(tokenId);
     
     final txHash = await _walletConnect.sendTransaction(
       to: ContractConfig.logoNFTAddress,
       data: data,
     );
-    debugPrint('✅ Approve NFT TX: $txHash');
+    if (kDebugMode) { debugPrint('✅ Approve NFT TX: $txHash'); }
     
     // Wait for confirmation
     await _waitForReceipt(txHash);
@@ -1079,14 +1243,14 @@ class Web3Service extends Web3ServiceBase {
   Future<void> rejectNFT(int tokenId) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
     
-    debugPrint('🚀 Rejecting NFT $tokenId...');
+    if (kDebugMode) { debugPrint('🚀 Rejecting NFT $tokenId...'); }
     final data = _encodeRejectNFTCall(tokenId);
     
     final txHash = await _walletConnect.sendTransaction(
       to: ContractConfig.logoNFTAddress,
       data: data,
     );
-    debugPrint('✅ Reject NFT TX: $txHash');
+    if (kDebugMode) { debugPrint('✅ Reject NFT TX: $txHash'); }
     
     final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
     if (index != -1) {
@@ -1100,14 +1264,14 @@ class Web3Service extends Web3ServiceBase {
   Future<void> disableNFT(int tokenId) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
     
-    debugPrint('🚀 Disabling NFT $tokenId...');
+    if (kDebugMode) { debugPrint('🚀 Disabling NFT $tokenId...'); }
     final data = _encodeDisableNFTCall(tokenId);
     
     final txHash = await _walletConnect.sendTransaction(
       to: ContractConfig.logoNFTAddress,
       data: data,
     );
-    debugPrint('✅ Disable NFT TX: $txHash');
+    if (kDebugMode) { debugPrint('✅ Disable NFT TX: $txHash'); }
     
     final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
     if (index != -1) {
@@ -1122,7 +1286,7 @@ class Web3Service extends Web3ServiceBase {
   }
 
   // ============ Auction Operations ============
-  // These encoding helpers are kept for future on-chain auction integration.
+  // These encoding helpers are used by the on-chain auction methods below.
 
   // ignore: unused_element
   String _encodeApproveCall(String spender, BigInt tokenId) {
@@ -1133,7 +1297,7 @@ class Web3Service extends Web3ServiceBase {
         final data = function.encodeCall([EthereumAddress.fromHex(spender), tokenId]);
         return '0x${bytesToHex(data)}';
       } catch (e) {
-        debugPrint('⚠️ ABI encode approve failed, using manual: $e');
+        if (kDebugMode) { debugPrint('⚠️ ABI encode approve failed, using manual: $e'); }
       }
     }
     // Manual encoding: approve(address,uint256)
@@ -1144,50 +1308,261 @@ class Web3Service extends Web3ServiceBase {
     return '0x$selector$spenderArg$tokenIdArg';
   }
 
-  // ignore: unused_element
-  String _encodeCreateAuctionCall(int tokenId, String creator, BigInt startingPrice, BigInt reservePrice, int durationSeconds) {
-    // Try contract-based encoding first, fallback to manual
-    if (_auctionContract != null) {
-      try {
-        final function = _auctionContract!.function('createAuction');
-        final data = function.encodeCall([
-          BigInt.from(tokenId),
-          EthereumAddress.fromHex(creator),
-          startingPrice,
-          reservePrice,
-          BigInt.from(durationSeconds)
-        ]);
-        return '0x${bytesToHex(data)}';
-      } catch (e) {
-        debugPrint('⚠️ ABI encode createAuction failed, using manual: $e');
-      }
-    }
-    // Manual encoding: createAuction(uint256,address,uint256,uint256,uint256)
-    // Function selector: keccak256("createAuction(uint256,address,uint256,uint256,uint256)") = 0xf84b2591
-    const selector = 'f84b2591';
-    final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
-    final creatorArg = creator.replaceFirst('0x', '').toLowerCase().padLeft(64, '0');
-    final startPriceArg = startingPrice.toRadixString(16).padLeft(64, '0');
-    final reservePriceArg = reservePrice.toRadixString(16).padLeft(64, '0');
-    final durationArg = BigInt.from(durationSeconds).toRadixString(16).padLeft(64, '0');
-    return '0x$selector$tokenIdArg$creatorArg$startPriceArg$reservePriceArg$durationArg';
-  }
 
-  // ignore: unused_element
+
   String _encodePlaceBidCall(int auctionId) {
     const selector = '1998aeef';
     final auctionIdArg = BigInt.from(auctionId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$auctionIdArg';
   }
 
-  // ignore: unused_element
   String _encodeEndAuctionCall(int auctionId) {
     const selector = '51b88e00';
     final auctionIdArg = BigInt.from(auctionId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$auctionIdArg';
   }
 
+  /// Create an on-chain auction for an approved NFT.
+  ///
+  /// This is a TWO-STEP process:
+  ///   1. Approve the LogoAuction contract to transfer the NFT (ERC-721 approve)
+  ///   2. Call `createAuction` on LogoAuction to escrow the NFT and start the auction
+  ///
+  /// After both blockchain transactions succeed, Firestore is updated to reflect the live auction.
+  Future<void> createAuction(int tokenId) async {
+    if (_currentAddress == null) throw Exception('Wallet not connected');
+    if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
 
+    // Look up NFT data from Firestore
+    final nftDoc = await FirestoreService.instance.db
+        .collection('nfts')
+        .doc(tokenId.toString())
+        .get();
+    if (!nftDoc.exists) throw Exception('NFT not found in Firestore');
+
+    final nftData = nftDoc.data()!;
+    final status = nftData['status'] as String? ?? '';
+    if (status != 'approved' && status != 'available') {
+      throw Exception('NFT must be approved before starting an auction. Current status: $status');
+    }
+
+    final creatorWallet = nftData['creatorWallet'] as String? ?? _currentAddress!;
+    final priceEth = (nftData['price'] as num?)?.toDouble() ?? 0.01;
+    final durationSeconds = nftData['auctionDuration'] as int? ?? 86400;
+
+    // Convert ETH to Wei
+    final startingPriceWei = BigInt.from(priceEth * 1e18);
+    final reservePriceWei = startingPriceWei; // reserve = starting price
+
+    try {
+      // ── STEP 1: Approve the Auction Contract to transfer NFT ──
+      if (kDebugMode) { debugPrint('🚀 Step 1: Approving Auction Contract for NFT #$tokenId...'); }
+      final approveData = _encodeApproveCall(
+        ContractConfig.logoAuctionAddress,
+        BigInt.from(tokenId),
+      );
+
+      final approveTxHash = await _walletConnect.sendTransaction(
+        to: ContractConfig.logoNFTAddress,
+        data: approveData,
+      );
+      if (kDebugMode) { debugPrint('✅ Approve TX: $approveTxHash'); }
+
+      // Wait for approval to be mined
+      final approveReceipt = await _waitForReceipt(approveTxHash);
+      if (approveReceipt == null || approveReceipt.status != true) {
+        throw Exception('Approve transaction failed on-chain');
+      }
+      if (kDebugMode) { debugPrint('✅ Approval confirmed on-chain'); }
+
+      // ── STEP 2: Create the Auction on-chain ──
+      if (kDebugMode) { debugPrint('🚀 Step 2: Creating Auction on-chain for NFT #$tokenId...'); }
+      final createData = _encodeCreateAuctionCall(
+        BigInt.from(tokenId),
+        EthereumAddress.fromHex(creatorWallet),
+        startingPriceWei,
+        reservePriceWei,
+        BigInt.from(durationSeconds),
+      );
+
+      final createTxHash = await _walletConnect.sendTransaction(
+        to: ContractConfig.logoAuctionAddress,
+        data: createData,
+      );
+      if (kDebugMode) { debugPrint('✅ CreateAuction TX: $createTxHash'); }
+
+      // Wait for confirmation
+      final createReceipt = await _waitForReceipt(createTxHash);
+      if (createReceipt == null || createReceipt.status != true) {
+        throw Exception('CreateAuction transaction failed on-chain');
+      }
+
+      // Parse the on-chain auction ID from the AuctionCreated event
+      int onChainAuctionId = tokenId; // fallback
+      try {
+        onChainAuctionId = _parseAuctionIdFromReceipt(createReceipt);
+      } catch (_) {
+        if (kDebugMode) { debugPrint('⚠️ Could not parse auction ID from receipt, using tokenId as fallback'); }
+      }
+      if (kDebugMode) { debugPrint('🎉 Auction created on-chain! Auction ID: $onChainAuctionId'); }
+
+      // ── STEP 3: Update Firestore to reflect AUCTION_LIVE ──
+      await FirestoreService.instance.startAuction(tokenId, onChainAuctionId: onChainAuctionId);
+
+      // Update local state
+      final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
+      if (index != -1) {
+        _allLogos[index] = _allLogos[index].copyWith(
+          status: ValidationStatus.auction,
+          isInAuction: true,
+          isAuctionActive: true,
+          auctionCreated: true,
+        );
+      }
+
+      await _updateBalance();
+      await _saveToStorage();
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ createAuction failed: $e'); }
+      if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
+        throw Exception('Transaction cancelled by user');
+      }
+      rethrow;
+    }
+  }
+
+  /// Place a bid on an active on-chain auction.
+  ///
+  /// Sends ETH as msg.value to the `placeBid(auctionId)` function on LogoAuction.
+  /// After the blockchain transaction succeeds, updates Firestore with the bid data.
+  Future<void> placeBid(int tokenId, double amountInEth) async {
+    if (_currentAddress == null) throw Exception('Wallet not connected');
+    if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
+
+    // Lookup the on-chain auction ID from Firestore
+    final auctionDoc = await FirestoreService.instance.db
+        .collection('auctions')
+        .doc(tokenId.toString())
+        .get();
+    
+    int onChainAuctionId;
+    if (auctionDoc.exists) {
+      onChainAuctionId = auctionDoc.data()?['auctionId'] as int? ?? tokenId;
+    } else {
+      throw Exception('No active auction found for this NFT');
+    }
+
+    // Convert ETH to Wei (hex string)
+    final amountStr = amountInEth.toStringAsFixed(18);
+    final parts = amountStr.split('.');
+    final whole = parts[0];
+    final decimal = parts.length > 1
+        ? parts[1].padRight(18, '0')
+        : '000000000000000000';
+    final weiAmount = BigInt.parse('$whole$decimal');
+    final weiHex = '0x${weiAmount.toRadixString(16)}';
+
+    try {
+      if (kDebugMode) { debugPrint('🚀 Placing on-chain bid: $amountInEth ETH ($weiHex wei) on Auction #$onChainAuctionId'); }
+
+      final data = _encodePlaceBidCall(onChainAuctionId);
+
+      final txHash = await _walletConnect.sendTransaction(
+        to: ContractConfig.logoAuctionAddress,
+        data: data,
+        value: weiHex,
+      );
+      if (kDebugMode) { debugPrint('✅ PlaceBid TX: $txHash'); }
+
+      // Wait for confirmation
+      final receipt = await _waitForReceipt(txHash);
+      if (receipt == null || receipt.status != true) {
+        throw Exception('Bid transaction failed on-chain');
+      }
+      if (kDebugMode) { debugPrint('✅ Bid confirmed on-chain!'); }
+
+      // ── Sync Firestore with on-chain bid ──
+      final bid = Bid(
+        bidId: _currentAddress!.toLowerCase(),
+        bidderId: AuthService.instance.currentUser?.uid ?? '',
+        bidderWallet: _currentAddress!,
+        amount: amountInEth,
+        firstBidTimestamp: DateTime.now(),
+        lastBidTimestamp: DateTime.now(),
+        transactionHash: txHash,
+      );
+      await FirestoreService.instance.placeBid(tokenId, bid, userBalance: _balance);
+
+      await _updateBalance();
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ placeBid failed: $e'); }
+      if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
+        throw Exception('Transaction cancelled by user');
+      }
+      rethrow;
+    }
+  }
+
+  /// End an on-chain auction and trigger settlement (NFT transfer + payment distribution).
+  Future<void> endAuction(int tokenId) async {
+    if (_currentAddress == null) throw Exception('Wallet not connected');
+    if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
+
+    // Lookup on-chain auction ID
+    final auctionDoc = await FirestoreService.instance.db
+        .collection('auctions')
+        .doc(tokenId.toString())
+        .get();
+    
+    int onChainAuctionId;
+    if (auctionDoc.exists) {
+      onChainAuctionId = auctionDoc.data()?['auctionId'] as int? ?? tokenId;
+    } else {
+      throw Exception('No auction found for this NFT');
+    }
+
+    try {
+      if (kDebugMode) { debugPrint('🚀 Ending auction #$onChainAuctionId on-chain...'); }
+
+      final data = _encodeEndAuctionCall(onChainAuctionId);
+
+      final txHash = await _walletConnect.sendTransaction(
+        to: ContractConfig.logoAuctionAddress,
+        data: data,
+      );
+      if (kDebugMode) { debugPrint('✅ EndAuction TX: $txHash'); }
+
+      final receipt = await _waitForReceipt(txHash);
+      if (receipt == null || receipt.status != true) {
+        throw Exception('EndAuction transaction failed on-chain');
+      }
+      if (kDebugMode) { debugPrint('✅ Auction ended and settled on-chain!'); }
+
+      // ── Sync Firestore ──
+      await FirestoreService.instance.endOffChainAuction(tokenId);
+
+      // Update local state
+      final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
+      if (index != -1) {
+        _allLogos[index] = _allLogos[index].copyWith(
+          isInAuction: false,
+          isAuctionActive: false,
+        );
+      }
+
+      await _updateBalance();
+      await _saveToStorage();
+      notifyListeners();
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ endAuction failed: $e'); }
+      if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
+        throw Exception('Transaction cancelled by user');
+      }
+      rethrow;
+    }
+  }
 
   @override
   Future<String> payAuctionWinner(String sellerWallet, double amountInEth) async {
@@ -1200,10 +1575,10 @@ class Web3Service extends Web3ServiceBase {
     }
 
     try {
-      debugPrint('[PAYMENT] Opening MetaMask');
-      debugPrint('[PAYMENT] Winning Bid: $amountInEth');
-      debugPrint('[PAYMENT] Creator Wallet: $sellerWallet');
-      debugPrint('[PAYMENT] Winner Wallet: $_currentAddress');
+      if (kDebugMode) { debugPrint('[PAYMENT] Opening MetaMask'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Winning Bid: $amountInEth'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Creator Wallet: $sellerWallet'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Winner Wallet: $_currentAddress'); }
       
       // Strict string-based ETH to Wei conversion to avoid precision loss
       final amountStr = amountInEth.toStringAsFixed(18);
@@ -1214,10 +1589,10 @@ class Web3Service extends Web3ServiceBase {
           : '000000000000000000';
       final weiAmount = BigInt.parse('$whole$decimal');
 
-      debugPrint('=== PAYMENT DEBUG ===');
-      debugPrint('Winning Bid ETH: $amountInEth');
-      debugPrint('Wei Amount: $weiAmount');
-      debugPrint('Hex Value: 0x${weiAmount.toRadixString(16)}');
+      if (kDebugMode) { debugPrint('=== PAYMENT DEBUG ==='); }
+      if (kDebugMode) { debugPrint('Winning Bid ETH: $amountInEth'); }
+      if (kDebugMode) { debugPrint('Wei Amount: $weiAmount'); }
+      if (kDebugMode) { debugPrint('Hex Value: 0x${weiAmount.toRadixString(16)}'); }
 
       final weiAmountHex = '0x${weiAmount.toRadixString(16)}';
       
@@ -1229,11 +1604,11 @@ class Web3Service extends Web3ServiceBase {
         value: weiAmountHex,
       );
       
-      debugPrint('[PAYMENT] Validating blockchain transaction...');
+      if (kDebugMode) { debugPrint('[PAYMENT] Validating blockchain transaction...'); }
       
       final receipt = await _waitForReceipt(txHash);
 
-      if (receipt == null || receipt.status == false) {
+      if (receipt == null || receipt.status != true) {
           throw Exception('Blockchain transaction failed');
       }
 
@@ -1258,14 +1633,14 @@ class Web3Service extends Web3ServiceBase {
           throw Exception('Receiver wallet mismatch.');
       }
       
-      debugPrint('[PAYMENT] Exact amount validation passed');
+      if (kDebugMode) { debugPrint('[PAYMENT] Exact amount validation passed'); }
       
       await _updateBalance();
       notifyListeners();
       
       return txHash;
     } catch (e) {
-      debugPrint('❌ Payment failed: $e');
+      if (kDebugMode) { debugPrint('❌ Payment failed: $e'); }
       if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
         throw Exception('Payment cancelled');
       }
@@ -1338,19 +1713,19 @@ class Web3Service extends Web3ServiceBase {
 
   Future<TransactionReceipt?> _waitForReceipt(String txHash) async {
       int attempts = 0;
-      while (attempts < 30) {
+      while (attempts < 60) {
           try {
               final receipt = await _client.getTransactionReceipt(txHash);
               if (receipt != null) {
                   return receipt;
               }
           } catch (e) {
-              debugPrint('Error checking receipt: $e');
+              if (kDebugMode) { debugPrint('Error checking receipt: $e'); }
           }
           await Future.delayed(const Duration(seconds: 2));
           attempts++;
       }
-      throw Exception('Transaction timed out');
+      throw Exception('Transaction timed out on-chain (waited 120s)');
   }
 
   int _parseTokenIdFromReceipt(TransactionReceipt receipt) {
@@ -1367,7 +1742,7 @@ class Web3Service extends Web3ServiceBase {
           }
       }
       
-      debugPrint('Logs found: ${receipt.logs.length}');
+      if (kDebugMode) { debugPrint('Logs found: ${receipt.logs.length}'); }
       throw Exception('Could not find Token ID in transaction receipt');
   }
 

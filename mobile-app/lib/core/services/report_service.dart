@@ -46,14 +46,14 @@ class ReportService {
     );
 
     _reports.add(report);
-    debugPrint('📋 Report #${report.id} submitted for token $tokenId');
+    if (kDebugMode) { debugPrint('📋 Report #${report.id} submitted for token $tokenId'); }
     return report;
   }
 
   /// Remove all reports for a specific token.
   void removeReport(int tokenId) {
     _reports.removeWhere((r) => r.tokenId == tokenId);
-    debugPrint('🗑️ Reports removed for token $tokenId');
+    if (kDebugMode) { debugPrint('🗑️ Reports removed for token $tokenId'); }
   }
 
   /// Get all reports for a specific token.

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
@@ -34,7 +35,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
         return LogoNFT.fromFirestore(data);
       }
     } catch (e) {
-      debugPrint('Error fetching logo: $e');
+      if (kDebugMode) { debugPrint('Error fetching logo: $e'); }
     }
     return null;
   }
@@ -218,7 +219,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
     final double serviceFee = auction.highestBid * (Web3ServiceBase.platformFeePercentage / 100);
     final double totalPayment = auction.highestBid; // Service fee is deducted from seller, buyer pays exact bid
 
-    debugPrint('🔥 [PAYMENT PAGE DEBUG] TokenID: ${logo.tokenId} | logo.highestBid: ${logo.highestBid} | auction.highestBid: ${auction.highestBid}');
+
 
     return Container(
       padding: const EdgeInsets.all(AppSpacing.lg),
@@ -404,6 +405,11 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
               'MetaMask will open to confirm the transaction',
               style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
             ),
+            const SizedBox(height: 4),
+            Text(
+              'Estimated Gas Fee will be calculated by MetaMask',
+              style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary, fontStyle: FontStyle.italic),
+            ),
           ],
         ),
       ),
@@ -420,9 +426,21 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
       );
       return;
     }
+    if (logo.isPaymentProcessing) {
+      NotificationManager.show(
+        context: context,
+        title: 'Payment in Progress',
+        message: 'A payment is already being processed for this NFT.',
+        type: NotificationType.warning,
+      );
+      return;
+    }
 
     setState(() => _isProcessingPayment = true);
+    await FirestoreService.instance.setPaymentProcessing(logo.tokenId, true);
 
+    if (!mounted) return;
+    
     // Show Processing Dialog
     showDialog(
       context: context,
@@ -474,11 +492,14 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
         builder: (context) => AlertDialog(
           backgroundColor: AppColors.surface,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+          insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
           title: const Row(
             children: [
               Icon(Icons.check_circle, color: AppColors.success, size: 28),
               SizedBox(width: 12),
-              Text('Payment Successful!', style: TextStyle(color: AppColors.textPrimary)),
+              Expanded(
+                child: Text('Payment Successful!', style: TextStyle(color: AppColors.textPrimary)),
+              ),
             ],
           ),
           content: Column(
@@ -516,6 +537,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
         type: NotificationType.error,
       );
     } finally {
+      await FirestoreService.instance.setPaymentProcessing(logo.tokenId, false);
       if (mounted) {
         setState(() => _isProcessingPayment = false);
       }

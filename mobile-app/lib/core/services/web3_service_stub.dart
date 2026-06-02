@@ -42,6 +42,9 @@ class Web3Service extends Web3ServiceBase {
     required String imageUrl,
     required double price,
     String category = 'Technology',
+    String? metadataUrl,
+    String? copyrightHash,
+    String? hashAlgorithm,
   }) async => throw UnimplementedError();
 
   @override Future<void> listForSale(int tokenId, double price) async {}
@@ -53,6 +56,7 @@ class Web3Service extends Web3ServiceBase {
   @override Future<void> disableNFT(int tokenId) async {}
 
   @override Future<String> payAuctionWinner(String sellerWallet, double amountInEth) async => throw UnimplementedError();
+  @override Future<String> createAuctionOnChain({required int tokenId, required String creatorAddress, required double startingPrice, required int durationSeconds}) async => throw UnimplementedError();
 
   @override List<LogoNFT> getMyLogos() => [];
   @override List<LogoNFT> getMyCreatedLogos() => [];

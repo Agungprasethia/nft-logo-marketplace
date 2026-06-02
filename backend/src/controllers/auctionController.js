@@ -181,6 +181,8 @@ exports.completePayment = async (req, res) => {
                 auctionCreated: false,
                 isActive: false,
                 paymentPending: false,
+                isPaymentProcessing: false,
+                isMetadataLocked: true,
                 paymentCompletedAt: admin.firestore.FieldValue.serverTimestamp(),
                 paymentTxHash: txHash,
                 updatedAt: admin.firestore.FieldValue.serverTimestamp(),
@@ -242,6 +244,7 @@ exports.requestReAuction = async (req, res) => {
             const isFrozen = data.isFrozen || false;
 
             if (currentStatus === 'rejected') throw new Error('Rejected NFTs cannot be re-auctioned.');
+            if (currentStatus === 'sold' || data.isMetadataLocked) throw new Error('Sold NFTs cannot be re-auctioned.');
             if (isFrozen) throw new Error('Frozen NFTs cannot be re-auctioned.');
             if (data.isAuctionActive) throw new Error('NFT currently has an active auction.');
 

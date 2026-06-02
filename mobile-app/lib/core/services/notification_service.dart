@@ -1,5 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -35,12 +35,12 @@ class NotificationService {
     await flutterLocalNotificationsPlugin.initialize(
       initializationSettings,
       onDidReceiveNotificationResponse: (NotificationResponse response) {
-        debugPrint('Notification clicked: ${response.payload}');
+        if (kDebugMode) { debugPrint('Notification clicked: ${response.payload}'); }
       },
     );
     
     _isInitialized = true;
-    debugPrint('🔔 Notification Service Initialized');
+    if (kDebugMode) { debugPrint('🔔 Notification Service Initialized'); }
   }
 
   Future<void> showNotification({

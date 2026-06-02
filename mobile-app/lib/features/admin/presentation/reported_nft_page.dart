@@ -10,6 +10,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_page.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/widgets/leaderboard_modal.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
+import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
 
@@ -345,7 +346,14 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
                         label: 'View NFT',
                         color: AppColors.surfaceLight,
                         textColor: AppColors.textPrimary,
-                        onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(tokenId: tokenId))),
+                        onPressed: () {
+                          final logo = Web3Service.instance.allLogos.cast<LogoNFT?>().firstWhere((l) => l?.tokenId == tokenId, orElse: () => null);
+                          if (logo != null) {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: logo)));
+                          } else {
+                            NotificationManager.show(context: context, title: 'Error', message: 'NFT data not found', type: NotificationType.error);
+                          }
+                        },
                       ),
                     ),
                     const SizedBox(width: AppSpacing.sm),

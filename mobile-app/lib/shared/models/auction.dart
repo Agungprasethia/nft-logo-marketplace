@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 
 /// Auction Status enum
 enum AuctionStatus { draft, active, ended, endedNoBids, paymentPending, paymentCompleted, paymentExpired, claimed, failedPayment, frozen, cancelled, reAuctionRequested, rejected }
@@ -292,8 +291,8 @@ class Auction {
       parsedPaymentExpiredAt = DateTime.parse(data['paymentExpiredAt'] as String);
     }
 
-    final highestBid = (data['highestBid'] as num?)?.toDouble() ?? 0.0;
-    debugPrint('🔥 [AUCTION MODEL DEBUG] TokenID: ${data['tokenId']} | highestBid from map: ${data['highestBid']} | Parsed: $highestBid');
+
+
 
     return Auction(
       auctionId: data['auctionId'] as int? ?? 0,

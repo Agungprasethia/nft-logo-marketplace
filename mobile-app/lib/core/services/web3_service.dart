@@ -57,6 +57,9 @@ abstract class Web3ServiceBase extends ChangeNotifier {
     required String imageUrl,
     required double price,
     String category = 'Technology',
+    String? metadataUrl,
+    String? copyrightHash,
+    String? hashAlgorithm,
   });
   Future<void> listForSale(int tokenId, double price);
   Future<void> cancelListing(int tokenId);
@@ -70,6 +73,14 @@ abstract class Web3ServiceBase extends ChangeNotifier {
   // Auction Operations have been migrated to FirestoreService
   // No longer implemented on-chain, except for final payment transfer
   Future<String> payAuctionWinner(String sellerWallet, double amountInEth);
+  
+  // Re-adding on-chain auction creation as per the reference flow
+  Future<String> createAuctionOnChain({
+    required int tokenId,
+    required String creatorAddress,
+    required double startingPrice,
+    required int durationSeconds,
+  });
 
   // Query methods
   List<LogoNFT> getMyLogos();

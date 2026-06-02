@@ -127,7 +127,7 @@ class Web3Service extends Web3ServiceBase {
         }),
       ]);
     } catch (e) {
-      debugPrint('Error setting up account listener: $e');
+      if (kDebugMode) { debugPrint('Error setting up account listener: $e'); }
     }
   }
 
@@ -142,7 +142,7 @@ class Web3Service extends Web3ServiceBase {
         }),
       ]);
     } catch (e) {
-      debugPrint('Error setting up chain listener: $e');
+      if (kDebugMode) { debugPrint('Error setting up chain listener: $e'); }
     }
   }
 
@@ -173,13 +173,13 @@ class Web3Service extends Web3ServiceBase {
         await _updateBalance();
         // Persist session awareness for page refresh
         _saveWebSession();
-        debugPrint('✅ Web wallet restored from MetaMask: $_currentAddress');
+        if (kDebugMode) { debugPrint('✅ Web wallet restored from MetaMask: $_currentAddress'); }
       } else {
         // MetaMask has no active accounts — clear stale session
         _clearWebSession();
       }
     } catch (e) {
-      debugPrint('Error checking connection: $e');
+      if (kDebugMode) { debugPrint('Error checking connection: $e'); }
     }
   }
 
@@ -233,14 +233,14 @@ class Web3Service extends Web3ServiceBase {
         return true;
       } else {
         if (restoreSession) {
-          debugPrint('⚠️ Silent restore failed (no accounts). Clearing session.');
+          if (kDebugMode) { debugPrint('⚠️ Silent restore failed (no accounts). Clearing session.'); }
           _clearWebSession();
           await SessionService.instance.fullLogout();
         }
         return false;
       }
     } catch (e) {
-      debugPrint('Error connecting browser wallet: $e');
+      if (kDebugMode) { debugPrint('Error connecting browser wallet: $e'); }
       if (e.toString().contains('WALLET_MISMATCH')) {
         rethrow;
       }
@@ -258,7 +258,7 @@ class Web3Service extends Web3ServiceBase {
       html.window.location.href = metamaskDeepLink;
       return true;
     } catch (e) {
-      debugPrint('Error connecting mobile wallet: $e');
+      if (kDebugMode) { debugPrint('Error connecting mobile wallet: $e'); }
       throw Exception('Failed to open MetaMask App: $e');
     }
   }
@@ -313,9 +313,9 @@ class Web3Service extends Web3ServiceBase {
       if (_chainId != null) {
         html.window.localStorage['leo_chain_id'] = _chainId.toString();
       }
-      debugPrint('💾 Web session saved to localStorage');
+      if (kDebugMode) { debugPrint('💾 Web session saved to localStorage'); }
     } catch (e) {
-      debugPrint('⚠️ Error saving web session: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error saving web session: $e'); }
     }
   }
 
@@ -327,9 +327,9 @@ class Web3Service extends Web3ServiceBase {
       html.window.localStorage.remove('leo_wallet_provider');
       html.window.localStorage.remove('leo_last_connected');
       html.window.localStorage.remove('leo_chain_id');
-      debugPrint('🔌 Web session cleared from localStorage');
+      if (kDebugMode) { debugPrint('🔌 Web session cleared from localStorage'); }
     } catch (e) {
-      debugPrint('⚠️ Error clearing web session: $e');
+      if (kDebugMode) { debugPrint('⚠️ Error clearing web session: $e'); }
     }
   }
 
@@ -343,8 +343,18 @@ class Web3Service extends Web3ServiceBase {
       );
       _chainId = int.parse(result.toString().replaceFirst('0x', ''), radix: 16);
     } catch (e) {
-      debugPrint('Error getting chain ID: $e');
+      if (kDebugMode) { debugPrint('Error getting chain ID: $e'); }
     }
+  }
+
+  @override
+  Future<String> createAuctionOnChain({
+    required int tokenId,
+    required String creatorAddress,
+    required double startingPrice,
+    required int durationSeconds,
+  }) async {
+    throw UnimplementedError('createAuctionOnChain not implemented for web yet');
   }
 
   Future<void> _updateBalance() async {
@@ -365,7 +375,7 @@ class Web3Service extends Web3ServiceBase {
       _balance = balanceWei / BigInt.from(10).pow(18);
       notifyListeners();
     } catch (e) {
-      debugPrint('Error getting balance: $e');
+      if (kDebugMode) { debugPrint('Error getting balance: $e'); }
     }
   }
 
@@ -415,7 +425,7 @@ class Web3Service extends Web3ServiceBase {
         notifyListeners();
         return true;
       } catch (addError) {
-        debugPrint('Error adding Sepolia: $addError');
+        if (kDebugMode) { debugPrint('Error adding Sepolia: $addError'); }
         return false;
       }
     }
@@ -450,6 +460,9 @@ class Web3Service extends Web3ServiceBase {
     required String imageUrl,
     required double price,
     String category = 'Technology',
+    String? metadataUrl,
+    String? copyrightHash,
+    String? hashAlgorithm,
   }) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
     if (!isOnSepolia) throw Exception('Please switch to Sepolia network');
@@ -484,16 +497,16 @@ class Web3Service extends Web3ServiceBase {
         ]),
       );
       
-      debugPrint('✅ Mint transaction sent: $txHash');
-      debugPrint('🔗 View on Etherscan: ${ContractConfig.getEtherscanTxUrl(txHash.toString())}');
+      if (kDebugMode) { debugPrint('✅ Mint transaction sent: $txHash'); }
+      if (kDebugMode) { debugPrint('🔗 View on Etherscan: ${ContractConfig.getEtherscanTxUrl(txHash.toString())}'); }
       
       // Wait for transaction confirmation
-      debugPrint('⏳ Waiting for mint confirmation...');
+      if (kDebugMode) { debugPrint('⏳ Waiting for mint confirmation...'); }
       final receipt = await _waitForReceipt(txHash.toString());
       if (receipt == null) throw Exception('Transaction failed');
 
       final realTokenId = _parseTokenIdFromReceipt(receipt);
-      debugPrint('🎉 Minted Token ID: $realTokenId');
+      if (kDebugMode) { debugPrint('🎉 Minted Token ID: $realTokenId'); }
       
       final firebaseUid = AuthService.instance.currentUser?.uid ?? '';
 
@@ -527,7 +540,7 @@ class Web3Service extends Web3ServiceBase {
       notifyListeners();
       return logo;
     } catch (e) {
-      debugPrint('❌ Mint failed: $e');
+      if (kDebugMode) { debugPrint('❌ Mint failed: $e'); }
       throw Exception('Mint failed: $e');
     }
   }
@@ -645,7 +658,7 @@ class Web3Service extends Web3ServiceBase {
         ]),
       );
       
-      debugPrint('✅ Approve NFT TX: $txHash');
+      if (kDebugMode) { debugPrint('✅ Approve NFT TX: $txHash'); }
       
       // Optimistic update
       final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
@@ -654,7 +667,7 @@ class Web3Service extends Web3ServiceBase {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ Approve NFT failed: $e');
+      if (kDebugMode) { debugPrint('❌ Approve NFT failed: $e'); }
       throw Exception('Approve NFT failed: $e');
     }
   }
@@ -680,7 +693,7 @@ class Web3Service extends Web3ServiceBase {
         ]),
       );
       
-      debugPrint('✅ Reject NFT TX: $txHash');
+      if (kDebugMode) { debugPrint('✅ Reject NFT TX: $txHash'); }
       
       // Optimistic update
       final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
@@ -689,7 +702,7 @@ class Web3Service extends Web3ServiceBase {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ Reject NFT failed: $e');
+      if (kDebugMode) { debugPrint('❌ Reject NFT failed: $e'); }
       throw Exception('Reject NFT failed: $e');
     }
   }
@@ -715,7 +728,7 @@ class Web3Service extends Web3ServiceBase {
         ]),
       );
       
-      debugPrint('✅ Disable NFT TX: $txHash');
+      if (kDebugMode) { debugPrint('✅ Disable NFT TX: $txHash'); }
       
       // Optimistic update
       final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
@@ -728,7 +741,7 @@ class Web3Service extends Web3ServiceBase {
         notifyListeners();
       }
     } catch (e) {
-      debugPrint('❌ Disable NFT failed: $e');
+      if (kDebugMode) { debugPrint('❌ Disable NFT failed: $e'); }
       throw Exception('Disable NFT failed: $e');
     }
   }
@@ -799,10 +812,10 @@ class Web3Service extends Web3ServiceBase {
     }
 
     try {
-      debugPrint('[PAYMENT] Opening MetaMask');
-      debugPrint('[PAYMENT] Winning Bid: $amountInEth');
-      debugPrint('[PAYMENT] Creator Wallet: $sellerWallet');
-      debugPrint('[PAYMENT] Winner Wallet: $_currentAddress');
+      if (kDebugMode) { debugPrint('[PAYMENT] Opening MetaMask'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Winning Bid: $amountInEth'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Creator Wallet: $sellerWallet'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Winner Wallet: $_currentAddress'); }
       
       // Strict string-based ETH to Wei conversion to avoid precision loss
       final amountStr = amountInEth.toStringAsFixed(18);
@@ -813,10 +826,10 @@ class Web3Service extends Web3ServiceBase {
           : '000000000000000000';
       final weiAmount = BigInt.parse('$whole$decimal');
 
-      debugPrint('=== PAYMENT DEBUG ===');
-      debugPrint('Winning Bid ETH: $amountInEth');
-      debugPrint('Wei Amount: $weiAmount');
-      debugPrint('Hex Value: 0x${weiAmount.toRadixString(16)}');
+      if (kDebugMode) { debugPrint('=== PAYMENT DEBUG ==='); }
+      if (kDebugMode) { debugPrint('Winning Bid ETH: $amountInEth'); }
+      if (kDebugMode) { debugPrint('Wei Amount: $weiAmount'); }
+      if (kDebugMode) { debugPrint('Hex Value: 0x${weiAmount.toRadixString(16)}'); }
 
       final weiAmountHex = '0x${weiAmount.toRadixString(16)}';
       
@@ -834,7 +847,7 @@ class Web3Service extends Web3ServiceBase {
         ]),
       );
       
-      debugPrint('[PAYMENT] Validating blockchain transaction...');
+      if (kDebugMode) { debugPrint('[PAYMENT] Validating blockchain transaction...'); }
       
       // Wait for receipt
       final receipt = await _waitForReceipt(txHash.toString());
@@ -873,7 +886,7 @@ class Web3Service extends Web3ServiceBase {
           throw Exception('Please switch to Sepolia Testnet');
         }
 
-        debugPrint('[PAYMENT] Exact amount validation passed');
+        if (kDebugMode) { debugPrint('[PAYMENT] Exact amount validation passed'); }
       } else {
         throw Exception('Could not fetch transaction for validation');
       }
@@ -883,7 +896,7 @@ class Web3Service extends Web3ServiceBase {
       
       return txHash.toString();
     } catch (e) {
-      debugPrint('❌ Payment failed: $e');
+      if (kDebugMode) { debugPrint('❌ Payment failed: $e'); }
       if (e.toString().contains('User rejected') || e.toString().contains('cancelled') || e.toString().contains('User denied')) {
         throw Exception('Payment cancelled');
       }
@@ -907,7 +920,7 @@ class Web3Service extends Web3ServiceBase {
         return _jsObjectToMap(result);
       }
     } catch (e) {
-      debugPrint('Error getting transaction by hash: $e');
+      if (kDebugMode) { debugPrint('Error getting transaction by hash: $e'); }
     }
     return null;
   }
@@ -988,7 +1001,7 @@ class Web3Service extends Web3ServiceBase {
         return _jsObjectToMap(result);
       }
     } catch (e) {
-      debugPrint('Error getting receipt: $e');
+      if (kDebugMode) { debugPrint('Error getting receipt: $e'); }
     }
     return null;
   }

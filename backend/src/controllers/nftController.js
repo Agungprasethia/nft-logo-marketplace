@@ -88,3 +88,33 @@ exports.getMyCollection = async (req, res) => {
         res.status(500).json({ error: error.message });
     }
 };
+
+exports.mintNFT = async (req, res) => {
+    try {
+        const db = getDb();
+        if(!db) return res.status(500).json({ error: 'Firestore not initialized' });
+
+        const { tokenId, owner, logoName, logoUrl, createdAt, metadata } = req.body;
+        
+        if (tokenId === undefined || !owner || !logoName) {
+            return res.status(400).json({ error: 'Missing required fields' });
+        }
+
+        const nftData = {
+            tokenId: Number(tokenId),
+            ownerWallet: owner.toLowerCase(),
+            name: logoName,
+            imageUrl: logoUrl || '',
+            createdAt: createdAt || new Date().toISOString(),
+            metadata: metadata || {},
+            status: 'pending'
+        };
+
+        await db.collection('nfts').doc(tokenId.toString()).set(nftData, { merge: true });
+
+        res.status(200).json({ success: true, message: 'NFT saved to Firestore successfully', data: nftData });
+    } catch (error) {
+        console.error(error);
+        res.status(500).json({ success: false, error: error.message });
+    }
+};
