@@ -1075,6 +1075,7 @@ class FirestoreService {
 
         // ══════ ALL WRITES AFTER ALL READS ══════
         final bidData = bid.toFirestore();
+        bidData['bidderWallet'] = bid.bidderWallet.toLowerCase();
         bidData['firstBidTimestamp'] = FieldValue.serverTimestamp();
 
         transaction.set(bidsRef, bidData);
@@ -1082,7 +1083,7 @@ class FirestoreService {
         transaction.update(nftRef, {
           'highestBid': bid.amount,
           'highestBidderId': bid.bidderId,
-          'highestBidderWallet': bid.bidderWallet,
+          'highestBidderWallet': bid.bidderWallet.toLowerCase(),
           if (isNewBidder) 'totalBids': FieldValue.increment(1),
         });
 
@@ -1091,7 +1092,7 @@ class FirestoreService {
           transaction.update(auctionRef, {
             'highestBid': bid.amount,
             'highestBidderId': bid.bidderId,
-            'highestBidderWallet': bid.bidderWallet,
+            'highestBidderWallet': bid.bidderWallet.toLowerCase(),
             if (isNewBidder) 'totalBids': FieldValue.increment(1),
             'updatedAt': FieldValue.serverTimestamp(),
           });

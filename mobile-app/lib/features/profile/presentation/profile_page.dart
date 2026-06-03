@@ -183,6 +183,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     _ownedSub?.cancel();
     _createdSub?.cancel();
     _web3.removeListener(_onWeb3StateChanged);
+    _nftStreams.clear();
     super.dispose();
   }
 
@@ -1208,11 +1209,13 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         final bids = snapshot.data ?? {};
         if (bids.isEmpty) return _buildEmptyState(Icons.group_outlined, 'No joined auctions');
 
+        final bidsList = bids.entries.toList();
+
         return ListView.builder(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: bids.length,
+          itemCount: bidsList.length,
           itemBuilder: (context, index) {
-            final entry = bids.entries.elementAt(index);
+            final entry = bidsList[index];
             return StreamBuilder<DocumentSnapshot>(
               stream: _getNftStream(entry.key),
               builder: (context, snap) {
@@ -1343,10 +1346,11 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   // --- TAB 5: WALLET ---
 
   Widget _buildWalletTab() {
-    return Padding(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        children: [
+    return SingleChildScrollView(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
           Container(
             decoration: BoxDecoration(
               color: _ProfileColors.cardBg,
@@ -1399,7 +1403,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           ),
         ],
       ),
-    );
+    ));
   }
 
   Widget _buildWalletInfoRow(String label, String value, {bool isPurple = false, bool isGreen = false, IconData? icon}) {

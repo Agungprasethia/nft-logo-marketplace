@@ -85,10 +85,14 @@ class _BidDialogState extends State<BidDialog> {
           ),
           boxShadow: AppShadows.soft,
         ),
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.xxl),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
+        child: AnimatedPadding(
+          duration: const Duration(milliseconds: 200),
+          padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          child: SingleChildScrollView(
+            child: Padding(
+              padding: const EdgeInsets.all(AppSpacing.xxl),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
             children: [
               // Header
               Row(
@@ -330,6 +334,8 @@ class _BidDialogState extends State<BidDialog> {
                 ],
               ),
             ],
+          ),
+        ),
           ),
         ),
       ),
