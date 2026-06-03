@@ -2618,7 +2618,7 @@ class FirestoreService {
         .snapshots()
         .map((snapshot) {
       if (snapshot.docs.isEmpty) return null;
-      return AppealCase.fromFirestore(snapshot.docs.first.data() as Map<String, dynamic>, snapshot.docs.first.id);
+      return AppealCase.fromFirestore(snapshot.docs.first.data(), snapshot.docs.first.id);
     });
   }
 
