@@ -84,6 +84,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     _subscribeToCounts();
   }
 
+  String _currentWalletForStreams = '';
   int _ownedCount = 0;
   int _createdCount = 0;
   StreamSubscription? _ownedSub;
@@ -97,8 +98,12 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final wallet = _web3.currentAddress?.toLowerCase() ?? '';
     if (wallet.isEmpty) return;
 
-    _createdNFTsStream = FirestoreService.instance.getUserCreatedNFTsStream(wallet).asBroadcastStream();
-    _ownedNFTsStream = FirestoreService.instance.getUserNFTsStream(wallet).asBroadcastStream();
+    if (wallet != _currentWalletForStreams) {
+      _currentWalletForStreams = wallet;
+      _createdNFTsStream = FirestoreService.instance.getUserCreatedNFTsStream(wallet).asBroadcastStream();
+      _ownedNFTsStream = FirestoreService.instance.getUserNFTsStream(wallet).asBroadcastStream();
+      _participatedBidsStream = FirestoreService.instance.getUserParticipatedBidsStream(wallet).asBroadcastStream();
+    }
     
     // Fetch counts efficiently using Firestore count()
     final created = await FirestoreService.instance.getUserCreatedNFTsCount(wallet);
@@ -112,14 +117,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   }
 
   void _onTabChanged() {
-    if (_tabController.index == 2 || _tabController.index == 3) {
-      final wallet = _web3.currentAddress?.toLowerCase() ?? '';
-      if (wallet.isNotEmpty && _participatedBidsStream == null) {
-        setState(() {
-          _participatedBidsStream = FirestoreService.instance.getUserParticipatedBidsStream(wallet).asBroadcastStream();
-        });
-      }
-    }
+    // Logic moved to _subscribeToCounts to prevent rebuilds
   }
 
   void _onWeb3StateChanged() {
@@ -205,63 +203,50 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final currentWallet = _web3.currentAddress?.toLowerCase().trim() ?? '';
     final myAuctions = _web3.allAuctions.where((a) => a.sellerWallet.toLowerCase() == currentWallet).toList();
 
-    return CustomScrollView(
-      physics: const AlwaysScrollableScrollPhysics(),
-      slivers: [
-        SliverToBoxAdapter(
-          child: SafeArea(
-            bottom: false,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _buildHeaderTopSection(),
-                  const SizedBox(height: 20),
-                  _buildBalanceStrip(),
-                  const SizedBox(height: 20),
-                  _buildStatsRow(myAuctions.length),
-                ],
+    return NestedScrollView(
+      headerSliverBuilder: (context, innerBoxIsScrolled) {
+        return [
+          SliverToBoxAdapter(
+            child: SafeArea(
+              bottom: false,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeaderTopSection(),
+                    const SizedBox(height: 20),
+                    _buildBalanceStrip(),
+                    const SizedBox(height: 20),
+                    _buildStatsRow(myAuctions.length),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-
-        // Custom Horizontal Scrollable Tab Bar
-        SliverPersistentHeader(
-          pinned: true,
-          delegate: _SliverAppBarDelegate(
-            minHeight: 56.0,
-            maxHeight: 56.0,
-            child: Container(
-              color: _ProfileColors.bg,
-              child: _buildTabBar(),
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _SliverAppBarDelegate(
+              minHeight: 56.0,
+              maxHeight: 56.0,
+              child: Container(
+                color: _ProfileColors.bg,
+                child: _buildTabBar(),
+              ),
             ),
           ),
-        ),
-
-        // Tab Content
-        SliverFillRemaining(
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 120),
-            child: AnimatedBuilder(
-              animation: _tabController,
-              builder: (context, _) {
-                return IndexedStack(
-                  index: _tabController.index,
-                  children: [
-                    _LazyIndexedTab(isActive: _tabController.index == 0, builder: () => _buildCreationsTab()),
-                    _LazyIndexedTab(isActive: _tabController.index == 1, builder: () => _buildCollectionTab()),
-                    _LazyIndexedTab(isActive: _tabController.index == 2, builder: () => _buildPaymentTab()),
-                    _LazyIndexedTab(isActive: _tabController.index == 3, builder: () => _buildAuctionsTab()),
-                    _LazyIndexedTab(isActive: _tabController.index == 4, builder: () => _buildWalletTab()),
-                  ],
-                );
-              },
-            ),
-          ),
-        ),
-      ],
+        ];
+      },
+      body: TabBarView(
+        controller: _tabController,
+        children: [
+          _buildCreationsTab(),
+          _buildCollectionTab(),
+          _buildPaymentTab(),
+          _buildAuctionsTab(),
+          _buildWalletTab(),
+        ],
+      ),
     );
   }
 
@@ -539,51 +524,21 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   // --- TAB BAR WIDGET ---
 
   Widget _buildTabBar() {
-    return SingleChildScrollView(
-      scrollDirection: Axis.horizontal,
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: Row(
-        children: [
-          _buildTabItem(0, Icons.palette_outlined, 'Creations'),
-          _buildTabItem(1, Icons.inventory_2_outlined, 'Collection'),
-          _buildTabItem(2, Icons.credit_card_outlined, 'Payment'),
-          _buildTabItem(3, Icons.gavel_outlined, 'Auction'),
-          _buildTabItem(4, Icons.account_balance_wallet_outlined, 'Wallet'),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTabItem(int index, IconData icon, String label) {
-    final isActive = _tabController.index == index;
-    return GestureDetector(
-      onTap: () => setState(() => _tabController.animateTo(index)),
-      child: Container(
-        padding: const EdgeInsets.only(bottom: 12, top: 12),
-        margin: const EdgeInsets.only(right: 24),
-        decoration: BoxDecoration(
-          border: Border(
-            bottom: BorderSide(
-              color: isActive ? _ProfileColors.accent : Colors.transparent,
-              width: 2,
-            ),
-          ),
-        ),
-        child: Row(
-          children: [
-            Icon(icon, size: 16, color: isActive ? _ProfileColors.tabActiveText : _ProfileColors.textMuted),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: isActive ? _ProfileColors.tabActiveText : _ProfileColors.textMuted,
-                fontSize: 14,
-                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
-              ),
-            ),
-          ],
-        ),
-      ),
+    return TabBar(
+      controller: _tabController,
+      isScrollable: true,
+      indicatorColor: _ProfileColors.accent,
+      labelColor: _ProfileColors.tabActiveText,
+      unselectedLabelColor: _ProfileColors.textMuted,
+      dividerColor: Colors.transparent,
+      tabAlignment: TabAlignment.start,
+      tabs: const [
+        Tab(icon: Icon(Icons.palette_outlined, size: 16), text: 'Creations'),
+        Tab(icon: Icon(Icons.inventory_2_outlined, size: 16), text: 'Collection'),
+        Tab(icon: Icon(Icons.credit_card_outlined, size: 16), text: 'Payment'),
+        Tab(icon: Icon(Icons.gavel_outlined, size: 16), text: 'Auction'),
+        Tab(icon: Icon(Icons.account_balance_wallet_outlined, size: 16), text: 'Wallet'),
+      ],
     );
   }
 
@@ -1693,21 +1648,4 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => SizedBox.expand(child: child);
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
-}
-
-class _LazyIndexedTab extends StatefulWidget {
-  final Widget Function() builder;
-  final bool isActive;
-  const _LazyIndexedTab({required this.builder, required this.isActive});
-  @override
-  State<_LazyIndexedTab> createState() => _LazyIndexedTabState();
-}
-class _LazyIndexedTabState extends State<_LazyIndexedTab> {
-  bool _hasInitialized = false;
-  @override
-  Widget build(BuildContext context) {
-    if (widget.isActive) _hasInitialized = true;
-    if (!_hasInitialized) return const SizedBox.shrink();
-    return widget.builder();
-  }
 }

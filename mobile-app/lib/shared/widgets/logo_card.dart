@@ -48,8 +48,8 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
       badgeText = 'WON';
       badgeColor = AppColors.accentOrange;
     } else if (widget.logo.isFrozen) {
-      badgeText = 'FROZEN';
-      badgeColor = AppColors.frozen;
+      badgeText = 'Copyright Review';
+      badgeColor = Colors.lightBlue;
     } else if (isLive && widget.logo.totalBids > 3) {
       badgeText = 'HOT';
       badgeColor = AppColors.danger;
@@ -139,6 +139,20 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                                   letterSpacing: 0.8,
                                 ),
                               ),
+                            ),
+                          ),
+                        // ❄️ Icon for Frozen
+                        if (widget.logo.isFrozen)
+                          Positioned(
+                            top: 8,
+                            right: 42,
+                            child: Container(
+                              padding: const EdgeInsets.all(4),
+                              decoration: BoxDecoration(
+                                color: Colors.lightBlue.withValues(alpha: 0.8),
+                                shape: BoxShape.circle,
+                              ),
+                              child: const Text('❄️', style: TextStyle(fontSize: 12)),
                             ),
                           ),
                         // Top-right: Heart icon
@@ -334,7 +348,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
       imgUrl = imgUrl.replaceAll('ipfs://', 'https://ipfs.io/ipfs/');
     }
 
-    return imgUrl.isNotEmpty
+    final Widget imgWidget = imgUrl.isNotEmpty
         ? CachedNetworkImage(
             imageUrl: imgUrl,
             fit: BoxFit.cover,
@@ -355,6 +369,20 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
             errorWidget: (context, url, error) => _buildPlaceholder(),
           )
         : _buildPlaceholder();
+        
+    if (widget.logo.isFrozen) {
+      return Stack(
+        fit: StackFit.expand,
+        children: [
+          imgWidget,
+          Container(
+            color: Colors.lightBlue.withValues(alpha: 0.3),
+          ),
+        ],
+      );
+    }
+    
+    return imgWidget;
   }
 
   Widget _buildPlaceholder() {

@@ -7,6 +7,8 @@ import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/shared/models/transaction.dart';
 import 'package:nft_logo_marketplace/shared/models/user_model.dart';
 import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/appeal_case.dart';
+import 'package:nft_logo_marketplace/shared/models/appeal_message.dart';
 
 /// Centralized Firestore service for NFT validation, auctions, and multi-user data.
 class FirestoreService {
@@ -1330,7 +1332,7 @@ class FirestoreService {
             'isAuctionActive': false,
             'isInAuction': false,
             'auctionStatus': 'PENDING_PAYMENT',
-            'status': 'pending_payment',
+            'status': 'payment_pending',
             'paymentPending': true,
             'paymentDeadline': DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
             'paymentExpired': false,
@@ -1418,8 +1420,11 @@ class FirestoreService {
       final auctionRef = _auctionsCollection.doc(tokenId.toString());
 
       await _db.runTransaction((transaction) async {
+        // ── ALL READS FIRST ──
         final nftDoc = await transaction.get(nftRef);
         if (!nftDoc.exists) throw Exception('NFT not found');
+        
+        final auctionDoc = await transaction.get(auctionRef);
 
         final data = nftDoc.data()!;
         final currentStatus = data['status'] as String? ?? '';
@@ -1455,6 +1460,8 @@ class FirestoreService {
           'auctionStatus': data['auctionStatus'],
         });
 
+        // ── ALL WRITES AFTER READS ──
+        
         // Reset NFT for re-moderation
         transaction.update(nftRef, {
           'status': 'pending',
@@ -1477,7 +1484,6 @@ class FirestoreService {
         });
 
         // Reset auction document
-        final auctionDoc = await transaction.get(auctionRef);
         if (auctionDoc.exists) {
           transaction.update(auctionRef, {
             'status': 're_auction_requested',
@@ -1553,13 +1559,23 @@ class FirestoreService {
 
         // ── VALIDATION 1: Strict Status Gate ──
         final auctionStatus = (data['auctionStatus'] as String? ?? '').toUpperCase().trim();
-        if (data['status'] == 'cancelled') {
+        final nftStatus = (data['status'] as String? ?? '').toLowerCase().trim();
+
+        // [PAYMENT CHECK] Debug log — visible in kDebugMode
+        if (kDebugMode) {
+          debugPrint('[PAYMENT CHECK] nft.auctionStatus (raw)  = "${data['auctionStatus']}"');
+          debugPrint('[PAYMENT CHECK] nft.auctionStatus (norm) = "$auctionStatus"');
+          debugPrint('[PAYMENT CHECK] nft.status (raw)         = "${data['status']}"');
+          debugPrint('[PAYMENT CHECK] nft.status (norm)        = "$nftStatus"');
+        }
+
+        if (nftStatus == 'cancelled') {
           throw Exception('Auction has been cancelled. Payment rejected.');
         }
-        if (data['status'] == 'sold' || auctionStatus == 'PAYMENT_COMPLETED') {
+        if (nftStatus == 'sold' || auctionStatus == 'PAYMENT_COMPLETED') {
           throw Exception('This NFT has already been sold. Payment already processed.');
         }
-        if (auctionStatus == 'PAYMENT_EXPIRED' || data['status'] == 'failed_payment') {
+        if (auctionStatus == 'PAYMENT_EXPIRED' || nftStatus == 'failed_payment') {
           throw Exception('Payment deadline has expired. You can no longer claim this NFT.');
         }
         if (data['isFrozen'] == true || auctionStatus == 'FROZEN') {
@@ -1569,7 +1585,17 @@ class FirestoreService {
         final auctionDoc = await transaction.get(auctionRef);
         final aStatus = auctionDoc.exists ? (auctionDoc.data()?['status'] as String? ?? '').toUpperCase().trim() : '';
 
-        if (auctionStatus != 'PAYMENT_PENDING' && aStatus != 'PAYMENT_PENDING') {
+        if (kDebugMode) {
+          final rawAuctionStatus = auctionDoc.exists ? auctionDoc.data()!['status'] : 'DOC_NOT_FOUND';
+          debugPrint('[PAYMENT CHECK] auction.status (raw)     = "$rawAuctionStatus"');
+          debugPrint('[PAYMENT CHECK] auction.status (norm)    = "$aStatus"');
+          debugPrint('[PAYMENT CHECK] Gate: auctionStatus==$auctionStatus  aStatus==$aStatus');
+        }
+
+        // Accept PENDING_PAYMENT from EITHER nft.auctionStatus OR auction.status
+        final bool isNftPending = auctionStatus == 'PENDING_PAYMENT';
+        final bool isAuctionPending = aStatus == 'PENDING_PAYMENT';
+        if (!isNftPending && !isAuctionPending) {
           throw Exception('Auction is not in a payment pending state. Current: $auctionStatus / $aStatus');
         }
         
@@ -1887,16 +1913,22 @@ class FirestoreService {
         if (sortedBids.length >= 2) {
           // Pass to Bidder #2
           final secondBidder = sortedBids[1];
+          // Reset NFT status to PENDING_PAYMENT for the 2nd bidder
           transaction.update(nftRef, {
             'highestBid': secondBidder.amount,
             'highestBidderId': secondBidder.bidderId,
             'highestBidderWallet': secondBidder.bidderWallet,
             'isAuctionActive': false,
+            'auctionStatus': 'PENDING_PAYMENT',
+            'status': 'payment_pending',
+            'paymentPending': true,
+            'paymentDeadline': DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
+            'paymentExpired': false,
           });
 
           if (auctionDoc.exists) {
              transaction.update(auctionRef, {
-               'status': 'payment_pending',
+               'status': 'PENDING_PAYMENT',  // UPPERCASE — source of truth
                'highestBid': secondBidder.amount,
                'highestBidderId': secondBidder.bidderId,
                'highestBidderWallet': secondBidder.bidderWallet,
@@ -2086,11 +2118,11 @@ class FirestoreService {
 
     int closedCount = 0;
     try {
+      final now = DateTime.now().millisecondsSinceEpoch;
+
       final snapshot = await _auctionsCollection
           .where('status', isEqualTo: 'active')
           .get();
-
-      final now = DateTime.now().millisecondsSinceEpoch;
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
@@ -2102,6 +2134,23 @@ class FirestoreService {
           await endOffChainAuction(tokenId);
           closedCount++;
           if (kDebugMode) { debugPrint('⏰ Auto-closed expired auction #$auctionId'); }
+        }
+      }
+
+      // Phase 4: Auto cleanup NFT desyncs
+      final nftSnapshot = await _nftsCollection
+          .where('isAuctionActive', isEqualTo: true)
+          .get();
+
+      for (final doc in nftSnapshot.docs) {
+        final data = doc.data();
+        final endTime = data['endTime'] as int? ?? 0;
+        final tokenId = data['tokenId'] as int? ?? 0;
+        
+        if (endTime > 0 && endTime < now) {
+          await endOffChainAuction(tokenId);
+          closedCount++;
+          if (kDebugMode) { debugPrint('⏰ Auto-closed expired NFT auction #$tokenId'); }
         }
       }
     } catch (e) {
@@ -2554,6 +2603,205 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ logAuctionActivity error: $e'); }
       // Non-critical: don't throw, audit failure shouldn't block payment
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // COPYRIGHT DISPUTE & APPEAL SYSTEM
+  // ═══════════════════════════════════════════════════════════════════
+
+  /// Stream a specific appeal case by its token ID (assuming 1 active case per NFT)
+  Stream<AppealCase?> getAppealCaseStreamByToken(int tokenId) {
+    return _appealsCollection
+        .where('tokenId', isEqualTo: tokenId)
+        .where('status', isEqualTo: 'open')
+        .snapshots()
+        .map((snapshot) {
+      if (snapshot.docs.isEmpty) return null;
+      return AppealCase.fromFirestore(snapshot.docs.first.data() as Map<String, dynamic>, snapshot.docs.first.id);
+    });
+  }
+
+  /// Stream messages for a specific appeal case
+  Stream<List<AppealMessage>> getAppealMessagesStream(String caseId) {
+    return _appealsCollection
+        .doc(caseId)
+        .collection('messages')
+        .orderBy('timestamp', descending: true)
+        .snapshots()
+        .map((snapshot) {
+      return snapshot.docs.map((doc) => AppealMessage.fromFirestore(doc.data(), doc.id)).toList();
+    });
+  }
+
+  /// Send a message in an appeal case
+  Future<void> sendAppealMessage({
+    required String caseId,
+    required String senderWallet,
+    required String senderRole,
+    required String message,
+    List<String>? evidenceUrls,
+  }) async {
+    try {
+      final docRef = _appealsCollection.doc(caseId).collection('messages').doc();
+      final appealMsg = AppealMessage(
+        messageId: docRef.id,
+        caseId: caseId,
+        senderWallet: senderWallet,
+        senderRole: senderRole,
+        message: message,
+        evidenceUrls: evidenceUrls,
+        timestamp: DateTime.now(),
+      );
+      await docRef.set(appealMsg.toFirestore());
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ sendAppealMessage error: $e'); }
+      rethrow;
+    }
+  }
+
+  /// Report an NFT for copyright violation and freeze it
+  Future<void> reportNFT(int tokenId, String reporterWallet, String reason, List<String>? evidenceFiles) async {
+    try {
+      final nftRef = _nftsCollection.doc(tokenId.toString());
+      final auctionRef = _auctionsCollection.doc(tokenId.toString());
+
+      await _db.runTransaction((transaction) async {
+        final nftDoc = await transaction.get(nftRef);
+        if (!nftDoc.exists) throw Exception('NFT not found');
+
+        final data = nftDoc.data() as Map<String, dynamic>;
+        final currentStatus = data['status'] as String? ?? 'available';
+        final isFrozen = data['isFrozen'] as bool? ?? false;
+        
+        if (isFrozen) {
+          throw Exception('NFT is already frozen.');
+        }
+
+        final isAuctionActive = data['isAuctionActive'] as bool? ?? false;
+        final ownerWallet = data['ownerWallet'] as String? ?? '';
+        
+        // Determine new status
+        String newStatus = isAuctionActive ? 'frozen_auction' : 'under_review';
+
+        // Calculate frozen remaining seconds if auction was active
+        int? frozenRemainingSeconds;
+        if (isAuctionActive && data['endTime'] != null) {
+          DateTime endTime = DateTime.fromMillisecondsSinceEpoch(data['endTime'] as int);
+          frozenRemainingSeconds = endTime.difference(DateTime.now()).inSeconds;
+          if (frozenRemainingSeconds < 0) frozenRemainingSeconds = 0;
+        }
+
+        // Create new Appeal Case
+        final caseDoc = _appealsCollection.doc();
+        final appealCase = AppealCase(
+          caseId: caseDoc.id,
+          tokenId: tokenId,
+          reporterWallet: reporterWallet,
+          ownerWallet: ownerWallet,
+          createdAt: DateTime.now(),
+          status: 'open',
+        );
+
+        // --- WRITES ---
+        transaction.set(caseDoc, appealCase.toFirestore());
+
+        transaction.update(nftRef, {
+          'status': newStatus,
+          'previousStatus': currentStatus,
+          'isFrozen': true,
+          'freezeReason': reason,
+          'evidenceFiles': evidenceFiles,
+          if (frozenRemainingSeconds != null) 'frozenRemainingSeconds': frozenRemainingSeconds,
+        });
+
+        if (isAuctionActive) {
+          final auctionDoc = await transaction.get(auctionRef);
+          if (auctionDoc.exists) {
+            transaction.update(auctionRef, {
+              'status': 'frozen_auction',
+            });
+          }
+        }
+      });
+      
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId reported and frozen.'); }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ reportNFT error: $e'); }
+      rethrow;
+    }
+  }
+
+  /// Admin resolves the case
+  Future<void> resolveAppealCase(String caseId, int tokenId, bool isTakedown, String decisionReason) async {
+    try {
+      final nftRef = _nftsCollection.doc(tokenId.toString());
+      final auctionRef = _auctionsCollection.doc(tokenId.toString());
+      final caseRef = _appealsCollection.doc(caseId);
+
+      await _db.runTransaction((transaction) async {
+        final nftDoc = await transaction.get(nftRef);
+        if (!nftDoc.exists) throw Exception('NFT not found');
+        
+        final caseDoc = await transaction.get(caseRef);
+        if (!caseDoc.exists) throw Exception('Case not found');
+
+        final data = nftDoc.data() as Map<String, dynamic>;
+        final previousStatus = data['previousStatus'] as String?;
+        final frozenRemainingSeconds = data['frozenRemainingSeconds'] as int?;
+
+        // --- WRITES ---
+        transaction.update(caseRef, {
+          'status': 'resolved',
+          'resolvedAt': DateTime.now().millisecondsSinceEpoch,
+          'resolutionType': isTakedown ? 'takedown' : 'unfrozen',
+        });
+
+        if (isTakedown) {
+          transaction.update(nftRef, {
+            'status': 'copyright_violation',
+            'isFrozen': true,
+            'decisionReason': decisionReason,
+            'isAuctionActive': false, // stop auction entirely
+          });
+          
+          final auctionDoc = await transaction.get(auctionRef);
+          if (auctionDoc.exists) {
+            transaction.update(auctionRef, {
+              'status': 'cancelled',
+            });
+          }
+        } else {
+          // Unfreeze
+          int? newEndTime;
+          if (frozenRemainingSeconds != null) {
+            newEndTime = DateTime.now().add(Duration(seconds: frozenRemainingSeconds)).millisecondsSinceEpoch;
+          }
+
+          transaction.update(nftRef, {
+            'status': previousStatus ?? 'available',
+            'isFrozen': false,
+            'decisionReason': decisionReason,
+            if (newEndTime != null) 'endTime': newEndTime,
+            // clean up
+            'frozenRemainingSeconds': FieldValue.delete(),
+          });
+
+          if (previousStatus == 'auction') {
+            final auctionDoc = await transaction.get(auctionRef);
+            if (auctionDoc.exists) {
+              transaction.update(auctionRef, {
+                'status': 'active',
+                if (newEndTime != null) 'endTime': newEndTime,
+              });
+            }
+          }
+        }
+      });
+      if (kDebugMode) { debugPrint('🔥 Firestore: Case $caseId resolved.'); }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ resolveAppealCase error: $e'); }
+      rethrow;
     }
   }
 }

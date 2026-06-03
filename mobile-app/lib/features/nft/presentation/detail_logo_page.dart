@@ -14,6 +14,7 @@ import 'package:nft_logo_marketplace/config/contract_config.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/report_dialog.dart';
+import 'package:nft_logo_marketplace/features/nft/presentation/appeal_case_page.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_page.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
@@ -602,12 +603,60 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           ),
           child: Column(
             children: [
-              // Completed Actions (Download / Save to Gallery)
-              if (canDownload) ...[
-                Row(
-                  children: [
-                    Expanded(
-                      child: OutlinedButton.icon(
+              if (logo.isFrozen) ...[
+                Container(
+                  width: double.infinity,
+                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
+                  padding: const EdgeInsets.all(AppSpacing.md),
+                  decoration: BoxDecoration(
+                    color: Colors.lightBlue.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    border: Border.all(color: Colors.lightBlue.withValues(alpha: 0.3)),
+                  ),
+                  child: Column(
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.gavel, color: Colors.lightBlue, size: 24),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Copyright Review', style: AppTextStyles.labelLarge.copyWith(color: Colors.lightBlue)),
+                                const SizedBox(height: 4),
+                                Text('This NFT is currently under review due to a copyright report.', style: AppTextStyles.bodySmall),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: AppSpacing.md),
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.push(context, MaterialPageRoute(builder: (_) => AppealCasePage(logo: logo)));
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.lightBlue,
+                            foregroundColor: Colors.white,
+                          ),
+                          child: const Text('View Case'),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+              
+              if (!logo.isFrozen) ...[
+                // Completed Actions (Download / Save to Gallery)
+                if (canDownload) ...[
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
                         onPressed: () => _downloadNFT(logo.imageUrl),
                         icon: const Icon(Icons.download),
                         label: const Text('Download NFT', maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -845,109 +894,6 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   ),
                 ),
 
-
-              if (isCreator && logo.isFrozen)
-                FutureBuilder<Map<String, dynamic>?>(
-                  future: FirestoreService.instance.getLatestReportForToken(widget.logo.tokenId),
-                  builder: (context, snapshot) {
-                    final report = snapshot.data;
-                    final reason = report?['reason'] ?? 'A marketplace report is being investigated.';
-                    final reportId = report?['reportId'];
-                    final hasAppealed = logo.isAppealed;
-
-                    return Container(
-                      width: double.infinity,
-                      margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                      padding: const EdgeInsets.all(AppSpacing.md),
-                      decoration: BoxDecoration(
-                        color: AppColors.accentOrange.withValues(alpha: 0.1),
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        border: Border.all(color: AppColors.accentOrange.withValues(alpha: 0.3)),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              const Icon(Icons.warning_amber_rounded, color: AppColors.accentOrange, size: 24),
-                              const SizedBox(width: 12),
-                              const Expanded(
-                                child: Text(
-                                  'This auction has been temporarily frozen due to a marketplace report and is currently under review by marketplace moderation.',
-                                  style: TextStyle(color: AppColors.accentOrange, fontWeight: FontWeight.bold, fontSize: 13),
-                                ),
-                              ),
-                            ],
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            'Reason: $reason',
-                            style: AppTextStyles.bodyMedium.copyWith(color: AppColors.accentOrange, fontWeight: FontWeight.w600),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            'Bidding and payment have been temporarily disabled during the investigation process.',
-                            style: AppTextStyles.bodySmall.copyWith(color: AppColors.accentOrange),
-                          ),
-                          const SizedBox(height: 16),
-                          if (hasAppealed)
-                            Container(
-                              width: double.infinity,
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              decoration: BoxDecoration(
-                                color: AppColors.primary.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(AppRadius.md),
-                                border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-                              ),
-                              child: Column(
-                                children: [
-                                  const Icon(Icons.check_circle, color: AppColors.primary, size: 20),
-                                  const SizedBox(height: 4),
-                                  Text('Appeal Submitted', style: AppTextStyles.labelMedium.copyWith(color: AppColors.primary)),
-                                  const SizedBox(height: 2),
-                                  Text(
-                                    'Your appeal has been submitted and is awaiting moderator review.',
-                                    style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ],
-                              ),
-                            )
-                          else if (reportId != null)
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'You may submit an appeal if you believe this report is incorrect.',
-                                  style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  width: double.infinity,
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => AppealDialog.show(
-                                      context,
-                                      tokenId: widget.logo.tokenId,
-                                      reportId: reportId,
-                                      creatorWallet: logo.creatorWallet,
-                                      creatorUsername: logo.creatorUsername,
-                                    ),
-                                    icon: const Icon(Icons.rate_review, size: 16),
-                                    label: const Text('Submit Appeal'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppColors.accentOrange,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                        ],
-                      ),
-                    );
-                  },
-                ),
-
               if (status == 'pending' || status == 'rejected' || status == 'disabled' || (status != 'approved' && status != 'sold'))
                 Builder(builder: (_) {
                   late final Color color;
@@ -1048,8 +994,10 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                     ),
                   ),
                 ),
+              ], // End of !logo.isFrozen block
 
-              TextButton.icon(
+              if (!logo.isFrozen)
+                TextButton.icon(
                 onPressed: () => ReportDialog.show(context, widget.logo.tokenId),
                 icon: const Icon(Icons.flag_outlined, size: 16, color: AppColors.danger),
                 label: Text('Report Artwork', style: AppTextStyles.labelMedium.copyWith(color: AppColors.danger)),

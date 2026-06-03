@@ -109,41 +109,26 @@ class _HomePageState extends State<HomePage> {
   List<LogoNFT> _filterLogos(List<LogoNFT> logos) {
     final uniqueIds = <String>{};
     
-    // Dedup and filter
-    return logos.map((logo) {
-      // Client-side auction expiration validation
-      if (logo.isAuctionActive && logo.endTime != null) {
-        if (DateTime.now().isAfter(logo.endTime!)) {
-          return logo.copyWith(
-            isAuctionActive: false,
-            // If it has a bidder, project it as pendingPayment. Otherwise, available.
-            status: (logo.highestBidderWallet != null && logo.highestBidderWallet!.isNotEmpty && logo.highestBid > 0)
-                ? ValidationStatus.pendingPayment
-                : ValidationStatus.available,
-          );
-        }
-      }
-      return logo;
-    }).where((logo) {
+    return logos.where((logo) {
       if (!uniqueIds.add(logo.tokenId.toString())) return false;
       
-      if (logo.isFrozen) return false;
-
-      if (['EXPIRED_NO_BID', 'PAYMENT_PENDING', 'COMPLETED', 'PAYMENT_EXPIRED'].contains(logo.auctionStatus)) {
-        return false;
-      }
-
-      if (logo.status == ValidationStatus.sold ||
-          logo.status == ValidationStatus.pendingPayment ||
-          logo.status == ValidationStatus.rejected) {
-        return false;
-      }
-
-      if (logo.status == ValidationStatus.auction) {
+      if (logo.isFrozen) {
+        if (logo.status != ValidationStatus.frozenAuction && logo.status != ValidationStatus.underReview) return false;
+      } else {
+        // 1. Cek apakah auction active
         if (!logo.isAuctionActive) return false;
-        if (logo.endTime != null && DateTime.now().isAfter(logo.endTime!)) return false;
-      } else if (logo.status != ValidationStatus.approved) {
-        return false;
+
+        // 2. Cek apakah waktu belum habis
+        if (logo.endTime == null) return false;
+        if (DateTime.now().isAfter(logo.endTime!) || DateTime.now().isAtSameMomentAs(logo.endTime!)) {
+          return false;
+        }
+
+        // 3. Cek status auction harus ACTIVE atau LIVE_AUCTION
+        final aStatus = (logo.auctionStatus ?? '').toUpperCase();
+        if (aStatus != 'ACTIVE' && aStatus != 'LIVE_AUCTION') {
+          return false;
+        }
       }
 
       // ── Category filter ──
@@ -151,6 +136,7 @@ class _HomePageState extends State<HomePage> {
           logo.category != _selectedCategory) {
         return false;
       }
+      
       // ── Search filter ──
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();

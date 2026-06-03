@@ -1,5 +1,5 @@
 /// Logo NFT Validation Status mapping to Smart Contract Enum
-enum ValidationStatus { pending, approvedPendingMint, approved, rejected, disabled, auction, available, pendingPayment, sold }
+enum ValidationStatus { pending, approvedPendingMint, approved, rejected, disabled, auction, available, pendingPayment, sold, underReview, frozenAuction, copyrightViolation }
 
 /// Available NFT categories
 class NFTCategory {
@@ -87,6 +87,12 @@ class LogoNFT {
   final bool isPaymentProcessing;
   final bool isMetadataLocked;
   final String? rejectedReason;
+  
+  // Dispute & Appeal fields
+  final String? previousStatus;
+  final String? freezeReason;
+  final String? decisionReason;
+  final List<String>? evidenceFiles;
 
   LogoNFT({
     required this.tokenId,
@@ -142,6 +148,10 @@ class LogoNFT {
     this.isPaymentProcessing = false,
     this.isMetadataLocked = false,
     this.rejectedReason,
+    this.previousStatus,
+    this.freezeReason,
+    this.decisionReason,
+    this.evidenceFiles,
   }) : creatorWallet = creatorWallet.toLowerCase().trim(),
        ownerWallet = ownerWallet.toLowerCase().trim();
 
@@ -199,6 +209,10 @@ class LogoNFT {
     bool? isPaymentProcessing,
     bool? isMetadataLocked,
     String? rejectedReason,
+    String? previousStatus,
+    String? freezeReason,
+    String? decisionReason,
+    List<String>? evidenceFiles,
   }) {
     return LogoNFT(
       tokenId: tokenId ?? this.tokenId,
@@ -254,6 +268,10 @@ class LogoNFT {
       isPaymentProcessing: isPaymentProcessing ?? this.isPaymentProcessing,
       isMetadataLocked: isMetadataLocked ?? this.isMetadataLocked,
       rejectedReason: rejectedReason ?? this.rejectedReason,
+      previousStatus: previousStatus ?? this.previousStatus,
+      freezeReason: freezeReason ?? this.freezeReason,
+      decisionReason: decisionReason ?? this.decisionReason,
+      evidenceFiles: evidenceFiles ?? this.evidenceFiles,
     );
   }
 
@@ -396,6 +414,10 @@ class LogoNFT {
       isPaymentProcessing: json['isPaymentProcessing'] as bool? ?? false,
       isMetadataLocked: json['isMetadataLocked'] as bool? ?? false,
       rejectedReason: json['rejectedReason'] as String?,
+      previousStatus: json['previousStatus'] as String?,
+      freezeReason: json['freezeReason'] as String?,
+      decisionReason: json['decisionReason'] as String?,
+      evidenceFiles: (json['evidenceFiles'] as List<dynamic>?)?.map((e) => e.toString()).toList(),
     );
   }
 
@@ -460,6 +482,9 @@ class LogoNFT {
       case ValidationStatus.available: return 'available';
       case ValidationStatus.pendingPayment: return 'pending_payment';
       case ValidationStatus.sold: return 'sold';
+      case ValidationStatus.underReview: return 'under_review';
+      case ValidationStatus.frozenAuction: return 'frozen_auction';
+      case ValidationStatus.copyrightViolation: return 'copyright_violation';
     }
   }
 
@@ -474,6 +499,9 @@ class LogoNFT {
       case 'available': return ValidationStatus.available;
       case 'pending_payment': return ValidationStatus.pendingPayment;
       case 'sold': return ValidationStatus.sold;
+      case 'under_review': return ValidationStatus.underReview;
+      case 'frozen_auction': return ValidationStatus.frozenAuction;
+      case 'copyright_violation': return ValidationStatus.copyrightViolation;
       default: return ValidationStatus.pending;
     }
   }
@@ -664,6 +692,10 @@ class LogoNFT {
       isPaymentProcessing: data['isPaymentProcessing'] as bool? ?? false,
       isMetadataLocked: data['isMetadataLocked'] as bool? ?? false,
       rejectedReason: data['rejectedReason'] as String?,
+      previousStatus: data['previousStatus'] as String?,
+      freezeReason: data['freezeReason'] as String?,
+      decisionReason: data['decisionReason'] as String?,
+      evidenceFiles: (data['evidenceFiles'] as List<dynamic>?)?.map((e) => e.toString()).toList(),
     );
   }
 }

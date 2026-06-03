@@ -8,7 +8,7 @@ exports.placeBid = async (req, res) => {
     try {
         const { tokenId, bid, userBalance } = req.body;
         const db = getDb();
-        if(!db) return res.status(500).json({ error: 'Firestore not initialized' });
+        if (!db) return res.status(500).json({ error: 'Firestore not initialized' });
 
         if (bid.amount > userBalance) {
             return res.status(400).json({ error: 'Insufficient wallet balance' });
@@ -114,7 +114,7 @@ exports.completePayment = async (req, res) => {
     try {
         let { tokenId, winnerWallet, userBalance, txHash } = req.body;
         const db = getDb();
-        if(!db) return res.status(500).json({ error: 'Firestore not initialized' });
+        if (!db) return res.status(500).json({ error: 'Firestore not initialized' });
 
         if (!txHash) throw new Error('Transaction hash is required for payment verification');
         txHash = txHash.toLowerCase().trim();
@@ -142,8 +142,18 @@ exports.completePayment = async (req, res) => {
             const auctionDoc = await transaction.get(auctionRef);
             const aStatus = auctionDoc.exists ? (auctionDoc.data().status || '').toUpperCase().trim() : '';
 
-            if (auctionStatus !== 'PAYMENT_PENDING' && aStatus !== 'PAYMENT_PENDING') {
-                throw new Error(`Auction is not in a payment pending state. Current: ${auctionStatus}`);
+            // [PAYMENT CHECK] Debug logging
+            console.log('[PAYMENT CHECK] nft.auctionStatus (raw)  =', JSON.stringify(data.auctionStatus));
+            console.log('[PAYMENT CHECK] nft.auctionStatus (norm) =', auctionStatus);
+            console.log('[PAYMENT CHECK] nft.status (raw)         =', JSON.stringify(data.status));
+            console.log('[PAYMENT CHECK] auction.status (raw)     =', JSON.stringify(auctionDoc.exists ? auctionDoc.data().status : 'DOC_NOT_FOUND'));
+            console.log('[PAYMENT CHECK] auction.status (norm)    =', aStatus);
+            console.log('[PAYMENT CHECK] Gate: auctionStatus ==', auctionStatus, ' aStatus ==', aStatus);
+
+            const isNftPending = auctionStatus === 'PENDING_PAYMENT';
+            const isAuctionPending = aStatus === 'PENDING_PAYMENT';
+            if (!isNftPending && !isAuctionPending) {
+                throw new Error(`Auction is not in a payment pending state. Current: ${auctionStatus} / ${aStatus}`);
             }
 
             let paymentDeadline = 0;
@@ -230,8 +240,8 @@ exports.requestReAuction = async (req, res) => {
     try {
         const { tokenId } = req.body;
         const db = getDb();
-        if(!db) return res.status(500).json({ error: 'Firestore not initialized' });
-        
+        if (!db) return res.status(500).json({ error: 'Firestore not initialized' });
+
         const nftRef = db.collection('nfts').doc(tokenId.toString());
         const auctionRef = db.collection('auctions').doc(tokenId.toString());
 
@@ -300,8 +310,8 @@ exports.approveReAuction = async (req, res) => {
     try {
         const { tokenId } = req.body;
         const db = getDb();
-        if(!db) return res.status(500).json({ error: 'Firestore not initialized' });
-        
+        if (!db) return res.status(500).json({ error: 'Firestore not initialized' });
+
         res.status(200).json({ message: 'Re-auction approved successfully' });
     } catch (error) {
         console.error(error);
