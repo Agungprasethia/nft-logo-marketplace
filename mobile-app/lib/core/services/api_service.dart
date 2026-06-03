@@ -46,7 +46,7 @@ class ApiService {
 
     if (kDebugMode) { debugPrint('🌐 Loading NFTs from backend API...'); }
     try {
-      final response = await http.get(Uri.parse('$baseUrl/nft/all'));
+      final response = await http.get(Uri.parse('$baseUrl/api/nft/all'));
 
       if (response.statusCode == 200) {
         final List<dynamic> data = json.decode(response.body);
@@ -87,7 +87,7 @@ class ApiService {
     }
 
     try {
-      final response = await http.get(Uri.parse('$baseUrl/nft/$tokenId'));
+      final response = await http.get(Uri.parse('$baseUrl/api/nft/$tokenId'));
 
       if (response.statusCode == 200) {
         final Map<String, dynamic> data = json.decode(response.body);
