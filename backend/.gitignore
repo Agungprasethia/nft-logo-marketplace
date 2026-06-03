@@ -1,3 +1,4 @@
 .env
 firebase-admin.json
 node_modules/
+"firebase-admin.json.json" 
