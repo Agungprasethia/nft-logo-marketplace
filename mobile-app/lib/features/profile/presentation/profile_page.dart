@@ -73,6 +73,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   // Favorites dummy set
   final Set<int> _favorites = {};
+  final Map<int, Stream<DocumentSnapshot>> _nftStreams = {}; // NEW
 
   @override
   void initState() {
@@ -80,8 +81,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     _tabController = TabController(length: 5, vsync: this);
     _tabController.addListener(_onTabChanged);
     _web3.addListener(_onWeb3StateChanged);
-    _loadProfile();
-    _subscribeToCounts();
+    _initData();
   }
 
   String _currentWalletForStreams = '';
@@ -94,7 +94,28 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   Stream<List<LogoNFT>>? _ownedNFTsStream;
   Stream<Map<int, Map<String, dynamic>>>? _participatedBidsStream;
 
-  void _subscribeToCounts() async {
+  Stream<DocumentSnapshot> _getNftStream(int tokenId) {
+    return _nftStreams.putIfAbsent(
+      tokenId,
+      () => FirestoreService.instance.db
+          .collection('nfts')
+          .doc(tokenId.toString())
+          .snapshots(),
+    );
+  }
+
+  Future<void> _initData() async {
+    try {
+      await Future.wait([_loadProfile(), _subscribeToCounts()]);
+    } catch (e) {
+      if (mounted) {
+        NotificationManager.show(context: context, title: 'Error', message: 'Failed to load profile data', type: NotificationType.error);
+      }
+    }
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _subscribeToCounts() async {
     final wallet = _web3.currentAddress?.toLowerCase() ?? '';
     if (wallet.isEmpty) return;
 
@@ -106,13 +127,13 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     }
     
     // Fetch counts efficiently using Firestore count()
-    final created = await FirestoreService.instance.getUserCreatedNFTsCount(wallet);
-    final owned = await FirestoreService.instance.getUserNFTsCount(wallet);
+    final results = await Future.wait([
+      FirestoreService.instance.getUserCreatedNFTsCount(wallet),
+      FirestoreService.instance.getUserNFTsCount(wallet),
+    ]);
     if (mounted) {
-      setState(() {
-        _createdCount = created;
-        _ownedCount = owned;
-      });
+      _createdCount = results[0];
+      _ownedCount = results[1];
     }
   }
 
@@ -121,15 +142,18 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   }
 
   void _onWeb3StateChanged() {
-    _loadProfile();
-    _subscribeToCounts();
-    if (mounted) setState(() {});
+    final newWallet = _web3.currentAddress?.toLowerCase() ?? '';
+    if (newWallet != _currentWalletForStreams) {
+      _initData();
+    } else {
+      if (mounted) setState(() {});
+    }
   }
 
   Future<void> _loadProfile() async {
     final isAuthenticated = _web3.isConnected && (_web3.currentAddress?.isNotEmpty ?? false);
     if (!isAuthenticated) {
-      if (mounted) setState(() => _userProfile = null);
+      _userProfile = null;
       return;
     }
 
@@ -139,22 +163,15 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
     if (uid != null) {
       final profile = await AuthService.instance.getUserData(uid);
-      if (mounted) {
-        setState(() {
-          _userProfile = profile;
-        });
-      }
+      _userProfile = profile;
     } else {
-      if (mounted) setState(() => _userProfile = null);
+      _userProfile = null;
     }
   }
 
   Future<void> _handleRefresh() async {
     setState(() => _isLoading = true);
-    await Future.wait([
-      _loadProfile(),
-      Future.delayed(const Duration(milliseconds: 800)), // Simulate network delay for UI
-    ]);
+    await _initData();
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -938,7 +955,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                   (context, index) {
                     final entry = sortedEntries[index];
                     return StreamBuilder<DocumentSnapshot>(
-                      stream: FirestoreService.instance.db.collection('nfts').doc(entry.key.toString()).snapshots(),
+                      stream: _getNftStream(entry.key),
                       builder: (context, snapshot) {
                         if (!snapshot.hasData || !snapshot.data!.exists) return const SizedBox.shrink();
                         final logo = LogoNFT.fromFirestore(snapshot.data!.data() as Map<String, dynamic>? ?? {});
@@ -1197,7 +1214,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           itemBuilder: (context, index) {
             final entry = bids.entries.elementAt(index);
             return StreamBuilder<DocumentSnapshot>(
-              stream: FirestoreService.instance.db.collection('nfts').doc(entry.key.toString()).snapshots(),
+              stream: _getNftStream(entry.key),
               builder: (context, snap) {
                 if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
                 final logo = LogoNFT.fromFirestore(snap.data!.data() as Map<String, dynamic>? ?? {});
