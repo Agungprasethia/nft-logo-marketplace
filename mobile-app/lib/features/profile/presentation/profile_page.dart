@@ -92,7 +92,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
   Stream<List<LogoNFT>>? _createdNFTsStream;
   Stream<List<LogoNFT>>? _ownedNFTsStream;
-  Stream<Map<int, Map<String, dynamic>>>? _participatedBidsStream;
+  Map<int, Map<String, dynamic>>? _participatedBids;
+  StreamSubscription? _participatedSub;
 
   Stream<DocumentSnapshot> _getNftStream(int tokenId) {
     return _nftStreams.putIfAbsent(
@@ -123,7 +124,14 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       _currentWalletForStreams = wallet;
       _createdNFTsStream = FirestoreService.instance.getUserCreatedNFTsStream(wallet).asBroadcastStream();
       _ownedNFTsStream = FirestoreService.instance.getUserNFTsStream(wallet).asBroadcastStream();
-      _participatedBidsStream = FirestoreService.instance.getUserParticipatedBidsStream(wallet).asBroadcastStream();
+      
+      _participatedSub?.cancel();
+      _participatedBids = null; // reset while loading
+      _participatedSub = FirestoreService.instance.getUserParticipatedBidsStream(wallet).listen((bids) {
+        if (mounted) setState(() => _participatedBids = bids);
+      }, onError: (e) {
+        if (mounted) setState(() => _participatedBids = {});
+      });
     }
     
     // Fetch counts efficiently using Firestore count()
@@ -182,6 +190,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     _refreshTimer?.cancel();
     _ownedSub?.cancel();
     _createdSub?.cancel();
+    _participatedSub?.cancel();
     _web3.removeListener(_onWeb3StateChanged);
     _nftStreams.clear();
     super.dispose();
@@ -936,19 +945,15 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
     if (currentWallet.isEmpty) return _buildEmptyState(Icons.account_balance_wallet, 'Connect wallet to view bids');
 
-    return StreamBuilder<Map<int, Map<String, dynamic>>>(
-      stream: _participatedBidsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting || _isLoading) return _buildShimmerGrid();
-        if (snapshot.hasError) return _buildEmptyState(Icons.error, 'Error loading bids');
+    if (_participatedBids == null || _isLoading) return _buildShimmerGrid();
 
-        final bidsMap = snapshot.data ?? {};
-        if (bidsMap.isEmpty) return _buildEmptyState(Icons.gavel_outlined, 'No bids found.');
+    final bidsMap = _participatedBids!;
+    if (bidsMap.isEmpty) return _buildEmptyState(Icons.gavel_outlined, 'No bids found.');
 
-        final sortedEntries = bidsMap.entries.toList()..sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
+    final sortedEntries = bidsMap.entries.toList()..sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
 
-        return CustomScrollView(
-          slivers: [
+    return CustomScrollView(
+      slivers: [
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
               sliver: SliverList(
@@ -972,8 +977,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             const SliverPadding(padding: EdgeInsets.only(bottom: 40)),
           ],
         );
-      },
-    );
   }
 
   Widget _buildPaymentCard(LogoNFT logo, Auction? auction, double myBid, String currentWallet) {
@@ -1201,40 +1204,34 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   }
 
   Widget _buildJoinedAuctionsList(String currentWallet) {
-    // Requires streaming participations
-    return StreamBuilder<Map<int, Map<String, dynamic>>>(
-      stream: _participatedBidsStream,
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) return _buildShimmerGrid();
-        final bids = snapshot.data ?? {};
-        if (bids.isEmpty) return _buildEmptyState(Icons.group_outlined, 'No joined auctions');
+    if (_participatedBids == null) return _buildShimmerGrid();
+    final bids = _participatedBids!;
+    if (bids.isEmpty) return _buildEmptyState(Icons.group_outlined, 'No joined auctions');
 
-        final bidsList = bids.entries.toList();
+    final bidsList = bids.entries.toList();
 
-        return ListView.builder(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          itemCount: bidsList.length,
-          itemBuilder: (context, index) {
-            final entry = bidsList[index];
-            return StreamBuilder<DocumentSnapshot>(
-              stream: _getNftStream(entry.key),
-              builder: (context, snap) {
-                if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
-                final logo = LogoNFT.fromFirestore(snap.data!.data() as Map<String, dynamic>? ?? {});
-                final auction = _web3.getAuctionForLogo(logo.tokenId);
-                final myBid = (entry.value['amount'] as num).toDouble();
-                final isLive = logo.isAuctionActive;
-                final status = logo.highestBidderWallet?.toLowerCase() == currentWallet ? 'WINNING' : 'OUTBID';
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      itemCount: bidsList.length,
+      itemBuilder: (context, index) {
+        final entry = bidsList[index];
+        return StreamBuilder<DocumentSnapshot>(
+          stream: _getNftStream(entry.key),
+          builder: (context, snap) {
+            if (!snap.hasData || !snap.data!.exists) return const SizedBox.shrink();
+            final logo = LogoNFT.fromFirestore(snap.data!.data() as Map<String, dynamic>? ?? {});
+            final auction = _web3.getAuctionForLogo(logo.tokenId);
+            final myBid = (entry.value['amount'] as num).toDouble();
+            final isLive = logo.isAuctionActive;
+            final status = logo.highestBidderWallet?.toLowerCase() == currentWallet ? 'WINNING' : 'OUTBID';
 
-                return _buildAuctionCard(
-                  logo: logo,
-                  auction: auction,
-                  isMyAuction: false,
-                  isLive: isLive,
-                  myBid: myBid,
-                  joinedStatus: status,
-                );
-              },
+            return _buildAuctionCard(
+              logo: logo,
+              auction: auction,
+              isMyAuction: false,
+              isLive: isLive,
+              myBid: myBid,
+              joinedStatus: status,
             );
           },
         );
