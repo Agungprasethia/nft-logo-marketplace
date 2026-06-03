@@ -1,3 +1,3 @@
 class AppConfig {
-  static const String apiBaseUrl = 'http://localhost:3000'; // Ganti saat deploy
+  static const String apiBaseUrl = 'https://nft-logo-marketplace.onrender.com'; // Ganti saat deploy
 }
