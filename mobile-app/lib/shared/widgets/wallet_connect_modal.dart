@@ -6,7 +6,7 @@ import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 class WalletConnectModal extends StatefulWidget {
   final String title;
@@ -61,15 +61,59 @@ class WalletConnectModal extends StatefulWidget {
 
 class _WalletConnectModalState extends State<WalletConnectModal> {
   bool _isConnecting = false;
+  bool _isClosing = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen for wallet connection changes â€” auto-dismiss when connected
+    Web3Service.instance.addListener(_onWeb3Changed);
+    // Check immediately in case already connected (e.g. session restored)
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && Web3Service.instance.isConnected) {
+        _safePop(true);
+      }
+    });
+  }
+
+  void _safePop(bool result) {
+    if (_isClosing || !mounted) return;
+    _isClosing = true;
+    Web3Service.instance.removeListener(_onWeb3Changed); // Cancel listener before pop
+    Navigator.of(context).pop(result);
+  }
+
+  @override
+  void dispose() {
+    Web3Service.instance.removeListener(_onWeb3Changed);
+    super.dispose();
+  }
+
+  void _onWeb3Changed() {
+    if (!mounted) return;
+    if (Web3Service.instance.isConnected) {
+      // Wallet just connected - dismiss modal automatically
+      if (mounted && !_isClosing) setState(() => _isConnecting = false);
+      _safePop(true);
+    }
+  }
 
   Future<void> _handleConnect() async {
-    if (_isConnecting) return;
+    if (_isConnecting || _isClosing) return;
+    // Guard: already connected - just close
+    if (Web3Service.instance.isConnected) {
+      _safePop(true);
+      return;
+    }
+
     setState(() => _isConnecting = true);
 
     try {
       await WalletUtils.showConnectDialog(context, Web3Service.instance);
-      if (Web3Service.instance.isConnected) {
-        if (mounted) Navigator.of(context).pop(true);
+      // If connectWallet() returned and we're connected, the listener
+      // above already handles pop(). If not, reset the spinner here.
+      if (!Web3Service.instance.isConnected) {
+        if (mounted) setState(() => _isConnecting = false);
       }
     } catch (e) {
       if (!mounted) return;
@@ -80,7 +124,7 @@ class _WalletConnectModalState extends State<WalletConnectModal> {
         type: NotificationType.error,
       );
     } finally {
-      if (mounted) setState(() => _isConnecting = false);
+      if (mounted && !_isClosing) setState(() => _isConnecting = false);
     }
   }
 
@@ -189,7 +233,7 @@ class _WalletConnectModalState extends State<WalletConnectModal> {
                 width: double.infinity,
                 height: 52,
                 child: TextButton(
-                  onPressed: () => Navigator.of(context).pop(false),
+                  onPressed: () => _safePop(false),
                   style: TextButton.styleFrom(
                     foregroundColor: AppColors.textSecondary,
                     shape: RoundedRectangleBorder(

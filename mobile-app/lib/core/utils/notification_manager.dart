@@ -1,6 +1,6 @@
 import 'dart:collection';
 import 'package:flutter/material.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/widgets/premium_notification.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
@@ -39,8 +39,7 @@ class NotificationManager {
       message: message,
       type: type,
       category: category,
-      tokenId: tokenId,
-      imageUrl: imageUrl,
+      relatedId: tokenId?.toString(),
       createdAt: now,
       actionRoute: actionRoute,
     );

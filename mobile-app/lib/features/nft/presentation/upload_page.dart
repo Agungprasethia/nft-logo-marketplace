@@ -20,7 +20,7 @@ import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
 import 'package:nft_logo_marketplace/shared/widgets/primary_button.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 class UploadPage extends StatefulWidget {
   final VoidCallback? onMintSuccess;
@@ -140,7 +140,7 @@ class _UploadPageState extends State<UploadPage> {
       return;
     }
 
-    // Show Digital Artwork Agreement popup FIRST — mint is locked until agreed
+    // Show Digital Artwork Agreement popup FIRST â€” mint is locked until agreed
     final agreed = await AgreementDialog.show(context);
     if (!agreed || !mounted) return;
 
@@ -215,7 +215,7 @@ class _UploadPageState extends State<UploadPage> {
     });
 
     try {
-      // ═══ STEP 1: Upload image to Pinata IPFS ═══
+      // â•â•â• STEP 1: Upload image to Pinata IPFS â•â•â•
       if (kDebugMode) { debugPrint('[UPLOAD START] Uploading image to IPFS...'); }
       final ipfsImageUrl = await PinataService.uploadImage(
         _imageBytes!, 
@@ -223,13 +223,13 @@ class _UploadPageState extends State<UploadPage> {
       );
       
       if (!mounted) return;
-      if (kDebugMode) { debugPrint('[IPFS IMAGE SUCCESS] ✅ Image uploaded: $ipfsImageUrl'); }
+      if (kDebugMode) { debugPrint('[IPFS IMAGE SUCCESS] âœ… Image uploaded: $ipfsImageUrl'); }
 
       setState(() {
         _statusMessage = 'Uploading Metadata to IPFS... 2/4\nSaving NFT metadata JSON';
       });
 
-      // ═══ STEP 2: Upload NFT metadata JSON to Pinata IPFS ═══
+      // â•â•â• STEP 2: Upload NFT metadata JSON to Pinata IPFS â•â•â•
       if (kDebugMode) { debugPrint('[UPLOAD START] Uploading metadata to IPFS...'); }
       final ipfsMetadataUrl = await PinataService.uploadMetadata(
         name: _nameController.text.trim(),
@@ -239,7 +239,7 @@ class _UploadPageState extends State<UploadPage> {
       );
       
       if (!mounted) return;
-      if (kDebugMode) { debugPrint('[IPFS METADATA SUCCESS] ✅ Metadata uploaded: $ipfsMetadataUrl'); }
+      if (kDebugMode) { debugPrint('[IPFS METADATA SUCCESS] âœ… Metadata uploaded: $ipfsMetadataUrl'); }
 
       final copyrightHash = sha256.convert(_imageBytes!).toString();
 
@@ -247,7 +247,7 @@ class _UploadPageState extends State<UploadPage> {
         _statusMessage = 'Minting on Blockchain... 3/4\nConfirm in MetaMask';
       });
 
-      // ═══ STEP 3: BLOCKCHAIN MINT — ATOMIC ═══
+      // â•â•â• STEP 3: BLOCKCHAIN MINT â€” ATOMIC â•â•â•
       // mintLogo() handles:
       //   - Send transaction to smart contract
       //   - Wait for blockchain receipt
@@ -279,13 +279,13 @@ class _UploadPageState extends State<UploadPage> {
       }
 
       if (!mounted) return;
-      if (kDebugMode) { debugPrint('[MINT COMPLETE] ✅ NFT minted with REAL tokenId: ${mintedNFT.tokenId}'); }
+      if (kDebugMode) { debugPrint('[MINT COMPLETE] âœ… NFT minted with REAL tokenId: ${mintedNFT.tokenId}'); }
 
       setState(() {
         _statusMessage = 'Finalizing... 4/4';
       });
 
-      // ═══ STEP 4: SUCCESS — Reload data & show UI ═══
+      // â•â•â• STEP 4: SUCCESS â€” Reload data & show UI â•â•â•
       _web3.loadFromChain();
 
       // Show success dialog with IPFS info
@@ -299,7 +299,7 @@ class _UploadPageState extends State<UploadPage> {
       try {
         await NotificationService().showNotification(
           id: mintedNFT.tokenId % 100000,
-          title: 'NFT Submitted for Review! 📋',
+          title: 'NFT Submitted for Review! ðŸ“‹',
           body: 'Artwork "${mintedNFT.name}" is pending admin approval.\nToken ID: ${mintedNFT.tokenId}'
         );
       } catch (e) {
@@ -321,7 +321,7 @@ class _UploadPageState extends State<UploadPage> {
     } catch (e) {
       if (!mounted) return;
       
-      // ═══ TARGETED ERROR MESSAGES ═══
+      // â•â•â• TARGETED ERROR MESSAGES â•â•â•
       String errorMessage = e.toString().replaceFirst("Exception: ", "");
       
       if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
@@ -347,8 +347,8 @@ class _UploadPageState extends State<UploadPage> {
         type: NotificationType.error,
       );
       
-      if (kDebugMode) { debugPrint('[MINT FAILED] ❌ $e'); }
-      if (kDebugMode) { debugPrint('[MINT FAILED] No ghost NFT was created — Firestore is clean.'); }
+      if (kDebugMode) { debugPrint('[MINT FAILED] âŒ $e'); }
+      if (kDebugMode) { debugPrint('[MINT FAILED] No ghost NFT was created â€” Firestore is clean.'); }
     } finally {
       if (mounted) {
         setState(() {
@@ -386,7 +386,7 @@ class _UploadPageState extends State<UploadPage> {
               ),
               const SizedBox(height: AppSpacing.lg),
               const Text(
-                'Submitted for Review! ðŸ“‹',
+                'Submitted for Review! Ã°Å¸â€œâ€¹',
                 style: AppTextStyles.h2,
                 textAlign: TextAlign.center,
               ),
@@ -568,7 +568,7 @@ class _UploadPageState extends State<UploadPage> {
                                   ),
                                   const SizedBox(height: AppSpacing.sm),
                                   Text(
-                                    'PNG, JPG, GIF â€¢ Max 10MB',
+                                    'PNG, JPG, GIF Ã¢â‚¬Â¢ Max 10MB',
                                     style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
                                   ),
                                 ],

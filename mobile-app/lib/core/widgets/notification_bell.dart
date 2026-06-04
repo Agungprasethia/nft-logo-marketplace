@@ -3,7 +3,7 @@ import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
-import 'package:nft_logo_marketplace/features/notifications/presentation/notifications_page.dart';
+import 'package:nft_logo_marketplace/features/profile/presentation/notifications_page.dart';
 
 class NotificationBell extends StatelessWidget {
   final Color iconColor;
@@ -17,7 +17,7 @@ class NotificationBell extends StatelessWidget {
       return IconButton(
         icon: Icon(Icons.notifications_none, color: iconColor),
         onPressed: () {
-          Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+          Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(userWallet: currentWallet)));
         },
       );
     }
@@ -33,7 +33,7 @@ class NotificationBell extends StatelessWidget {
             IconButton(
               icon: Icon(unreadCount > 0 ? Icons.notifications_active : Icons.notifications_none, color: iconColor),
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const NotificationsPage()));
+                Navigator.push(context, MaterialPageRoute(builder: (_) => NotificationsPage(userWallet: currentWallet)));
               },
             ),
             if (unreadCount > 0)

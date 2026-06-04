@@ -89,6 +89,9 @@ class _AuctionCardState extends State<AuctionCard> {
                               : CachedNetworkImage(
                                   imageUrl: imageUrl,
                                   fit: BoxFit.cover,
+                                  memCacheWidth: 400,
+                                  memCacheHeight: 400,
+                                  filterQuality: FilterQuality.low,
                                   placeholder: (context, url) => Container(
                                     decoration: const BoxDecoration(
                                       gradient: LinearGradient(

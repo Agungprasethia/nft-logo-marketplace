@@ -91,6 +91,9 @@ class LiveAuctionCard extends StatelessWidget {
                         ? CachedNetworkImage(
                             imageUrl: logo!.imageUrl,
                             fit: BoxFit.cover,
+                            memCacheWidth: 200,
+                            memCacheHeight: 200,
+                            filterQuality: FilterQuality.low,
                             errorWidget: (_, __, ___) => Container(color: AppColors.surfaceLight, child: const Icon(Icons.image_outlined, color: AppColors.textSecondary)),
                             placeholder: (_, __) => Container(color: AppColors.surfaceLight, child: const CustomLoadingIndicator(size: 20)),
                           )

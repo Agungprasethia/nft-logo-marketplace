@@ -6,6 +6,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/firebase_options.dart';
 import 'package:nft_logo_marketplace/shared/widgets/offline_banner.dart';
+import 'package:nft_logo_marketplace/core/services/fcm_service.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -24,6 +25,11 @@ void main() async {
     persistenceEnabled: true,
     cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
   );
+
+  // Initialize Firebase Cloud Messaging
+  if (!kIsWeb) {
+    await FCMService.instance.initialize();
+  }
 
   runApp(const NFTLogoMarketplaceApp());
 }

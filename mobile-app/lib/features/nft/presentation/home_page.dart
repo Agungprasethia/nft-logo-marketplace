@@ -24,7 +24,7 @@ import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dar
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/widgets/notification_bell.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 // Removed api_service.dart
 
@@ -131,13 +131,13 @@ class _HomePageState extends State<HomePage> {
         }
       }
 
-      // ── Category filter ──
+      // â”€â”€ Category filter â”€â”€
       if (_selectedCategory != NFTCategory.all &&
           logo.category != _selectedCategory) {
         return false;
       }
       
-      // ── Search filter ──
+      // â”€â”€ Search filter â”€â”€
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         final matchesName = logo.name.toLowerCase().contains(query);
@@ -322,7 +322,7 @@ class _HomePageState extends State<HomePage> {
         final hasError = snapshot.hasError;
 
         if (hasError && kDebugMode) {
-          debugPrint('🔥 NFT Stream Error: ${snapshot.error}');
+          debugPrint('ðŸ”¥ NFT Stream Error: ${snapshot.error}');
         }
 
         return RefreshIndicator(

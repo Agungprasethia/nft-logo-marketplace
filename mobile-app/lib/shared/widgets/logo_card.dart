@@ -352,6 +352,9 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
         ? CachedNetworkImage(
             imageUrl: imgUrl,
             fit: BoxFit.cover,
+            memCacheWidth: 400,
+            memCacheHeight: 400,
+            filterQuality: FilterQuality.low,
             placeholder: (context, url) => Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

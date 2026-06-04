@@ -9,9 +9,9 @@ import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
-/// Premium wallet gate page — user must connect wallet before accessing the marketplace.
+/// Premium wallet gate page â€” user must connect wallet before accessing the marketplace.
 /// Inspired by OpenSea, Rainbow Wallet, and Foundation connect flows.
 class WalletGatePage extends StatefulWidget {
   const WalletGatePage({super.key});
@@ -127,7 +127,7 @@ class _WalletGatePageState extends State<WalletGatePage>
       backgroundColor: AppColors.background,
       body: Stack(
         children: [
-          // ─── Background Gradient Orbs ───
+          // â”€â”€â”€ Background Gradient Orbs â”€â”€â”€
           Positioned.fill(
             child: AnimatedBuilder(
               animation: _pulseController,
@@ -141,7 +141,7 @@ class _WalletGatePageState extends State<WalletGatePage>
             ),
           ),
 
-          // ─── Content ───
+          // â”€â”€â”€ Content â”€â”€â”€
           SafeArea(
             child: Center(
               child: SingleChildScrollView(
@@ -162,11 +162,11 @@ class _WalletGatePageState extends State<WalletGatePage>
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        // ─── Logo & Branding ───
+                        // â”€â”€â”€ Logo & Branding â”€â”€â”€
                         _buildLogo(),
                         const SizedBox(height: 48),
 
-                        // ─── Title ───
+                        // â”€â”€â”€ Title â”€â”€â”€
                         Text(
                           'L E O',
                           style: AppTextStyles.display.copyWith(
@@ -196,16 +196,16 @@ class _WalletGatePageState extends State<WalletGatePage>
                         ),
                         const SizedBox(height: 48),
 
-                        // ─── Connect Button ───
+                        // â”€â”€â”€ Connect Button â”€â”€â”€
                         _buildConnectButton(),
                         _buildLastConnected(),
                         const SizedBox(height: 24),
 
-                        // ─── Features Preview ───
+                        // â”€â”€â”€ Features Preview â”€â”€â”€
                         _buildFeatureChips(),
                         const SizedBox(height: 48),
 
-                        // ─── Footer ───
+                        // â”€â”€â”€ Footer â”€â”€â”€
                         _buildFooter(),
                       ],
                     ),

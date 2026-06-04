@@ -31,8 +31,10 @@ import 'package:nft_logo_marketplace/shared/models/user_model.dart';
 import 'package:nft_logo_marketplace/shared/widgets/auction_badge.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/re_auction_dialog.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/utils/firestore_error_handler.dart';
+import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
+import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
 
 class DetailLogoPage extends StatefulWidget {
   final LogoNFT logo;
@@ -151,7 +153,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
           return CustomScrollView(
             slivers: [
-              // â”€â”€â”€ App Bar â”€â”€â”€
+              // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ App Bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
               SliverAppBar(
                 pinned: true,
                 backgroundColor: AppColors.background,
@@ -170,7 +172,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ],
               ),
 
-              // â”€â”€â”€ Content â”€â”€â”€
+              // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Content Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
               SliverToBoxAdapter(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -593,7 +595,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           _buildBlockchainInfoCard(logo.txHash!),
         const SizedBox(height: AppSpacing.xxl),
 
-        // ——— Actions ———
+        // â€”â€”â€” Actions â€”â€”â€”
         Container(
           padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: BoxDecoration(
@@ -802,6 +804,13 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                                 message: 'Your NFT is now live for bidding!',
                                 type: NotificationType.success,
                               );
+                            } on InsufficientBalanceException catch (e) {
+                              if (!mounted) return;
+                              Navigator.pop(context); // close loading
+                              showDialog(
+                                context: context,
+                                builder: (_) => InsufficientBalanceDialog(exception: e),
+                              );
                             } catch (e) {
                               if (!mounted) return;
                               Navigator.pop(context); // close loading
@@ -935,7 +944,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ),
               
               // Payment pending - show for winner or creator
-              if (auctionCreated && !isActive && logo.highestBidderWallet != null && status != 'rejected' && logo.auctionStatus == 'PAYMENT_PENDING')
+              if (auctionCreated && !isActive && logo.highestBidderWallet != null && status != 'rejected' && (logo.auctionStatus == 'PAYMENT_PENDING' || logo.auctionStatus == 'PENDING_PAYMENT' || logo.auctionStatus == 'payment_pending' || logo.auctionStatus == 'pending_payment'))
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.md),
                   child: Container(
@@ -1006,7 +1015,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           ),
         ),
 
-        // ——— Leaderboard Section ———
+        // â€”â€”â€” Leaderboard Section â€”â€”â€”
         if (auctionCreated)
           _buildLeaderboardSection(auction),
       ],
@@ -1120,7 +1129,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                         Icon(Icons.gavel_outlined, size: 48, color: AppColors.textSecondary.withValues(alpha: 0.4)),
                         const SizedBox(height: AppSpacing.md),
                         Text(
-                          auction != null && auction.isOngoing ? 'No bids yet — be the first!' : 'No bids were placed',
+                          auction != null && auction.isOngoing ? 'No bids yet â€” be the first!' : 'No bids were placed',
                           style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
                         ),
                         if (auction != null && auction.isOngoing) ...[
@@ -1411,7 +1420,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
             );
             await FirestoreService.instance.placeBid(widget.logo.tokenId, bid, userBalance: _web3.balance);
             if (!mounted) return;
-            NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
+            NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! ðŸŽ‰', type: NotificationType.success);
           } catch (e) {
             if (!mounted) return;
             NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
@@ -1568,7 +1577,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
       await Gal.putImage(filePath);
       if (!mounted) return;
-      NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
+      NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! ðŸŽ‰', type: NotificationType.success);
     } catch (e) {
       if (!mounted) return;
       NotificationManager.show(context: context, title: 'Error', message: 'Failed to save to gallery.', type: NotificationType.error);

@@ -6,7 +6,7 @@ import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/shared/models/transaction.dart';
 import 'package:nft_logo_marketplace/shared/models/user_model.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/shared/models/appeal_case.dart';
 import 'package:nft_logo_marketplace/shared/models/appeal_message.dart';
 
@@ -124,6 +124,27 @@ class FirestoreService {
         });
       });
 
+      // Send notification
+      final docSnapshot = await docRef.get();
+      if (docSnapshot.exists) {
+        final data = docSnapshot.data();
+        final creatorWallet = (data?['creatorWallet'] as String? ?? '').toLowerCase();
+        final nftName = data?['name'] as String? ?? 'NFT #$tokenId';
+        if (creatorWallet.isNotEmpty) {
+          final notifId = _userNotificationsCollection(creatorWallet).doc().id;
+          await saveNotification(creatorWallet, AppNotification(
+            id: notifId,
+            title: 'NFT Approved! ✅',
+            message: 'Your logo $nftName has been approved by the admin and is ready for auction.',
+            type: NotificationType.nftApproved,
+            category: 'system',
+            createdAt: DateTime.now(),
+            isRead: false,
+            actionRoute: '/nft/$tokenId',
+          ));
+        }
+      }
+
       if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId approved (Atomic Transaction)'); }
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ Firestore approveNFT error: $e'); }
@@ -132,7 +153,7 @@ class FirestoreService {
   }
 
   /// Manually starts an auction for an approved/available NFT
-  Future<void> startAuction(int tokenId, {int? onChainAuctionId}) async {
+  Future<void> startAuction(int tokenId, {int? onChainAuctionId, double? newPrice, int? newDuration, String? userWallet}) async {
     try {
       final docRef = _nftsCollection.doc(tokenId.toString());
       final auctionRef = _auctionsCollection.doc(tokenId.toString());
@@ -151,7 +172,7 @@ class FirestoreService {
           throw Exception('NFT must be approved or available to start auction. Current: $currentStatus');
         }
 
-        final durationSeconds = data['auctionDuration'] as int? ?? 86400; // default 24h
+        final durationSeconds = newDuration ?? data['auctionDuration'] as int? ?? 86400; // default 24h
         final now = DateTime.now();
         final endTime = now.add(Duration(seconds: durationSeconds));
 
@@ -162,6 +183,8 @@ class FirestoreService {
           'isAuctionActive': true,
           'auctionCreated': true,
           'isActive': true,
+          if (newPrice != null) 'price': newPrice,
+          if (newDuration != null) 'auctionDuration': newDuration,
           'startTime': now.millisecondsSinceEpoch,
           'endTime': endTime.millisecondsSinceEpoch,
           'updatedAt': FieldValue.serverTimestamp(),
@@ -172,8 +195,8 @@ class FirestoreService {
           'auctionId': onChainAuctionId ?? tokenId, // Save real on-chain ID
           'tokenId': tokenId,
           'sellerId': data['ownerId'] as String? ?? '',
-          'sellerWallet': data['ownerWallet'] as String? ?? '',
-          'startingPrice': (data['price'] as num?)?.toDouble() ?? 0.0,
+          'sellerWallet': userWallet ?? data['ownerWallet'] as String? ?? '',
+          'startingPrice': newPrice ?? (data['price'] as num?)?.toDouble() ?? 0.0,
           'highestBid': (data['highestBid'] as num?)?.toDouble() ?? 0.0,
           'highestBidderId': data['highestBidderId'] as String? ?? '',
           'highestBidderWallet': data['highestBidderWallet'] as String? ?? '',
@@ -197,12 +220,44 @@ class FirestoreService {
 
   Future<void> rejectNFT(int tokenId) async {
     try {
-      await _nftsCollection.doc(tokenId.toString()).update({
-        'status': 'rejected',
-        'isActive': false,
-        'updatedAt': FieldValue.serverTimestamp(),
+      final docRef = _nftsCollection.doc(tokenId.toString());
+      final reason = 'Did not meet quality standards';
+      
+      await _db.runTransaction((transaction) async {
+        final doc = await transaction.get(docRef);
+        if (!doc.exists) throw Exception('NFT not found');
+
+        transaction.update(docRef, {
+          'status': 'rejected',
+          'rejectionReason': reason,
+          'rejectedAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+          'isActive': false,
+        });
       });
-      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId rejected (status updated)'); }
+
+      // Send notification
+      final docSnapshot = await docRef.get();
+      if (docSnapshot.exists) {
+        final data = docSnapshot.data();
+        final creatorWallet = (data?['creatorWallet'] as String? ?? '').toLowerCase();
+        final nftName = data?['name'] as String? ?? 'NFT #$tokenId';
+        if (creatorWallet.isNotEmpty) {
+          final notifId = _userNotificationsCollection(creatorWallet).doc().id;
+          await saveNotification(creatorWallet, AppNotification(
+            id: notifId,
+            title: 'NFT Rejected ❌',
+            message: 'Your logo $nftName was rejected. Reason: $reason',
+            type: NotificationType.nftRejected,
+            category: 'system',
+            createdAt: DateTime.now(),
+            isRead: false,
+            actionRoute: '/nft/$tokenId',
+          ));
+        }
+      }
+
+      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId rejected (Atomic Transaction)'); }
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ Firestore rejectNFT error: $e'); }
       rethrow;
@@ -1012,6 +1067,10 @@ class FirestoreService {
 
       final bidsRef = nftRef.collection('bids').doc(bid.bidderWallet);
 
+      String previousHighestBidder = '';
+      String ownerWallet = '';
+      String nftName = '';
+
       await _db.runTransaction((transaction) async {
         // ══════ ALL READS FIRST (Firestore requirement) ══════
         final nftDoc = await transaction.get(nftRef);
@@ -1021,6 +1080,10 @@ class FirestoreService {
         final auctionDoc = await transaction.get(auctionRef);
 
         final data = nftDoc.data()!;
+        previousHighestBidder = (data['highestBidderWallet'] as String? ?? '').toLowerCase();
+        ownerWallet = (data['ownerWallet'] as String? ?? data['creatorWallet'] as String? ?? '').toLowerCase();
+        nftName = data['name'] as String? ?? 'Logo #$tokenId';
+        
         final status = data['status'] as String? ?? '';
         if (status == 'cancelled') {
           throw Exception('Auction has been cancelled by admin.');
@@ -1098,6 +1161,40 @@ class FirestoreService {
           });
         }
       });
+
+      // 🔥 Trigger Notifications AFTER successful transaction (fire-and-forget)
+      try {
+        if (ownerWallet.isNotEmpty && ownerWallet != bid.bidderWallet.toLowerCase()) {
+          final notifId = _userNotificationsCollection(ownerWallet).doc().id;
+          saveNotification(ownerWallet, AppNotification(
+            id: notifId,
+            title: 'New Bid Received! 💰',
+            message: 'A new bid of ${bid.amount} ETH was placed on $nftName.',
+            type: NotificationType.newBid,
+            category: 'auction',
+            createdAt: DateTime.now(),
+            isRead: false,
+            actionRoute: '/auction/$tokenId',
+          ));
+        }
+        if (previousHighestBidder.isNotEmpty &&
+            previousHighestBidder != bid.bidderWallet.toLowerCase() &&
+            previousHighestBidder != ownerWallet) {
+          final notifId2 = _userNotificationsCollection(previousHighestBidder).doc().id;
+          saveNotification(previousHighestBidder, AppNotification(
+            id: notifId2,
+            title: 'You have been outbid! ⚠️',
+            message: 'Someone placed a higher bid on $nftName. Place a new bid to stay in the lead!',
+            type: NotificationType.outbid,
+            category: 'auction',
+            createdAt: DateTime.now(),
+            isRead: false,
+            actionRoute: '/auction/$tokenId',
+          ));
+        }
+      } catch (e) {
+        if (kDebugMode) { debugPrint('⚠️ Failed to send bid notifications: $e'); }
+      }
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ placeBid error: $e'); }
       rethrow;
@@ -1400,6 +1497,23 @@ class FirestoreService {
             transaction.update(auctionRef, {
               'status': 'ENDED',
             });
+          }
+
+          // Send notification to creator
+          final creatorWallet = (data['ownerWallet'] as String? ?? data['creatorWallet'] as String? ?? '').toLowerCase();
+          final nftName = data['name'] as String? ?? 'NFT #$tokenId';
+          if (creatorWallet.isNotEmpty) {
+            final notifId = _userNotificationsCollection(creatorWallet).doc().id;
+            saveNotification(creatorWallet, AppNotification(
+              id: notifId,
+              title: 'Auction Ended (Unsold) 📉',
+              message: 'Your auction for $nftName ended with no bids. You can relist it anytime.',
+              type: NotificationType.unsoldAuction,
+              category: 'auction',
+              createdAt: DateTime.now(),
+              isRead: false,
+              actionRoute: '/nft/$tokenId',
+            ));
           }
         }
       });
@@ -1880,10 +1994,22 @@ class FirestoreService {
       final nftRef = _nftsCollection.doc(tokenId.toString());
       final auctionRef = _auctionsCollection.doc(tokenId.toString());
 
+      String? secondBidderWallet;
+      double? secondBidAmount;
+      String? firstBidderWallet;
+      String? creatorWallet;
+      String nftName = '';
+      bool passedToSecond = false;
+
       await _db.runTransaction((transaction) async {
         // ── ALL READS FIRST (Firestore requirement) ──
         final nftDoc = await transaction.get(nftRef);
         if (!nftDoc.exists) return;
+
+        final data = nftDoc.data()!;
+        firstBidderWallet = data['highestBidderWallet'] as String?;
+        creatorWallet = (data['ownerWallet'] as String? ?? data['creatorWallet'] as String? ?? '').toLowerCase();
+        nftName = data['name'] as String? ?? 'NFT #$tokenId';
 
         final auctionDoc = await transaction.get(auctionRef);
 
@@ -1910,10 +2036,14 @@ class FirestoreService {
             return a.firstBidTimestamp.compareTo(b.firstBidTimestamp);
           });
 
-        // ── ALL WRITES AFTER READS ──
+        // ══════ ALL WRITES AFTER READS ══════
         if (sortedBids.length >= 2) {
           // Pass to Bidder #2
           final secondBidder = sortedBids[1];
+          secondBidderWallet = secondBidder.bidderWallet.toLowerCase();
+          secondBidAmount = secondBidder.amount;
+          passedToSecond = true;
+
           // Reset NFT status to PENDING_PAYMENT for the 2nd bidder
           transaction.update(nftRef, {
             'highestBid': secondBidder.amount,
@@ -1928,12 +2058,12 @@ class FirestoreService {
           });
 
           if (auctionDoc.exists) {
-             transaction.update(auctionRef, {
-               'status': 'PENDING_PAYMENT',  // UPPERCASE — source of truth
-               'highestBid': secondBidder.amount,
-               'highestBidderId': secondBidder.bidderId,
-               'highestBidderWallet': secondBidder.bidderWallet,
-             });
+            transaction.update(auctionRef, {
+              'status': 'PENDING_PAYMENT',  // UPPERCASE — source of truth
+              'highestBid': secondBidder.amount,
+              'highestBidderId': secondBidder.bidderId,
+              'highestBidderWallet': secondBidder.bidderWallet,
+            });
           }
           if (kDebugMode) { debugPrint('🔥 Payment failed, passed to 2nd bidder for NFT #$tokenId'); }
         } else {
@@ -1951,6 +2081,62 @@ class FirestoreService {
           if (kDebugMode) { debugPrint('🔥 Payment failed, no 2nd bidder. Status set to failed_payment for NFT #$tokenId'); }
         }
       });
+
+      // 🔥 Post-transaction Notifications 🔥
+      if (firstBidderWallet != null && firstBidderWallet!.isNotEmpty) {
+        final notifId = _userNotificationsCollection(firstBidderWallet!).doc().id;
+        await saveNotification(firstBidderWallet!, AppNotification(
+          id: notifId,
+          title: 'Payment Failed ⚠️',
+          message: 'You failed to pay for $nftName within 24h. You have lost the auction.',
+          type: NotificationType.paymentFailed,
+          category: 'payment',
+          createdAt: DateTime.now(),
+          isRead: false,
+          actionRoute: '/nft/$tokenId',
+        ));
+      }
+
+      if (passedToSecond && secondBidderWallet != null && secondBidAmount != null) {
+        final notifId = _userNotificationsCollection(secondBidderWallet!).doc().id;
+        await saveNotification(secondBidderWallet!, AppNotification(
+          id: notifId,
+          title: 'You Won the Auction! (Passed) 🏆',
+          message: 'The highest bidder failed to pay. As the 2nd highest bidder, you won $nftName! Pay ${secondBidAmount!.toStringAsFixed(4)} ETH within 24h.',
+          type: NotificationType.auctionWon,
+          category: 'payment',
+          createdAt: DateTime.now(),
+          isRead: false,
+          actionRoute: '/auction/$tokenId',
+        ));
+      }
+
+      if (creatorWallet != null && creatorWallet!.isNotEmpty) {
+        final notifId = _userNotificationsCollection(creatorWallet!).doc().id;
+        if (passedToSecond) {
+          await saveNotification(creatorWallet!, AppNotification(
+            id: notifId,
+            title: 'Winner Failed Payment ⚠️',
+            message: 'The winner of $nftName failed to pay. The auction was passed to the 2nd highest bidder.',
+            type: NotificationType.info,
+            category: 'auction',
+            createdAt: DateTime.now(),
+            isRead: false,
+            actionRoute: '/nft/$tokenId',
+          ));
+        } else {
+          await saveNotification(creatorWallet!, AppNotification(
+            id: notifId,
+            title: 'Relist Available: Payment Failed 📉',
+            message: 'The winner of $nftName failed to pay, and there are no other bidders. You can now relist your NFT.',
+            type: NotificationType.relistAvailable,
+            category: 'auction',
+            createdAt: DateTime.now(),
+            isRead: false,
+            actionRoute: '/nft/$tokenId',
+          ));
+        }
+      }
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ handleFailedPayment error: $e'); }
       rethrow;
@@ -2556,6 +2742,35 @@ class FirestoreService {
       await batch.commit();
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ Error marking all notifications as read: $e'); }
+    }
+  }
+
+  Future<void> clearAllNotifications(String wallet) async {
+    try {
+      if (wallet.isEmpty) return;
+      final snapshot = await _userNotificationsCollection(wallet).get();
+      
+      if (snapshot.docs.isEmpty) return;
+
+      final batch = _db.batch();
+      for (var doc in snapshot.docs) {
+        batch.delete(doc.reference);
+      }
+      await batch.commit();
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ Error clearing all notifications: $e'); }
+    }
+  }
+
+  Future<void> updateUserFCMToken(String wallet, String token) async {
+    try {
+      if (wallet.isEmpty) return;
+      await _db.collection('users').doc(wallet.toLowerCase()).set({
+        'fcmToken': token,
+        'updatedAt': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+    } catch (e) {
+      if (kDebugMode) { debugPrint('❌ Error updating FCM token: $e'); }
     }
   }
 

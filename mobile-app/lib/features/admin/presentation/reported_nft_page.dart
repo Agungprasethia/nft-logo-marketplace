@@ -12,7 +12,7 @@ import 'package:nft_logo_marketplace/features/profile/presentation/widgets/leade
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 class ReportedNftPage extends StatefulWidget {
   const ReportedNftPage({super.key});

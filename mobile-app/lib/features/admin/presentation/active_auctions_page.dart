@@ -8,7 +8,7 @@ import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 class ActiveAuctionsPage extends StatelessWidget {
 
@@ -377,7 +377,7 @@ class ActiveAuctionsPage extends StatelessWidget {
                           Text('Leaderboard', style: AppTextStyles.h2),
                           const SizedBox(height: 2),
                           Text(
-                            'Auction #${auction.auctionId} • Token #${auction.tokenId}',
+                            'Auction #${auction.auctionId} â€¢ Token #${auction.tokenId}',
                             style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
                           ),
                         ],
@@ -477,7 +477,7 @@ class ActiveAuctionsPage extends StatelessWidget {
                                       ),
                                     ),
                                     if (isFirst)
-                                      Text('👑 Highest Bidder', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                                      Text('ðŸ‘‘ Highest Bidder', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                               ),

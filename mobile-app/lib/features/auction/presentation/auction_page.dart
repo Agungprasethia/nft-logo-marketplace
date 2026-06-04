@@ -7,7 +7,7 @@ import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/shared/models/user_model.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/notification_service.dart';
@@ -101,7 +101,7 @@ class _AuctionPageState extends State<AuctionPage> {
             }
           },
           onError: (e) {
-            debugPrint('⚠️ Bid stream error, trying fallback: $e');
+            debugPrint('âš ï¸ Bid stream error, trying fallback: $e');
             _bidStreamSub?.cancel();
             _bidStreamSub = FirestoreService.instance
                 .getAuctionBidsStreamFallback(widget.logo.tokenId)
@@ -113,7 +113,7 @@ class _AuctionPageState extends State<AuctionPage> {
                     }
                   },
                   onError: (e2) =>
-                      debugPrint('⚠️ Fallback bid stream also failed: $e2'),
+                      debugPrint('âš ï¸ Fallback bid stream also failed: $e2'),
                 );
           },
         );
@@ -128,7 +128,7 @@ class _AuctionPageState extends State<AuctionPage> {
               setState(() => _liveAuction = liveAuction);
             }
           },
-          onError: (e) => debugPrint('⚠️ Auction stream error: $e'),
+          onError: (e) => debugPrint('âš ï¸ Auction stream error: $e'),
         );
   }
 
@@ -151,18 +151,18 @@ class _AuctionPageState extends State<AuctionPage> {
       if (currentRank < _previousRank!) {
         if (currentRank == 1) {
           _showSnackbar(
-            '🏆 You are now the highest bidder!',
+            'ðŸ† You are now the highest bidder!',
             AppColors.accentOrange,
           );
         } else {
           _showSnackbar(
-            '🔥 Your rank increased to #$currentRank!',
+            'ðŸ”¥ Your rank increased to #$currentRank!',
             AppColors.success,
           );
         }
       } else {
         _showSnackbar(
-          '⚠️ You dropped to position #$currentRank',
+          'âš ï¸ You dropped to position #$currentRank',
           AppColors.danger,
         );
       }
@@ -243,18 +243,18 @@ class _AuctionPageState extends State<AuctionPage> {
           logo.status != ValidationStatus.rejected &&
           logo.endTime != null &&
           DateTime.now().isAfter(logo.endTime!)) {
-        if (kDebugMode) { debugPrint("Auction expired → calling endOffChainAuction()"); }
+        if (kDebugMode) { debugPrint("Auction expired â†’ calling endOffChainAuction()"); }
         if (kDebugMode) { debugPrint("Token ID: ${logo.tokenId}"); }
         if (kDebugMode) { debugPrint("Total bids: ${logo.totalBids}"); }
         _hasEndedAuction = true;
-        if (kDebugMode) { debugPrint('⏰ Auto-ending auction #${widget.logo.tokenId}'); }
+        if (kDebugMode) { debugPrint('â° Auto-ending auction #${widget.logo.tokenId}'); }
         FirestoreService.instance
             .endOffChainAuction(widget.logo.tokenId)
             .then((_) {
-              if (kDebugMode) { debugPrint('✅ Auto-end completed for auction #${widget.logo.tokenId}'); }
+              if (kDebugMode) { debugPrint('âœ… Auto-end completed for auction #${widget.logo.tokenId}'); }
             })
             .catchError((e) {
-              if (kDebugMode) { debugPrint('❌ Auto-end failed: $e'); }
+              if (kDebugMode) { debugPrint('âŒ Auto-end failed: $e'); }
               // Reset guard so it can retry
               _hasEndedAuction = false;
             });
@@ -272,7 +272,7 @@ class _AuctionPageState extends State<AuctionPage> {
         _hasNotified = true;
         NotificationService().showNotification(
           id: widget.logo.tokenId,
-          title: 'Congratulations! You Won the Auction! 🏆',
+          title: 'Congratulations! You Won the Auction! ðŸ†',
           body: 'Claim your NFT #${widget.logo.tokenId} now in the app.',
         );
         _notificationResetTimer?.cancel();
@@ -290,7 +290,7 @@ class _AuctionPageState extends State<AuctionPage> {
 
     if (logo.isFrozen && logo.frozenRemainingSeconds != null) {
       remainingSeconds = logo.frozenRemainingSeconds!;
-    } else if ((logo.auctionStatus == 'PAYMENT_PENDING' || logo.auctionStatus == 'payment_pending') && logo.paymentDeadline != null) {
+    } else if ((logo.auctionStatus == 'PAYMENT_PENDING' || logo.auctionStatus == 'PENDING_PAYMENT' || logo.auctionStatus == 'payment_pending' || logo.auctionStatus == 'pending_payment') && logo.paymentDeadline != null) {
       final now = DateTime.now();
       if (logo.paymentDeadline!.isAfter(now)) {
         remainingSeconds = logo.paymentDeadline!.difference(now).inSeconds;
@@ -321,7 +321,7 @@ class _AuctionPageState extends State<AuctionPage> {
       orElse: () => null,
     );
 
-    debugPrint('🔥 [AUCTION PAGE DEBUG] TokenID: ${logo.tokenId} | logo.highestBid: ${logo.highestBid} | auction.highestBid: ${auction?.highestBid}');
+    debugPrint('ðŸ”¥ [AUCTION PAGE DEBUG] TokenID: ${logo.tokenId} | logo.highestBid: ${logo.highestBid} | auction.highestBid: ${auction?.highestBid}');
     debugPrint("Auction NFT: ${logo.tokenId}");
     debugPrint("Status: ${logo.status}");
     debugPrint("Auction Status: ${logo.auctionStatus}");
@@ -561,7 +561,7 @@ class _AuctionPageState extends State<AuctionPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ─── Status Banners ───
+        // â”€â”€â”€ Status Banners â”€â”€â”€
         if (auction.status == AuctionStatus.cancelled)
           Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -610,7 +610,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ─── Frozen Banner (LARGE) ───
+        // â”€â”€â”€ Frozen Banner (LARGE) â”€â”€â”€
         if (logo.isFrozen && auction.status != AuctionStatus.cancelled)
           Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -711,7 +711,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ─── Status Banners ───
+        // â”€â”€â”€ Status Banners â”€â”€â”€
         if (auction.status == AuctionStatus.ended &&
             (logo.highestBidderWallet == null ||
                 logo.highestBidderWallet!.isEmpty))
@@ -805,7 +805,7 @@ class _AuctionPageState extends State<AuctionPage> {
               children: [
                 if (_web3.currentAddress?.toLowerCase() ==
                     logo.highestBidderWallet?.toLowerCase())
-                  const Text('🎉', style: TextStyle(fontSize: 32))
+                  const Text('ðŸŽ‰', style: TextStyle(fontSize: 32))
                 else
                   const Icon(
                     Icons.payment,
@@ -990,7 +990,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ─── View Only Mode Banner ───
+        // â”€â”€â”€ View Only Mode Banner â”€â”€â”€
         if (!_web3.isConnected)
           Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -1032,7 +1032,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ─── Info ───
+        // â”€â”€â”€ Info â”€â”€â”€
         Text(
           logo.name,
           style: AppTextStyles.display.copyWith(fontSize: 28),
@@ -1231,7 +1231,7 @@ class _AuctionPageState extends State<AuctionPage> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // ─── Creator Mode Banner ───
+        // â”€â”€â”€ Creator Mode Banner â”€â”€â”€
         if (isCreator)
           Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -1298,7 +1298,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ─── Auction Stats Card ───
+        // â”€â”€â”€ Auction Stats Card â”€â”€â”€
         Container(
           padding: const EdgeInsets.all(AppSpacing.xl),
           decoration: BoxDecoration(
@@ -1538,7 +1538,7 @@ class _AuctionPageState extends State<AuctionPage> {
         const AuctionStepIndicator(currentStep: 0),
         const SizedBox(height: AppSpacing.lg),
 
-        // ─── Auction Pricing Info ───
+        // â”€â”€â”€ Auction Pricing Info â”€â”€â”€
         Container(
           padding: const EdgeInsets.all(AppSpacing.lg),
           decoration: BoxDecoration(
@@ -1612,8 +1612,8 @@ class _AuctionPageState extends State<AuctionPage> {
         ),
         const SizedBox(height: AppSpacing.xxl),
 
-        // ─── Actions ───
-        // ─── Ended Auction Status Messages ───
+        // â”€â”€â”€ Actions â”€â”€â”€
+        // â”€â”€â”€ Ended Auction Status Messages â”€â”€â”€
         // No bids message
         if (!isLive &&
             !logo.isFrozen &&
@@ -1638,7 +1638,7 @@ class _AuctionPageState extends State<AuctionPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Auction Ended — No Bids', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
+                      Text('Auction Ended â€” No Bids', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
                       const SizedBox(height: 4),
                       Text('No bids were placed during this auction.', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
                     ],
@@ -1648,7 +1648,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ═══ PAYMENT PENDING — Winner View with Countdown ═══
+        // â•â•â• PAYMENT PENDING â€” Winner View with Countdown â•â•â•
         if (!isLive &&
             auction.status == AuctionStatus.paymentPending &&
             _web3.currentAddress?.toLowerCase() == logo.highestBidderWallet?.toLowerCase())
@@ -1766,7 +1766,7 @@ class _AuctionPageState extends State<AuctionPage> {
             },
           ),
 
-        // ═══ PAYMENT PENDING — Non-Winner / Public View with Countdown ═══
+        // â•â•â• PAYMENT PENDING â€” Non-Winner / Public View with Countdown â•â•â•
         if (!isLive &&
             auction.status == AuctionStatus.paymentPending &&
             _web3.currentAddress?.toLowerCase() != logo.highestBidderWallet?.toLowerCase())
@@ -1815,7 +1815,7 @@ class _AuctionPageState extends State<AuctionPage> {
             },
           ),
 
-        // ═══ PAYMENT EXPIRED — Premium Red Banner ═══
+        // â•â•â• PAYMENT EXPIRED â€” Premium Red Banner â•â•â•
         if (auction.status == AuctionStatus.paymentExpired)
           Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -1867,7 +1867,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // ─── Re-Auction Button ───
+        // â”€â”€â”€ Re-Auction Button â”€â”€â”€
         if (isCreator &&
             !logo.isFrozen &&
             logo.status != ValidationStatus.rejected &&
@@ -2001,7 +2001,7 @@ class _AuctionPageState extends State<AuctionPage> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            '· No wallet charge',
+                            'Â· No wallet charge',
                             style: AppTextStyles.labelSmall.copyWith(
                               color: AppColors.success.withValues(alpha: 0.8),
                             ),
@@ -2088,7 +2088,7 @@ class _AuctionPageState extends State<AuctionPage> {
 
         ],
 
-        // ─── TOP 10 LIVE LEADERBOARD ───
+        // â”€â”€â”€ TOP 10 LIVE LEADERBOARD â”€â”€â”€
         Container(
           width: double.infinity,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -2187,7 +2187,7 @@ class _AuctionPageState extends State<AuctionPage> {
                     const Padding(
                       padding: EdgeInsets.symmetric(vertical: 8),
                       child: Text(
-                        '• • •',
+                        'â€¢ â€¢ â€¢',
                         style: TextStyle(
                           color: AppColors.textSecondary,
                           fontSize: 16,
@@ -2287,7 +2287,7 @@ class _AuctionPageState extends State<AuctionPage> {
             const SizedBox(width: 16),
             Expanded(
               child: Text(
-                '—',
+                'â€”',
                 style: AppTextStyles.labelLarge.copyWith(
                   color: AppColors.textSecondary.withValues(alpha: 0.3),
                 ),
@@ -2497,7 +2497,7 @@ class _AuctionPageState extends State<AuctionPage> {
             NotificationManager.show(
               context: context,
               title: 'Success',
-              message: 'Bid placed successfully! 🎉',
+              message: 'Bid placed successfully! ðŸŽ‰',
               type: NotificationType.success,
             );
           } catch (e) {

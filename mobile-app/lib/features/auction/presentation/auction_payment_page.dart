@@ -10,10 +10,12 @@ import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart';
+import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
+import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
 
 class AuctionPaymentPage extends StatefulWidget {
   final int tokenId;
@@ -102,7 +104,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
                           ),
                           child: Row(
                             children: [
-                              const Text('🎉', style: TextStyle(fontSize: 40)),
+                              const Text('ðŸŽ‰', style: TextStyle(fontSize: 40)),
                               const SizedBox(width: AppSpacing.md),
                               Expanded(
                                 child: Column(
@@ -355,7 +357,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        '· MetaMask needed',
+                        'Â· MetaMask needed',
                         style: AppTextStyles.labelSmall.copyWith(
                           color: Colors.amber.withValues(alpha: 0.8),
                         ),
@@ -526,6 +528,14 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
             ),
           ],
         ),
+      );
+    } on InsufficientBalanceException catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+      
+      await showDialog(
+        context: context,
+        builder: (context) => InsufficientBalanceDialog(exception: e),
       );
     } catch (e) {
       if (!mounted) return;

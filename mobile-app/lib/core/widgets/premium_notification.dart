@@ -1,6 +1,6 @@
 import 'dart:ui';
 import 'package:flutter/material.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
@@ -93,6 +93,8 @@ class _PremiumNotificationState extends State<PremiumNotification>
         return AppColors.primary;
       case NotificationType.web3:
         return const Color(0xFF00E5FF); // Cyan
+      default:
+        return AppColors.primary;
     }
   }
 
@@ -108,6 +110,8 @@ class _PremiumNotificationState extends State<PremiumNotification>
         return Icons.info_outline;
       case NotificationType.web3:
         return Icons.account_balance_wallet_outlined;
+      default:
+        return Icons.info_outline;
     }
   }
 
@@ -134,6 +138,7 @@ class _PremiumNotificationState extends State<PremiumNotification>
           AppColors.accentOrange.withValues(alpha: 0.05),
         ];
       case NotificationType.info:
+      default:
         return [
           AppColors.primary.withValues(alpha: 0.2),
           AppColors.primary.withValues(alpha: 0.05),

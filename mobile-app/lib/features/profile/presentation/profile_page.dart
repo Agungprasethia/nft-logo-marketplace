@@ -18,10 +18,13 @@ import 'package:nft_logo_marketplace/features/auction/presentation/auction_payme
 import 'package:nft_logo_marketplace/features/profile/presentation/edit_profile_page.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
+
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:shimmer/shimmer.dart';
+import 'package:nft_logo_marketplace/features/profile/presentation/auction_detail_page.dart';
+import 'package:nft_logo_marketplace/features/profile/presentation/relist_auction_dialog.dart';
+import 'package:nft_logo_marketplace/features/profile/presentation/notifications_page.dart';
 
 // --- NEW DARK THEME DEFINITION ---
 class _ProfileColors {
@@ -280,7 +283,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   // --- HEADER WIDGETS ---
 
   Widget _buildHeaderTopSection() {
-    final displayName = _userProfile?.displayName ?? 'My Wallet';
+    final rawName = _userProfile?.displayName;
+    final displayName = (rawName != null && rawName.isNotEmpty) ? rawName : 'My Wallet';
     final address = _web3.currentAddress ?? '';
 
     return Row(
@@ -323,7 +327,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     child: _userProfile?.profileImage == null || !_userProfile!.profileImage!.startsWith('data:image')
                         ? Center(
                             child: Text(
-                              displayName.substring(0, 1).toUpperCase(),
+                              displayName.isNotEmpty ? displayName.substring(0, 1).toUpperCase() : '?',
                               style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 24, fontWeight: FontWeight.bold),
                             ),
                           )
@@ -420,6 +424,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
             const SizedBox(width: 8),
             _buildTopIconButton(Icons.settings_outlined, () {}),
             const SizedBox(width: 8),
+            _buildNotificationBell(address),
+            const SizedBox(width: 8),
             _buildTopIconButton(Icons.edit_outlined, () async {
               final firebaseUser = FirebaseAuth.instance.currentUser;
               final walletAddress = _web3.currentAddress;
@@ -456,6 +462,65 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         ),
         child: Icon(icon, size: 16, color: _ProfileColors.textWhite),
       ),
+    );
+  }
+
+  Widget _buildNotificationBell(String walletAddress) {
+    if (walletAddress.isEmpty) {
+      return _buildTopIconButton(Icons.notifications_outlined, () {});
+    }
+
+    return StreamBuilder<int>(
+      stream: FirestoreService.instance.getUnreadNotificationsCountStream(walletAddress),
+      builder: (context, snapshot) {
+        final unreadCount = snapshot.data ?? 0;
+        
+        return GestureDetector(
+          onTap: () {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => NotificationsPage(userWallet: walletAddress.toLowerCase()),
+              ),
+            );
+          },
+          child: Stack(
+            clipBehavior: Clip.none,
+            children: [
+              Container(
+                width: 32,
+                height: 32,
+                decoration: BoxDecoration(
+                  color: _ProfileColors.headerBtnBg,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: _ProfileColors.headerBtnBorder, width: 0.5),
+                ),
+                child: const Icon(Icons.notifications_outlined, size: 16, color: _ProfileColors.textWhite),
+              ),
+              if (unreadCount > 0)
+                Positioned(
+                  top: -4,
+                  right: -4,
+                  child: Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(
+                      color: Colors.redAccent,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Text(
+                      unreadCount > 99 ? '99+' : unreadCount.toString(),
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 8,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -1045,7 +1110,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                       children: [
                         Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text('You won · $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
+                        Text('You won Â· $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
                       ],
                     ),
                   ),
@@ -1176,28 +1241,62 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   }
 
   Widget _buildMyAuctionsList(String currentWallet) {
-    final myAuctions = _web3.allAuctions.where((a) => a.sellerWallet.toLowerCase() == currentWallet).toList();
-    if (myAuctions.isEmpty) return _buildEmptyState(Icons.gavel, 'No auctions found');
+    return StreamBuilder<List<Auction>>(
+      stream: FirestoreService.instance.getUserAuctionsStream(currentWallet),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: _ProfileColors.accent));
+        }
+        if (snapshot.hasError) {
+          return _buildEmptyState(Icons.error_outline, 'Failed to load auctions');
+        }
 
-    return ListView.builder(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-      itemCount: myAuctions.length,
-      itemBuilder: (context, index) {
-        final auction = myAuctions[index];
-        LogoNFT? logo;
-        try { logo = _web3.allLogos.firstWhere((l) => l.tokenId == auction.tokenId); } catch (_) {}
-        
-        final bool isLive = auction.isOngoing;
-        final bool canReAuction = !isLive && logo != null && !logo.isFrozen && logo.status != ValidationStatus.rejected &&
-                (auction.status == AuctionStatus.ended || auction.status == AuctionStatus.endedNoBids || auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired || logo.auctionStatus == 'ENDED_NO_BID') &&
-                (logo.highestBidderWallet == null || logo.highestBidderWallet!.isEmpty || auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired);
+        final myAuctions = snapshot.data ?? [];
+        if (myAuctions.isEmpty) {
+          return _buildEmptyState(Icons.gavel, 'No auctions found');
+        }
 
-        return _buildAuctionCard(
-          logo: logo,
-          auction: auction,
-          isMyAuction: true,
-          isLive: isLive,
-          canReAuction: canReAuction,
+        return ListView.builder(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          itemCount: myAuctions.length,
+          itemBuilder: (context, index) {
+            final auction = myAuctions[index];
+            // Get logo either from stream or from web3 allLogos cache
+            return StreamBuilder<DocumentSnapshot>(
+              stream: _getNftStream(auction.tokenId),
+              builder: (context, logoSnap) {
+                LogoNFT? logo;
+                if (logoSnap.hasData && logoSnap.data!.exists) {
+                  logo = LogoNFT.fromFirestore(logoSnap.data!.data() as Map<String, dynamic>);
+                } else {
+                  try { logo = _web3.allLogos.firstWhere((l) => l.tokenId == auction.tokenId); } catch (_) {}
+                }
+
+                // Check eligibility for relisting
+                final bool isLive = auction.status == AuctionStatus.active;
+                final bool isPaymentPending = auction.status == AuctionStatus.paymentPending;
+                
+                bool canReAuction = false;
+                if (!isLive && !isPaymentPending && logo != null) {
+                  canReAuction = auction.status == AuctionStatus.endedNoBids || 
+                                 auction.status == AuctionStatus.failedPayment || 
+                                 auction.status == AuctionStatus.paymentExpired || 
+                                 logo.auctionStatus == 'ENDED_NO_BIDS' ||
+                                 logo.auctionStatus == 'PAYMENT_EXPIRED' || 
+                                 logo.auctionStatus == 'EXPIRED_NO_BID' ||
+                                 logo.auctionStatus == 'EXPIRED';
+                }
+
+                return _buildAuctionCard(
+                  logo: logo,
+                  auction: auction,
+                  isMyAuction: true,
+                  isLive: isLive,
+                  canReAuction: canReAuction,
+                );
+              }
+            );
+          },
         );
       },
     );
@@ -1248,63 +1347,103 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     double? myBid,
     String? joinedStatus,
   }) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: _ProfileColors.cardBg,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: _ProfileColors.border, width: 0.5),
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              children: [
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(10),
-                  child: SizedBox(width: 42, height: 42, child: _buildNetworkImage(logo?.imageUrl ?? '')),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(logo?.name ?? 'Token', style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 2),
-                      if (isMyAuction)
-                        Text('${auction?.totalBids ?? 0} bidders · ${auction?.highestBid ?? 0} ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10))
-                      else
-                        Text('My bid: $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
-                    ],
+    // Determine the exact badge and color
+    String badgeText = 'ENDED';
+    Color badgeBg = _ProfileColors.dangerBg;
+    Color badgeTextCol = _ProfileColors.dangerText;
+
+    if (auction != null) {
+      if (auction.status == AuctionStatus.active) {
+        badgeText = 'LIVE';
+        badgeBg = _ProfileColors.successBg;
+        badgeTextCol = _ProfileColors.successText;
+      } else if (auction.status == AuctionStatus.paymentPending) {
+        badgeText = 'PAYMENT PENDING';
+        badgeBg = _ProfileColors.actionAmberBtnBg.withValues(alpha: 0.2);
+        badgeTextCol = _ProfileColors.actionAmberBtnText;
+      } else if (auction.status == AuctionStatus.paymentCompleted || auction.status == AuctionStatus.claimed || auction.status == AuctionStatus.ended) {
+        // ended might mean sold if there are bids, but we'll use paymentCompleted/claimed for SOLD
+        badgeText = 'SOLD';
+        badgeBg = _ProfileColors.accent.withValues(alpha: 0.2);
+        badgeTextCol = _ProfileColors.accent;
+      } else if (auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired) {
+        badgeText = 'PAYMENT FAILED';
+        badgeBg = _ProfileColors.dangerBg;
+        badgeTextCol = _ProfileColors.dangerText;
+      } else if (auction.status == AuctionStatus.endedNoBids) {
+        badgeText = 'UNSOLD';
+        badgeBg = _ProfileColors.textMuted.withValues(alpha: 0.2);
+        badgeTextCol = _ProfileColors.textMuted;
+      } else if (auction.status == AuctionStatus.cancelled) {
+        badgeText = 'CANCELLED';
+        badgeBg = _ProfileColors.dangerBg;
+        badgeTextCol = _ProfileColors.dangerText;
+      }
+    }
+
+    return GestureDetector(
+      onTap: () {
+        if (auction != null && logo != null) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionDetailPage(auction: auction, logo: logo)));
+        } else if (logo != null) {
+          Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo)));
+        }
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        decoration: BoxDecoration(
+          color: _ProfileColors.cardBg,
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: _ProfileColors.border, width: 0.5),
+        ),
+        child: Column(
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: SizedBox(width: 42, height: 42, child: _buildNetworkImage(logo?.imageUrl ?? '')),
                   ),
-                ),
-                if (isLive)
-                  Row(
-                    children: [
-                      const Icon(Icons.access_time, size: 12, color: _ProfileColors.successText),
-                      const SizedBox(width: 4),
-                      Text(auction?.timeRemainingFormatted ?? '--', style: const TextStyle(color: _ProfileColors.successText, fontSize: 10, fontWeight: FontWeight.bold)),
-                    ],
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(logo?.name ?? 'Token', style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
+                        const SizedBox(height: 2),
+                        if (isMyAuction)
+                          Text('${auction?.totalBids ?? 0} bidders â€¢ ${auction?.highestBid ?? 0} ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10))
+                        else
+                          Text('My bid: $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
+                      ],
+                    ),
                   ),
-              ],
+                  if (isLive)
+                    Row(
+                      children: [
+                        const Icon(Icons.access_time, size: 12, color: _ProfileColors.successText),
+                        const SizedBox(width: 4),
+                        Text(auction?.timeRemainingFormatted ?? '--', style: const TextStyle(color: _ProfileColors.successText, fontSize: 10, fontWeight: FontWeight.bold)),
+                      ],
+                    ),
+                ],
+              ),
             ),
-          ),
-          const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
-          Padding(
-            padding: const EdgeInsets.all(12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                if (isMyAuction) ...[
-                  if (isLive) ...[
-                    _buildPill('LIVE', _ProfileColors.successBg, _ProfileColors.successText, false),
-                    const Text('No action needed', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
-                  ] else ...[
-                    _buildPill('ENDED', _ProfileColors.dangerBg, _ProfileColors.dangerText, false),
+            const Divider(color: _ProfileColors.border, height: 1, thickness: 0.5),
+            Padding(
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  if (isMyAuction) ...[
+                    _buildPill(badgeText, badgeBg, badgeTextCol, false),
                     if (canReAuction)
                       GestureDetector(
-                        onTap: () => _showReAuctionBottomSheet(context, auction!, logo!),
+                        onTap: () {
+                          if (logo != null) RelistAuctionDialog.show(context, logo);
+                        },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
@@ -1315,27 +1454,22 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                             children: [
                               Icon(Icons.refresh, size: 12, color: _ProfileColors.accent),
                               SizedBox(width: 4),
-                              Text('Re-Auction', style: TextStyle(color: _ProfileColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                              Text('Relist Auction', style: TextStyle(color: _ProfileColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
                       )
-                  ]
-                ] else ...[
-                  if (joinedStatus != null) _buildBidStatusBadge(joinedStatus),
-                  GestureDetector(
-                    onTap: () {
-                      if (logo != null) {
-                        Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo)));
-                      }
-                    },
-                    child: const Text('Tap to view', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
-                  ),
+                    else
+                      const Text('[TAP TO VIEW]', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
+                  ] else ...[
+                    if (joinedStatus != null) _buildBidStatusBadge(joinedStatus),
+                    const Text('[TAP TO VIEW]', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 10)),
+                  ],
                 ],
-              ],
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -1514,6 +1648,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       fit: BoxFit.cover,
       width: double.infinity,
       height: double.infinity,
+      memCacheWidth: 400,
+      memCacheHeight: 400,
+      filterQuality: FilterQuality.low,
       errorWidget: (_, __, ___) => const Icon(Icons.image, color: _ProfileColors.textMuted),
     );
   }
@@ -1593,63 +1730,6 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     );
   }
 
-  void _showReAuctionBottomSheet(BuildContext context, Auction auction, LogoNFT logo) {
-    final TextEditingController priceController = TextEditingController(text: auction.startingPrice.toString());
-    int selectedDuration = 86400; // 24h
-
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: _ProfileColors.surface,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (BuildContext bottomSheetContext) {
-        bool isSubmitting = false;
-        return StatefulBuilder(
-          builder: (context, setModalState) {
-            return Padding(
-              padding: EdgeInsets.only(top: 20, left: 16, right: 16, bottom: MediaQuery.of(context).viewInsets.bottom + 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text('Request Re-Auction', style: TextStyle(color: _ProfileColors.textWhite, fontSize: 18, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: priceController,
-                    keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                    style: const TextStyle(color: _ProfileColors.textWhite),
-                    decoration: const InputDecoration(labelText: 'Starting Price (ETH)'),
-                  ),
-                  const SizedBox(height: 16),
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: isSubmitting ? null : () async {
-                        final price = double.tryParse(priceController.text);
-                        if (price == null || price <= 0) return;
-                        setModalState(() => isSubmitting = true);
-                        try {
-                          await FirestoreService.instance.requestReAuctionWithSettings(auction.tokenId, selectedDuration, price);
-                          if (bottomSheetContext.mounted) {
-                            Navigator.pop(bottomSheetContext);
-                            setState(() {}); 
-                          }
-                        } catch (e) {
-                          setModalState(() => isSubmitting = false);
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(backgroundColor: _ProfileColors.accent),
-                      child: isSubmitting ? const CustomLoadingIndicator(size: 20) : const Text('Submit Request'),
-                    ),
-                  ),
-                ],
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 }
 
 class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {

@@ -17,7 +17,9 @@ import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/notification_service.dart';
 import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
+import 'package:nft_logo_marketplace/core/services/fcm_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
+import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/core/services/api_service.dart';
 
@@ -175,123 +177,38 @@ class Web3Service extends Web3ServiceBase {
   @override
   Future<void> loadFromChain() async {
     if (kDebugMode) { debugPrint('🔄 Loading data from API/Firestore (Fast Path)...'); }
+    
+    // PROGRESSIVE LOADING: If we have cached items from _loadFromStorage(), 
+    // notify listeners immediately so the skeleton disappears right away.
+    if (_allLogos.isNotEmpty) {
+      notifyListeners();
+    }
+    
     try {
-      // 1. FAST PATH: Fetch API / Firestore data immediately
+      // 1. FAST PATH: Fetch API data
       final apiService = ApiService.instance;
       final apiLogos = await apiService.fetchAllNFTs(forceRefresh: true);
       
+      // Update local state and trigger UI rebuild immediately
       _allLogos.clear();
       _allLogos.addAll(apiLogos);
+      notifyListeners(); // Skeleton disappears here
       
-      // Load Firestore auctions to populate activeAuctions for fast load
-      await _mergeFirestoreAuctions();
+      if (kDebugMode) { debugPrint('✅ Fast data loaded & UI updated with ${apiLogos.length} items'); }
       
-      // Auto-close any expired auctions
-      await FirestoreService.instance.closeExpiredAuctions();
+      // PROGRESSIVE LOADING: Fire and forget Firestore merging to prevent blocking UI
+      Future.microtask(() async {
+        await _mergeFirestoreAuctions();
+        await FirestoreService.instance.closeExpiredAuctions();
+      });
       
-      notifyListeners();
-      if (kDebugMode) { debugPrint('✅ Fast data loaded & UI updated'); }
-      
-      // FALLBACK: If Firestore is empty, do a one-time sync to populate it
-      if (_allLogos.isEmpty) {
-        if (kDebugMode) { debugPrint('⚠️ Firestore is empty, running one-time fallback blockchain sync...'); }
-        Future.delayed(const Duration(milliseconds: 800), () {
-          _syncBlockchainInBackground();
-        });
-      }
+      // we just have an empty list. Blockchain sync is disabled per Phase D.
     } catch (e) {
       if (kDebugMode) { debugPrint('⚠️ Error loading from API/Firestore: $e'); }
-      // Fallback to background sync if API completely fails and we have no local cache
-      if (_allLogos.isEmpty) {
-        Future.delayed(const Duration(milliseconds: 800), () {
-          _syncBlockchainInBackground();
-        });
-      }
     }
   }
 
-  Future<void> _syncBlockchainInBackground() async {
-    if (kDebugMode) { debugPrint('🔄 Background syncing with blockchain...'); }
-    try {
-      await _loadLogosFromChain();
-      await _loadAuctionsFromChain();
-      
-      // Sync Firestore state with blockchain data on app reopen
-      // This catches any desync from failed Firestore updates
-      await FirestoreService.instance.syncFirestoreState(_allLogos);
-      
-      // ⚡ CRITICAL: Merge Firestore auction metadata back into local logos
-      // Blockchain doesn't store isAuctionActive, endTime, highestBid, etc.
-      // Without this step, isLive is always false and "Bid Now" never shows
-      await _mergeFirestoreData();
-      
-      // ⚡ CRITICAL: Merge Firestore auctions into _allAuctions
-      // Off-chain auctions (created by admin approval) only exist in Firestore,
-      // not on the blockchain. Without this, getAuctionForLogo() returns null
-      // and "Bid Now" / "View Live Auction" buttons never appear.
-      await _mergeFirestoreAuctions();
-      
-      await _saveToStorage();
-      notifyListeners();
-      if (kDebugMode) { debugPrint('✅ Background blockchain sync complete: ${_allLogos.length} logos, ${_allAuctions.length} auctions'); }
-    } catch (e) {
-      if (kDebugMode) { debugPrint('⚠️ Error background syncing: $e'); }
-    }
-  }
 
-  /// Merge Firestore auction metadata into locally-loaded blockchain logos.
-  /// Blockchain only stores: name, description, imageHash, creator, price, isForSale, isInAuction, status.
-  /// Firestore additionally stores: isAuctionActive, endTime, startTime, highestBid, highestBidderWallet,
-  /// isFrozen, auctionCreated, category, creatorUsername, auctionDuration, totalBids, etc.
-  Future<void> _mergeFirestoreData() async {
-    try {
-      // PHASE 3: Fetch all NFTs efficiently from backend API to prevent Firestore spam
-      final apiService = ApiService.instance;
-      final apiLogos = await apiService.fetchAllNFTs(forceRefresh: true);
-      
-      // Map for O(1) lookup
-      final Map<int, LogoNFT> apiDataMap = {};
-      for (final l in apiLogos) {
-        apiDataMap[l.tokenId] = l;
-      }
-
-      for (int i = 0; i < _allLogos.length; i++) {
-        final logo = _allLogos[i];
-        try {
-          final apiLogoData = apiDataMap[logo.tokenId];
-          if (apiLogoData != null) {
-            _allLogos[i] = logo.copyWith(
-              isAuctionActive: apiLogoData.isAuctionActive,
-              startTime: apiLogoData.startTime,
-              endTime: apiLogoData.endTime,
-              highestBid: apiLogoData.highestBid,
-              highestBidderId: apiLogoData.highestBidderId,
-              highestBidderWallet: apiLogoData.highestBidderWallet,
-              isFrozen: apiLogoData.isFrozen,
-              auctionCreated: apiLogoData.auctionCreated,
-              isActive: apiLogoData.isActive,
-              category: apiLogoData.category,
-              creatorUsername: apiLogoData.creatorUsername,
-              creatorId: apiLogoData.creatorId,
-              ownerId: apiLogoData.ownerId,
-              auctionDuration: apiLogoData.auctionDuration,
-              totalBids: apiLogoData.totalBids,
-              approvedBy: apiLogoData.approvedBy,
-            );
-            // Also update status if it differs
-            if (apiLogoData.status != _allLogos[i].status) {
-              _allLogos[i] = _allLogos[i].copyWith(status: apiLogoData.status);
-            }
-          }
-        } catch (e) {
-          if (kDebugMode) { debugPrint('⚠️ Error merging API data for token #${logo.tokenId}: $e'); }
-        }
-      }
-      if (kDebugMode) { debugPrint('🔄 Backend API metadata merged into ${_allLogos.length} logos'); }
-    } catch (e) {
-      if (kDebugMode) { debugPrint('⚠️ _mergeFirestoreData error: $e'); }
-    }
-  }
 
   /// Merge Firestore auctions into _allAuctions.
   /// Off-chain auctions (created when admin approves an NFT) only exist in
@@ -300,6 +217,8 @@ class Web3Service extends Web3ServiceBase {
   Future<void> _mergeFirestoreAuctions() async {
     try {
       final firestore = FirestoreService.instance;
+      final auctionTasks = <Future<void>>[];
+      
       for (final logo in _allLogos) {
         // Only check logos that might have an auction
         if (!logo.auctionCreated && !logo.isAuctionActive && logo.status != ValidationStatus.auction) continue;
@@ -310,293 +229,40 @@ class Web3Service extends Web3ServiceBase {
         );
         if (alreadyLoaded) continue;
 
-        // Load auction from Firestore (doc ID = tokenId)
-        final auction = await firestore.getAuction(logo.tokenId);
-        if (auction != null) {
-          _allAuctions.add(auction);
-          if (kDebugMode) { debugPrint('📦 Loaded Firestore-only auction for token #${logo.tokenId} (status: ${auction.status})'); }
-          
-          // Ensure the logo object reflects the active auction
-          final int index = _allLogos.indexWhere((l) => l.tokenId == logo.tokenId);
-          if (index != -1) {
-            _allLogos[index] = _allLogos[index].copyWith(
-              isAuctionActive: auction.isOngoing,
-              endTime: auction.endTime,
-              status: auction.isOngoing ? ValidationStatus.auction : _allLogos[index].status,
-            );
+        // Add to tasks
+        auctionTasks.add(() async {
+          final auction = await firestore.getAuction(logo.tokenId);
+          if (auction != null) {
+            _allAuctions.add(auction);
+            
+            // Ensure the logo object reflects the active auction
+            final int index = _allLogos.indexWhere((l) => l.tokenId == logo.tokenId);
+            if (index != -1) {
+              _allLogos[index] = _allLogos[index].copyWith(
+                isAuctionActive: auction.isOngoing,
+                endTime: auction.endTime,
+                status: auction.isOngoing ? ValidationStatus.auction : _allLogos[index].status,
+              );
+            }
           }
-        }
+        }());
       }
+      
+      // Process in batches of 10 for progressive loading
+      const batchSize = 10;
+      for (int i = 0; i < auctionTasks.length; i += batchSize) {
+        final end = (i + batchSize < auctionTasks.length) ? i + batchSize : auctionTasks.length;
+        await Future.wait(auctionTasks.sublist(i, end));
+        notifyListeners(); // Progressive UI update
+      }
+      
       if (kDebugMode) { debugPrint('🔄 Firestore auctions merged: ${_allAuctions.length} total auctions'); }
     } catch (e) {
       if (kDebugMode) { debugPrint('⚠️ _mergeFirestoreAuctions error: $e'); }
     }
   }
 
-  /// Fetch all logos from LogoNFT contract using web3dart ABI decoder
-  Future<void> _loadLogosFromChain() async {
-    if (_nftContract == null) return;
 
-    try {
-      // Get total supply
-      final totalSupplyResult = await _client.call(
-        contract: _nftContract!,
-        function: _nftContract!.function('totalSupply'),
-        params: [],
-      );
-      final totalSupply = (totalSupplyResult[0] as BigInt).toInt();
-      if (kDebugMode) { debugPrint('📊 Total NFTs on chain: $totalSupply'); }
-
-      if (totalSupply == 0) return;
-
-      // Save existing local metadata (txHash, category) to preserve them
-      final Map<int, LogoNFT> existingLogos = {};
-      for (final logo in _allLogos) {
-        existingLogos[logo.tokenId] = logo;
-      }
-
-      final List<LogoNFT> chainLogos = [];
-
-      const int chunkSize = 10;
-      for (int i = 0; i < totalSupply; i += chunkSize) {
-        final int end = (i + chunkSize < totalSupply) ? i + chunkSize : totalSupply;
-        final chunkFutures = <Future<LogoNFT?>>[];
-
-        for (int j = i; j < end; j++) {
-          chunkFutures.add(() async {
-            try {
-              // Get tokenId by index
-              final tokenIdResult = await _client.call(
-                contract: _nftContract!,
-                function: _nftContract!.function('tokenByIndex'),
-                params: [BigInt.from(j)],
-              );
-              final tokenId = (tokenIdResult[0] as BigInt).toInt();
-
-              // Get owner
-              final ownerResult = await _client.call(
-                contract: _nftContract!,
-                function: _nftContract!.function('ownerOf'),
-                params: [BigInt.from(tokenId)],
-              );
-              final owner = (ownerResult[0] as EthereumAddress).hexEip55;
-
-              // Get logo data using getLogo(uint256) via web3dart ABI decoder
-              final logoResult = await _client.call(
-                contract: _nftContract!,
-                function: _nftContract!.function('getLogo'),
-                params: [BigInt.from(tokenId)],
-              );
-
-              // logoResult[0] is a List<dynamic> representing the Logo struct tuple
-              final tuple = logoResult[0] as List<dynamic>;
-              
-              // Parse struct fields:
-              // [0] uint256 tokenId, [1] string name, [2] string description,
-              // [3] string imageHash, [4] address creator, [5] uint256 createdAt,
-              // [6] uint256 price, [7] bool isForSale, [8] bool isInAuction,
-              // [9] uint8 status
-              final name = tuple[1] as String;
-              final description = tuple[2] as String;
-              final imageHash = tuple[3] as String;
-              final creator = (tuple[4] as EthereumAddress).hexEip55;
-              final createdAtTimestamp = (tuple[5] as BigInt).toInt();
-              final priceWei = tuple[6] as BigInt;
-              final isForSale = tuple[7] as bool;
-              final isInAuction = tuple[8] as bool;
-              final statusInt = (tuple[9] as BigInt).toInt();
-
-              // Convert values
-              final price = (priceWei / BigInt.from(10).pow(18)).toDouble();
-              final createdAt = DateTime.fromMillisecondsSinceEpoch(createdAtTimestamp * 1000);
-              
-              ValidationStatus status;
-              switch (statusInt) {
-                case 0: status = ValidationStatus.pending; break;
-                case 1: status = ValidationStatus.approved; break;
-                case 2: status = ValidationStatus.rejected; break;
-                case 3: status = ValidationStatus.disabled; break;
-                default: status = ValidationStatus.pending;
-              }
-
-              // Preserve local metadata (txHash, category) if we had it before
-              final existing = existingLogos[tokenId];
-              
-              final logo = LogoNFT(
-                tokenId: tokenId,
-                name: name.isNotEmpty ? name : 'Logo #$tokenId',
-                description: description,
-                imageUrl: imageHash, // imageHash stores the IPFS URL
-                imageHash: imageHash,
-                creatorId: existing?.creatorId ?? '',
-                creatorWallet: creator,
-                ownerId: existing?.ownerId ?? '',
-                ownerWallet: owner,
-                createdAt: createdAt,
-                price: price,
-                isForSale: isForSale,
-                isInAuction: isInAuction,
-                status: status,
-                txHash: existing?.txHash,
-                category: existing?.category ?? 'Technology',
-              );
-
-              if (kDebugMode) { debugPrint('📦 Loaded logo #$tokenId: "$name" [${status.name}]'); }
-              return logo;
-            } catch (e) {
-              if (kDebugMode) { debugPrint('⚠️ Error loading token index $j: $e'); }
-              return null;
-            }
-          }());
-        }
-        
-        final results = await Future.wait(chunkFutures);
-        for (final result in results) {
-          if (result != null) {
-            chainLogos.add(result);
-          }
-        }
-      }
-
-      // Merge chain data with local data — preserve locally-minted items
-      // that may not have been indexed on-chain yet
-      final chainTokenIds = chainLogos.map((l) => l.tokenId).toSet();
-      final localOnlyLogos = _allLogos.where(
-        (l) => !chainTokenIds.contains(l.tokenId)
-      ).toList();
-      
-      _allLogos.clear();
-      _allLogos.addAll(chainLogos);
-      _allLogos.addAll(localOnlyLogos); // Keep locally-minted not yet on chain
-      _tokenIdCounter = totalSupply;
-      if (kDebugMode) { debugPrint('📦 Merged: ${chainLogos.length} chain + ${localOnlyLogos.length} local-only logos'); }
-    } catch (e) {
-      if (kDebugMode) { debugPrint('⚠️ Error loading logos from chain: $e'); }
-    }
-  }
-
-  /// Fetch all active auctions from LogoAuction contract
-  Future<void> _loadAuctionsFromChain() async {
-    if (_auctionContract == null) return;
-
-    try {
-      // Get total auctions count
-      final totalResult = await _client.call(
-        contract: _auctionContract!,
-        function: _auctionContract!.function('totalAuctions'),
-        params: [],
-      );
-      final totalAuctions = (totalResult[0] as BigInt).toInt();
-      if (kDebugMode) { debugPrint('📊 Total auctions on chain: $totalAuctions'); }
-
-      if (totalAuctions == 0) return;
-
-      final List<Auction> chainAuctions = [];
-
-      const int chunkSize = 10;
-      for (int i = 1; i <= totalAuctions; i += chunkSize) {
-        final int end = (i + chunkSize <= totalAuctions + 1) ? i + chunkSize : totalAuctions + 1;
-        final chunkFutures = <Future<Auction?>>[];
-
-        for (int aId = i; aId < end; aId++) {
-          chunkFutures.add(() async {
-            try {
-              final auctionResult = await _client.call(
-                contract: _auctionContract!,
-                function: _auctionContract!.function('getAuction'),
-                params: [BigInt.from(aId)],
-              );
-
-              // getAuction returns a tuple (struct)
-              final tuple = auctionResult[0] as List<dynamic>;
-              
-              final auctionId = (tuple[0] as BigInt).toInt();
-              final tokenId = (tuple[1] as BigInt).toInt();
-              final seller = (tuple[2] as EthereumAddress).hexEip55;
-              // tuple[3] = creator (address) - not used in Auction model
-              final startingPriceWei = tuple[4] as BigInt;
-              // tuple[5] = reservePrice
-              final highestBidWei = tuple[6] as BigInt;
-              final highestBidder = (tuple[7] as EthereumAddress);
-              final startTimeUnix = (tuple[8] as BigInt).toInt();
-              final endTimeUnix = (tuple[9] as BigInt).toInt();
-              final isActive = tuple[10] as bool;
-              final isEnded = tuple[11] as bool;
-
-              final startingPrice = startingPriceWei / BigInt.from(10).pow(18);
-              final highestBid = highestBidWei / BigInt.from(10).pow(18);
-              final highestBidderHex = highestBidder.hexEip55;
-              final isZeroAddress = highestBidderHex == '0x0000000000000000000000000000000000000000';
-
-              // Fetch bids for this auction
-              List<Bid> bids = [];
-              try {
-                final bidsResult = await _client.call(
-                  contract: _auctionContract!,
-                  function: _auctionContract!.function('getAuctionBids'),
-                  params: [BigInt.from(aId)],
-                );
-                final bidsList = bidsResult[0] as List<dynamic>;
-                bids = bidsList.map((bidTuple) {
-                  final b = bidTuple as List<dynamic>;
-                  return Bid.fromBlockchain(
-                    bidder: (b[0] as EthereumAddress).hexEip55,
-                    amount: ((b[1] as BigInt) / BigInt.from(10).pow(18)).toDouble(),
-                    timestamp: DateTime.fromMillisecondsSinceEpoch(
-                      (b[2] as BigInt).toInt() * 1000,
-                    ),
-                  );
-                }).toList();
-              } catch (e) {
-                if (kDebugMode) { debugPrint('⚠️ Error fetching bids for auction $aId: $e'); }
-              }
-
-              final auction = Auction.fromBlockchain(
-                auctionId: auctionId,
-                tokenId: tokenId,
-                seller: seller,
-                startingPrice: startingPrice.toDouble(),
-                highestBid: highestBid.toDouble(),
-                highestBidder: isZeroAddress ? null : highestBidderHex,
-                startTime: DateTime.fromMillisecondsSinceEpoch(startTimeUnix * 1000),
-                endTime: DateTime.fromMillisecondsSinceEpoch(endTimeUnix * 1000),
-                isActive: isActive,
-                isEnded: isEnded,
-                bids: bids,
-              );
-
-              return auction;
-            } catch (e) {
-              if (kDebugMode) { debugPrint('⚠️ Error loading auction $aId: $e'); }
-              return null;
-            }
-          }());
-        }
-
-        final results = await Future.wait(chunkFutures);
-        for (final result in results) {
-          if (result != null) {
-            chainAuctions.add(result);
-          }
-        }
-      }
-
-      // Merge chain data with local data — preserve locally-created auctions
-      // that may not have been indexed on-chain yet
-      final chainAuctionIds = chainAuctions.map((a) => a.auctionId).toSet();
-      final localOnlyAuctions = _allAuctions.where(
-        (a) => !chainAuctionIds.contains(a.auctionId)
-      ).toList();
-      
-      _allAuctions.clear();
-      _allAuctions.addAll(chainAuctions);
-      _allAuctions.addAll(localOnlyAuctions); // Keep locally-created not yet on chain
-      _auctionIdCounter = totalAuctions;
-      if (kDebugMode) { debugPrint('📦 Merged: ${chainAuctions.length} chain + ${localOnlyAuctions.length} local-only auctions'); }
-    } catch (e) {
-      if (kDebugMode) { debugPrint('⚠️ Error loading auctions from chain: $e'); }
-    }
-  }
 
   // ============ Data Persistence (SharedPreferences) ============
 
@@ -839,6 +505,54 @@ class Web3Service extends Web3ServiceBase {
 
   // ============ Helper Methods ============
 
+  Future<double> estimateTransactionCost(String to, String data, {double valueInEth = 0.0}) async {
+    try {
+      if (_currentAddress == null) return 0.0;
+      final gasPrice = await _client.getGasPrice();
+      
+      BigInt? valueWei;
+      if (valueInEth > 0) {
+        final amountStr = valueInEth.toStringAsFixed(18);
+        final parts = amountStr.split('.');
+        final whole = parts[0];
+        final decimal = parts.length > 1 ? parts[1].padRight(18, '0') : '000000000000000000';
+        valueWei = BigInt.parse('$whole$decimal');
+      }
+
+      final gasLimit = await _client.estimateGas(
+        sender: EthereumAddress.fromHex(_currentAddress!),
+        to: EthereumAddress.fromHex(to),
+        data: data.isEmpty ? null : hexToBytes(data),
+        value: valueWei != null ? EtherAmount.inWei(valueWei) : null,
+      );
+      
+      final gasFeeWei = gasPrice.getInWei * gasLimit;
+      return gasFeeWei.toDouble() / 1e18;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('Gas estimation failed: $e'); }
+      // Fallback estimate for Sepolia if RPC estimate fails
+      return 0.02;
+    }
+  }
+
+  Future<void> validateBalanceAndEstimate(String to, String data, {double valueInEth = 0.0}) async {
+    if (_currentAddress == null) return;
+    final estimatedGas = await estimateTransactionCost(to, data, valueInEth: valueInEth);
+    final totalRequired = valueInEth + estimatedGas;
+    
+    await _updateBalance();
+
+    if (_balance < totalRequired) {
+      throw InsufficientBalanceException(
+        currentBalance: _balance,
+        transactionValue: valueInEth,
+        estimatedGas: estimatedGas,
+        totalRequired: totalRequired,
+        missingAmount: totalRequired - _balance,
+      );
+    }
+  }
+
   String generateImageHash(String imageData) {
     return imageData;
   }
@@ -857,6 +571,11 @@ class Web3Service extends Web3ServiceBase {
         isActive: true,
         registeredAt: DateTime.now(),
       );
+    }
+    
+    // Save FCM token for push notifications
+    if (!kIsWeb) {
+      FCMService.instance.saveTokenToUser(key);
     }
   }
 
@@ -941,6 +660,8 @@ class Web3Service extends Web3ServiceBase {
       if (kDebugMode) { debugPrint('[TX SENT] 🚀 Sending mint transaction to LogoNFT contract...'); }
       if (kDebugMode) { debugPrint('[TX SENT] 📄 Contract: ${ContractConfig.logoNFTAddress}'); }
       
+      await validateBalanceAndEstimate(ContractConfig.logoNFTAddress, txData, valueInEth: price);
+
       final txHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoNFTAddress,
         data: txData,
@@ -1068,6 +789,9 @@ class Web3Service extends Web3ServiceBase {
 
     try {
       if (kDebugMode) { debugPrint('🚀 Sending createAuction transaction to LogoAuction contract...'); }
+      
+      await validateBalanceAndEstimate(ContractConfig.logoAuctionAddress, txData);
+      
       final txHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoAuctionAddress,
         data: txData,
@@ -1222,6 +946,8 @@ class Web3Service extends Web3ServiceBase {
     if (kDebugMode) { debugPrint('🚀 Approving NFT $tokenId...'); }
     final data = _encodeApproveNFTCall(tokenId);
     
+    await validateBalanceAndEstimate(ContractConfig.logoNFTAddress, data);
+
     final txHash = await _walletConnect.sendTransaction(
       to: ContractConfig.logoNFTAddress,
       data: data,
@@ -1362,6 +1088,8 @@ class Web3Service extends Web3ServiceBase {
         BigInt.from(tokenId),
       );
 
+      await validateBalanceAndEstimate(ContractConfig.logoNFTAddress, approveData);
+
       final approveTxHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoNFTAddress,
         data: approveData,
@@ -1384,6 +1112,8 @@ class Web3Service extends Web3ServiceBase {
         reservePriceWei,
         BigInt.from(durationSeconds),
       );
+
+      await validateBalanceAndEstimate(ContractConfig.logoAuctionAddress, createData);
 
       final createTxHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoAuctionAddress,
@@ -1468,6 +1198,8 @@ class Web3Service extends Web3ServiceBase {
 
       final data = _encodePlaceBidCall(onChainAuctionId);
 
+      await validateBalanceAndEstimate(ContractConfig.logoAuctionAddress, data, valueInEth: amountInEth);
+
       final txHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoAuctionAddress,
         data: data,
@@ -1527,6 +1259,8 @@ class Web3Service extends Web3ServiceBase {
       if (kDebugMode) { debugPrint('🚀 Ending auction #$onChainAuctionId on-chain...'); }
 
       final data = _encodeEndAuctionCall(onChainAuctionId);
+
+      await validateBalanceAndEstimate(ContractConfig.logoAuctionAddress, data);
 
       final txHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoAuctionAddress,
@@ -1596,11 +1330,14 @@ class Web3Service extends Web3ServiceBase {
 
       final weiAmountHex = '0x${weiAmount.toRadixString(16)}';
       
+      final txData = ''; // Native ETH transfer has no data
+      await validateBalanceAndEstimate(sellerWallet, txData, valueInEth: amountInEth);
+
       // Send transaction to transfer exact ETH amount
       // Do NOT send 'data' field for plain ETH transfers to avoid MetaMask rejection
       final txHash = await _walletConnect.sendTransaction(
         to: sellerWallet,
-        data: '', // empty string ensures it's stripped by walletconnect_service
+        data: txData, // empty string ensures it's stripped by walletconnect_service
         value: weiAmountHex,
       );
       

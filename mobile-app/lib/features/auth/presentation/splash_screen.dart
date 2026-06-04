@@ -12,7 +12,7 @@ import 'package:nft_logo_marketplace/core/utils/route_utils.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
-import 'package:nft_logo_marketplace/shared/models/notification_model.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 
@@ -80,7 +80,7 @@ class _SplashScreenState extends State<SplashScreen>
 
       // 2. Web3 Base Initialization (Background)
       Web3Service.instance.initialize().catchError((e) {
-        if (kDebugMode) { debugPrint('[WEB3] ⚠️ Init Error (non-fatal): $e'); }
+        if (kDebugMode) { debugPrint('[WEB3] âš ï¸ Init Error (non-fatal): $e'); }
       });
 
       // 3. Handle Admin Mode Routing
