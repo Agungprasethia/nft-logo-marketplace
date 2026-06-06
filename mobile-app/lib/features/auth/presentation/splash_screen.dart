@@ -7,6 +7,7 @@ import 'package:nft_logo_marketplace/core/services/session_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/home_page.dart';
 import 'package:nft_logo_marketplace/features/auth/presentation/login_page.dart';
+import 'package:nft_logo_marketplace/features/auth/presentation/wallet_gate_page.dart';
 import 'package:nft_logo_marketplace/features/admin/presentation/admin_dashboard.dart';
 import 'package:nft_logo_marketplace/core/utils/route_utils.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
