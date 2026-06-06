@@ -24,7 +24,7 @@
                 <action android:name="android.intent.action.MAIN"/>
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
-            <!-- Deep link for WalletConnect callback -->
+            <!-- Deep link for WalletConnect callback (nftlogomarketplace://) -->
             <intent-filter android:autoVerify="true">
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
@@ -50,8 +50,19 @@
             <action android:name="android.intent.action.PROCESS_TEXT"/>
             <data android:mimeType="text/plain"/>
         </intent>
-        <!-- MetaMask package query for WalletConnect -->
+        <!-- MetaMask package query — ensures canLaunchUrl works for io.metamask -->
         <package android:name="io.metamask" />
+        <!-- Allow canLaunchUrl for metamask:// deep links (required on Android 11+) -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="metamask" />
+        </intent>
+        <!-- Allow canLaunchUrl for trust:// deep links -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="trust" />
+        </intent>
+        <!-- Allow https:// URL launches (universal links fallback) -->
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <category android:name="android.intent.category.BROWSABLE" />

@@ -414,130 +414,147 @@ class Web3Service extends Web3ServiceBase {
   @override
   Future<bool> connectMobileWallet({String walletName = 'metamask', bool restoreSession = false}) async {
     try {
-      if (kDebugMode) { debugPrint('[LOGIN] Step 1 Connect Started (restoreSession: $restoreSession)'); }
+      if (kDebugMode) { debugPrint('[LOGIN] Step 1 Connect Started (restoreSession: $restoreSession, wallet: $walletName)'); }
+
       bool connected = false;
+
       if (restoreSession) {
+        // ── Restore existing session ──────────────────────────────────────────
         if (!_walletConnect.isInitialized) {
           await _walletConnect.initialize();
         }
-        // Check if WalletConnect already restored the session during initialize()
         connected = _walletConnect.isConnected;
         if (connected) {
           if (kDebugMode) { debugPrint('✅ WalletConnect session still alive, restoring...'); }
-          // Refresh the lastConnectedAt timestamp to prevent staleness
           await SessionService.instance.updateLastConnected();
         } else {
-          if (kDebugMode) { debugPrint('⚠️ WalletConnect session not alive, cannot restore silently'); }
-          // Clear stale session data so we don't retry on next launch
+          if (kDebugMode) { debugPrint('⚠️ WalletConnect session not alive, clearing stale data'); }
           await SessionService.instance.fullLogout();
           return false;
         }
       } else {
-        connected = await _walletConnect.connect(walletName: walletName).timeout(
-          const Duration(minutes: 2),
-          onTimeout: () {
-            if (kDebugMode) { debugPrint('[LOGIN] Timeout after 2 minutes'); }
-            throw Exception('Connection timeout. Please ensure you approve the request in MetaMask.');
-          },
-        );
-      }
-      
-      if (kDebugMode) { debugPrint('[LOGIN] Step 2 MetaMask Approved. Connected: $connected'); }
-
-      if (connected) {
-        if (kDebugMode) { debugPrint('[LOGIN] Step 3 Session Received'); }
-        if (_walletConnect.address == null || _walletConnect.address!.isEmpty) {
-          if (kDebugMode) { debugPrint('[LOGIN] Address empty'); }
-          throw Exception('Failed to retrieve wallet address');
+        // ── New connection ────────────────────────────────────────────────────
+        //
+        // FAST PATH: The modal's polling loop may have already called
+        // WalletConnectService.checkForNewSession() / forceApplySession(),
+        // which sets _walletConnect.isConnected = true before this method is
+        // called. In that case, skip URI generation and MetaMask launch entirely.
+        if (!_walletConnect.isInitialized) {
+          await _walletConnect.initialize();
         }
 
-        final connectedAddress = _walletConnect.address!;
-        if (kDebugMode) { debugPrint('[LOGIN] Step 4 Wallet Address Received: $connectedAddress\nChain ID: ${_walletConnect.chainId}'); }
-        
-        // --- SAFE FALLBACK: Fast UI Unblock ---
-        _currentAddress = connectedAddress;
-        _isConnected = true;
-        _connectionType = 'walletconnect';
-        _chainId = _walletConnect.chainId ?? Web3ServiceBase.sepoliaChainId;
-        
-        if (kDebugMode) { debugPrint('[LOGIN] Step 5 Save Session'); }
-        notifyListeners(); // Unblock UI immediately so modal can close
-        if (kDebugMode) { debugPrint('[LOGIN] Step 10 Open Homepage'); }
-        
-        // Secondary data loading (non-blocking)
-        Future.microtask(() async {
-          try {
-            if (kDebugMode) { debugPrint('[LOGIN] Step 6 Load User Profile'); }
-            final firebaseUser = AuthService.instance.currentUser;
-            if (firebaseUser != null) {
-              try {
-                final userData = await AuthService.instance.getUserData(firebaseUser.uid).timeout(
-                  const Duration(seconds: 10),
-                  onTimeout: () => throw Exception('Profile load timeout'),
-                );
-                if (userData != null) {
-                  final storedWallet = userData.walletAddress;
-                  if (storedWallet == null || storedWallet.isEmpty) {
-                    await AuthService.instance.updateWalletAddress(firebaseUser.uid, connectedAddress);
-                  } else if (storedWallet.toLowerCase() != connectedAddress.toLowerCase()) {
-                    _walletConnect.disconnect();
-                    _disconnect();
-                    if (kDebugMode) { debugPrint('[LOGIN] WALLET_MISMATCH error'); }
-                    return;
-                  }
-                } else {
-                  await AuthService.instance.createUserProfile(
-                    uid: firebaseUser.uid,
-                    email: firebaseUser.email ?? '',
-                    fullName: firebaseUser.displayName ?? 'New User',
-                    walletAddress: connectedAddress,
-                  );
-                }
-              } catch (e) {
-                if (kDebugMode) { debugPrint('[LOGIN] Profile Error: $e'); }
-              }
-            }
-
-            _registerAsSeller(connectedAddress);
-
-            if (kDebugMode) { debugPrint('[LOGIN] Step 7 Load Collection'); }
-            if (kDebugMode) { debugPrint('[LOGIN] Step 8 Load Creations'); }
-            try { 
-              await loadFromChain().timeout(
-                const Duration(seconds: 15),
-                onTimeout: () => throw Exception('loadFromChain timeout'),
-              ); 
-            } catch (e) { 
-              if (kDebugMode) { debugPrint('[LOGIN] loadFromChain error: $e'); } 
-            }
-            
-            if (kDebugMode) { debugPrint('[LOGIN] Step 9 Load Auctions'); }
-            try { 
-              await FirestoreService.instance.closeExpiredAuctions().timeout(
-                const Duration(seconds: 10),
-                onTimeout: () => throw Exception('closeExpiredAuctions timeout'),
-              ); 
-            } catch (e) { 
-              if (kDebugMode) { debugPrint('[LOGIN] closeExpiredAuctions error: $e'); } 
-            }
-            
-            try { await _updateBalance(); } catch (e) { if (kDebugMode) { debugPrint('[LOGIN] updateBalance error: $e'); } }
-
-            if (kDebugMode) { debugPrint('[LOGIN] Secondary Tasks Completed'); }
-            notifyListeners();
-          } catch (e) {
-            if (kDebugMode) { debugPrint('[LOGIN] Background Sync Error: $e'); }
-          }
-        });
-
-        return true;
+        if (_walletConnect.isConnected) {
+          // Session was set by the modal's poller — just pick up the state
+          if (kDebugMode) { debugPrint('[LOGIN] ✅ WalletConnect already connected via poll — fast-path'); }
+          connected = true;
+        } else {
+          // Fallback: run the full URI+launch+poll flow inside WalletConnectService
+          // (used when connectWallet is called directly, not through modal)
+          connected = await _walletConnect.connect(walletName: walletName).timeout(
+            const Duration(minutes: 3),
+            onTimeout: () {
+              if (kDebugMode) { debugPrint('[LOGIN] Timeout after 3 minutes'); }
+              return false;
+            },
+          );
+        }
       }
-      return false;
+
+      if (kDebugMode) { debugPrint('[LOGIN] Step 2 Connected: $connected'); }
+
+      if (!connected) return false;
+
+      // ── Apply session to Web3Service state ───────────────────────────────
+      if (_walletConnect.address == null || _walletConnect.address!.isEmpty) {
+        if (kDebugMode) { debugPrint('[LOGIN] Address empty after connect'); }
+        throw Exception('Failed to retrieve wallet address');
+      }
+
+      final connectedAddress = _walletConnect.address!;
+      if (kDebugMode) {
+        debugPrint('[LOGIN] Step 3 Address: $connectedAddress | Chain: ${_walletConnect.chainId}');
+      }
+
+      _currentAddress = connectedAddress;
+      _isConnected = true;
+      _connectionType = 'walletconnect';
+      _chainId = _walletConnect.chainId ?? Web3ServiceBase.sepoliaChainId;
+
+      if (kDebugMode) { debugPrint('[LOGIN] Step 4 notifyListeners — unblocking UI'); }
+      notifyListeners(); // Unblocks UI (modal closes, homepage opens)
+
+      // ── Background: profile sync + data load ─────────────────────────────
+      Future.microtask(() async {
+        try {
+          final firebaseUser = AuthService.instance.currentUser;
+          if (firebaseUser != null) {
+            try {
+              final userData = await AuthService.instance
+                  .getUserData(firebaseUser.uid)
+                  .timeout(const Duration(seconds: 10),
+                      onTimeout: () => throw Exception('Profile load timeout'));
+              if (userData != null) {
+                final storedWallet = userData.walletAddress;
+                if (storedWallet == null || storedWallet.isEmpty) {
+                  await AuthService.instance.updateWalletAddress(
+                      firebaseUser.uid, connectedAddress);
+                } else if (storedWallet.toLowerCase() !=
+                    connectedAddress.toLowerCase()) {
+                  _walletConnect.disconnect();
+                  _disconnect();
+                  if (kDebugMode) { debugPrint('[LOGIN] WALLET_MISMATCH — disconnecting'); }
+                  return;
+                }
+              } else {
+                await AuthService.instance.createUserProfile(
+                  uid: firebaseUser.uid,
+                  email: firebaseUser.email ?? '',
+                  fullName: firebaseUser.displayName ?? 'New User',
+                  walletAddress: connectedAddress,
+                );
+              }
+            } catch (e) {
+              if (kDebugMode) { debugPrint('[LOGIN] Profile sync error: $e'); }
+            }
+          }
+
+          _registerAsSeller(connectedAddress);
+
+          try {
+            await loadFromChain().timeout(const Duration(seconds: 15),
+                onTimeout: () => throw Exception('loadFromChain timeout'));
+          } catch (e) {
+            if (kDebugMode) { debugPrint('[LOGIN] loadFromChain error: $e'); }
+          }
+
+          try {
+            await FirestoreService.instance.closeExpiredAuctions().timeout(
+                const Duration(seconds: 10),
+                onTimeout: () => throw Exception('closeExpiredAuctions timeout'));
+          } catch (e) {
+            if (kDebugMode) { debugPrint('[LOGIN] closeExpiredAuctions error: $e'); }
+          }
+
+          try { await _updateBalance(); } catch (e) {
+            if (kDebugMode) { debugPrint('[LOGIN] updateBalance error: $e'); }
+          }
+
+          if (kDebugMode) { debugPrint('[LOGIN] Background sync complete'); }
+          notifyListeners();
+        } catch (e) {
+          if (kDebugMode) { debugPrint('[LOGIN] Background sync fatal: $e'); }
+        }
+      });
+
+      return true;
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ connectMobileWallet error: $e'); }
-      if (e.toString().contains('WALLET_MISMATCH') || e.toString().contains('timeout') || e.toString().contains('retrieve')) {
+      if (e.toString().contains('WALLET_MISMATCH') ||
+          e.toString().contains('retrieve')) {
         rethrow;
       }
+      // Don't rethrow timeouts — caller should retry silently
+      if (e.toString().contains('timeout')) return false;
       throw Exception('Failed to connect to MetaMask: $e');
     }
   }
