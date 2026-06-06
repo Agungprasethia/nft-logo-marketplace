@@ -24,6 +24,7 @@ class WalletConnectService extends ChangeNotifier {
   String? get address => _connectedAddress;
   int? get chainId => _chainId;
   bool get isOnSepolia => _chainId == ContractConfig.chainId;
+  bool get isInitialized => _web3App != null;
   
   /// Initialize WalletConnect
   Future<void> initialize() async {

@@ -148,4 +148,26 @@ class AuthService {
       throw Exception('Failed to update wallet address: $e');
     }
   }
+
+  Future<void> createUserProfile({
+    required String uid,
+    required String email,
+    required String fullName,
+    required String walletAddress,
+  }) async {
+    try {
+      final newUser = UserModel(
+        uid: uid,
+        fullName: fullName,
+        email: email,
+        walletAddress: walletAddress,
+        role: 'user', // Default role for auto-created
+        createdAt: DateTime.now(),
+        lastLogin: DateTime.now(),
+      );
+      await _firestore.collection('users').doc(uid).set(newUser.toJson());
+    } catch (e) {
+      if (kDebugMode) { debugPrint('Error creating user profile: $e'); }
+    }
+  }
 }

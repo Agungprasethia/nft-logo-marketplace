@@ -59,14 +59,15 @@ class WalletConnectModal extends StatefulWidget {
   State<WalletConnectModal> createState() => _WalletConnectModalState();
 }
 
-class _WalletConnectModalState extends State<WalletConnectModal> {
+class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBindingObserver {
   bool _isConnecting = false;
   bool _isClosing = false;
 
   @override
   void initState() {
     super.initState();
-    // Listen for wallet connection changes â€” auto-dismiss when connected
+    WidgetsBinding.instance.addObserver(this);
+    // Listen for wallet connection changes — auto-dismiss when connected
     Web3Service.instance.addListener(_onWeb3Changed);
     // Check immediately in case already connected (e.g. session restored)
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -85,8 +86,35 @@ class _WalletConnectModalState extends State<WalletConnectModal> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     Web3Service.instance.removeListener(_onWeb3Changed);
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _isConnecting) {
+      // User returned to the app. Give WalletConnect a 15-second grace period
+      // to finalize the connection in case the deep link callback failed.
+      Future.delayed(const Duration(seconds: 15), () {
+        if (!mounted || _isClosing) return;
+        
+        if (Web3Service.instance.isConnected) {
+          setState(() => _isConnecting = false);
+          _safePop(true);
+        } else {
+          // Still not connected after 15s of returning to app.
+          // Connection likely failed or was rejected.
+          setState(() => _isConnecting = false);
+          NotificationManager.show(
+            context: context,
+            title: 'Connection Status',
+            message: 'No connection received. Did you approve in MetaMask?',
+            type: NotificationType.warning,
+          );
+        }
+      });
+    }
   }
 
   void _onWeb3Changed() {

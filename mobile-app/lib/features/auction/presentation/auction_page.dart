@@ -48,6 +48,12 @@ class _AuctionPageState extends State<AuctionPage> {
   bool _hasTimedOut = false;
   Timer? _timeoutTimer;
 
+  // Realtime Notification Caches
+  String? _lastHighestBidderWallet;
+  int _lastBidCount = 0;
+  bool _notified60s = false;
+  bool _notified30s = false;
+
   @override
   void initState() {
     super.initState();
@@ -128,11 +134,42 @@ class _AuctionPageState extends State<AuctionPage> {
               setState(() => _liveAuction = liveAuction);
             }
           },
-          onError: (e) => debugPrint('âš ï¸ Auction stream error: $e'),
+          onError: (e) => debugPrint('⚠️ Auction stream error: $e'),
         );
   }
 
   void _checkRankChange(List<Bid> bids) {
+    if (bids.isEmpty) return;
+
+    // 1. New Bidder Notification
+    if (_lastBidCount > 0 && bids.length > _lastBidCount) {
+      NotificationService().showNotification(
+        id: widget.logo.tokenId * 10 + 1,
+        title: '🔔 New Bidder Joined',
+        body: 'A new participant has entered the auction.\nCurrent Bidders: ${bids.length}',
+      );
+    }
+    _lastBidCount = bids.length;
+
+    // 2. Outbid Notification
+    String currentHighestBidder = bids.first.bidderWallet.toLowerCase();
+    double currentHighestBid = bids.first.amount;
+    
+    if (_lastHighestBidderWallet != null && _lastHighestBidderWallet != currentHighestBidder) {
+      final currentWallet = _web3.currentAddress?.toLowerCase();
+      // If the current user was the previous highest bidder, they got outbid!
+      if (currentWallet != null && _lastHighestBidderWallet == currentWallet) {
+        final double nextMinBid = currentHighestBid + Auction.defaultMinimumIncrement;
+        NotificationService().showNotification(
+          id: widget.logo.tokenId * 10 + 2,
+          title: '🔔 Your Bid Has Been Outbid',
+          body: 'Someone placed a higher bid.\n\nCurrent Highest Bid:\n${currentHighestBid.toStringAsFixed(2)} ETH\n\nMinimum Next Bid:\n${nextMinBid.toStringAsFixed(2)} ETH\n\nAction:\nBid Again',
+        );
+      }
+    }
+    _lastHighestBidderWallet = currentHighestBidder;
+
+    // Check rank change for current user
     if (_web3.currentAddress == null) return;
 
     final currentWallet = _web3.currentAddress!.toLowerCase();
@@ -151,18 +188,24 @@ class _AuctionPageState extends State<AuctionPage> {
       if (currentRank < _previousRank!) {
         if (currentRank == 1) {
           _showSnackbar(
-            'ðŸ† You are now the highest bidder!',
+            '🏆 You are now the highest bidder!',
             AppColors.accentOrange,
           );
         } else {
           _showSnackbar(
-            'ðŸ”¥ Your rank increased to #$currentRank!',
+            '🔥 Your rank increased to #$currentRank!',
             AppColors.success,
           );
         }
       } else {
+        // 3. Leaderboard Position Change Notification
+        NotificationService().showNotification(
+          id: widget.logo.tokenId * 10 + 3,
+          title: '🔔 Ranking Changed',
+          body: 'You moved from #$_previousRank to #$currentRank\nPlace a higher bid to regain the lead.',
+        );
         _showSnackbar(
-          'âš ï¸ You dropped to position #$currentRank',
+          '⚠️ You dropped to position #$currentRank',
           AppColors.danger,
         );
       }
@@ -243,23 +286,44 @@ class _AuctionPageState extends State<AuctionPage> {
           logo.status != ValidationStatus.rejected &&
           logo.endTime != null &&
           DateTime.now().isAfter(logo.endTime!)) {
-        if (kDebugMode) { debugPrint("Auction expired â†’ calling endOffChainAuction()"); }
+        if (kDebugMode) { debugPrint("Auction expired → calling endOffChainAuction()"); }
         if (kDebugMode) { debugPrint("Token ID: ${logo.tokenId}"); }
         if (kDebugMode) { debugPrint("Total bids: ${logo.totalBids}"); }
         _hasEndedAuction = true;
-        if (kDebugMode) { debugPrint('â° Auto-ending auction #${widget.logo.tokenId}'); }
+        if (kDebugMode) { debugPrint('⏱ Auto-ending auction #${widget.logo.tokenId}'); }
         FirestoreService.instance
             .endOffChainAuction(widget.logo.tokenId)
             .then((_) {
-              if (kDebugMode) { debugPrint('âœ… Auto-end completed for auction #${widget.logo.tokenId}'); }
+              if (kDebugMode) { debugPrint('✅ Auto-end completed for auction #${widget.logo.tokenId}'); }
             })
             .catchError((e) {
-              if (kDebugMode) { debugPrint('âŒ Auto-end failed: $e'); }
+              if (kDebugMode) { debugPrint('❌ Auto-end failed: $e'); }
               // Reset guard so it can retry
               _hasEndedAuction = false;
             });
       }
       
+      // Auction Ending Soon Notification
+      if (logo.isAuctionActive && logo.endTime != null && !logo.isFrozen && logo.status != ValidationStatus.rejected) {
+        final remainingSeconds = logo.endTime!.difference(DateTime.now()).inSeconds;
+        
+        if (remainingSeconds <= 60 && remainingSeconds > 30 && !_notified60s) {
+          _notified60s = true;
+          NotificationService().showNotification(
+            id: widget.logo.tokenId * 10 + 4,
+            title: '🔔 Auction Ending Soon',
+            body: 'Only 60 seconds remaining.\nCurrent Highest Bid: ${logo.highestBid} ETH',
+          );
+        } else if (remainingSeconds <= 30 && remainingSeconds > 0 && !_notified30s) {
+          _notified30s = true;
+          NotificationService().showNotification(
+            id: widget.logo.tokenId * 10 + 5,
+            title: '🔔 Auction Ending Soon',
+            body: 'Only 30 seconds remaining.\nCurrent Highest Bid: ${logo.highestBid} ETH',
+          );
+        }
+      }
+
       // Winner notification
       if (!_hasNotified &&
           !(logo.isAuctionActive &&
@@ -272,8 +336,8 @@ class _AuctionPageState extends State<AuctionPage> {
         _hasNotified = true;
         NotificationService().showNotification(
           id: widget.logo.tokenId,
-          title: 'Congratulations! You Won the Auction! ðŸ†',
-          body: 'Claim your NFT #${widget.logo.tokenId} now in the app.',
+          title: '🏆 Congratulations',
+          body: 'You won the auction.\nComplete payment to claim ownership.',
         );
         _notificationResetTimer?.cancel();
         _notificationResetTimer = Timer(const Duration(minutes: 5), () {

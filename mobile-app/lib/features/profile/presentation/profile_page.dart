@@ -422,7 +422,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                SharePlus.instance.share(ShareParams(text: 'Check out my NFT Profile on LEO Marketplace!'));
             }),
             const SizedBox(width: 8),
-            _buildTopIconButton(Icons.settings_outlined, () {}),
+            _buildTopIconButton(Icons.logout_rounded, () {
+              _showDisconnectConfirmation();
+            }),
             const SizedBox(width: 8),
             _buildNotificationBell(address),
             const SizedBox(width: 8),
@@ -461,6 +463,32 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
           border: Border.all(color: _ProfileColors.headerBtnBorder, width: 0.5),
         ),
         child: Icon(icon, size: 16, color: _ProfileColors.textWhite),
+      ),
+    );
+  }
+
+  void _showDisconnectConfirmation() {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: _ProfileColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Disconnect Wallet', style: TextStyle(color: _ProfileColors.textWhite)),
+        content: const Text('Are you sure you want to disconnect your wallet? You will need to reconnect to interact with the marketplace.', style: TextStyle(color: _ProfileColors.textMuted)),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel', style: TextStyle(color: _ProfileColors.textMuted)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _logout();
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: _ProfileColors.dangerBg),
+            child: const Text('Disconnect', style: TextStyle(color: _ProfileColors.dangerText)),
+          ),
+        ],
       ),
     );
   }

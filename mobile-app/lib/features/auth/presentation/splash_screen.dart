@@ -101,12 +101,11 @@ class _SplashScreenState extends State<SplashScreen>
       if (hasSession) {
         _splashState.value = SplashState.authenticated;
         _performBackgroundValidation();
+        _navigateTo(const HomePage());
       } else {
         _splashState.value = SplashState.unauthenticated;
+        _navigateTo(const WalletGatePage());
       }
-      
-      // Always navigate to HomePage for Guest Mode
-      _navigateTo(const HomePage());
 
     } catch (e) {
       if (kDebugMode) { debugPrint('Boot error: $e'); }
