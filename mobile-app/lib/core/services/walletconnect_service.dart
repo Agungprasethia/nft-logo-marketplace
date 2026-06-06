@@ -215,38 +215,71 @@ class WalletConnectService extends ChangeNotifier {
           await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
         }
         
-        // Wait for session approval with timeout
-        if (kDebugMode) { debugPrint('⏳ Waiting for session approval...'); }
-        try {
-          final session = await connectResponse.session.future.timeout(
-            const Duration(minutes: 2),
-            onTimeout: () {
-              throw Exception('Connection timeout - user did not approve in MetaMask');
-            },
-          );
-          _session = session;
-          _extractAddressFromSession();
-          
-          // Save session securely
-          if (_connectedAddress != null && _chainId != null) {
-            await app_session.SessionService.instance.saveSession(
-              app_session.SessionData(
-                walletAddress: _connectedAddress!,
-                walletProvider: walletName,
-                chainId: _chainId!,
-                connectedAt: DateTime.now(),
-                sessionTopic: session.topic,
-              ),
-            );
-          }
-          
-          if (kDebugMode) { debugPrint('✅ Session approved! Address: $_connectedAddress'); }
-          notifyListeners();
-          return true;
-        } catch (e) {
-          if (kDebugMode) { debugPrint('❌ Session approval failed: $e'); }
-          rethrow;
+        // ── Hybrid approach: event-driven + aggressive polling ──
+        // On many Android OEM ROMs (Xiaomi, Oppo, Vivo, Samsung), the deep-link
+        // callback is silently swallowed, so _onSessionConnect may never fire.
+        // We poll _web3App!.sessions.getAll() every 1 s for up to 120 s so that
+        // whichever path succeeds first wins.
+        if (kDebugMode) { debugPrint('⏳ Waiting for session approval (event + polling)...'); }
+
+        SessionData? approvedSession;
+
+        // Race: session future vs. polling loop
+        await Future.any([
+          // Path A: WalletConnect SDK fires the event correctly (happy path)
+          connectResponse.session.future
+              .timeout(const Duration(seconds: 120), onTimeout: () => throw _TimeoutSentinel())
+              .then((s) { approvedSession = s; })
+              .catchError((e) {
+                if (e is! _TimeoutSentinel) throw e;
+              }),
+
+          // Path B: Polling — works even when the deep-link callback fails
+          () async {
+            const pollInterval = Duration(seconds: 1);
+            const maxPolls = 120;
+            for (int i = 0; i < maxPolls; i++) {
+              await Future.delayed(pollInterval);
+              final liveSessions = _web3App!.sessions.getAll();
+              if (liveSessions.isNotEmpty) {
+                // Prefer the newest session
+                approvedSession = liveSessions.last;
+                if (kDebugMode) { debugPrint('✅ [POLL] Session detected on attempt ${i + 1}'); }
+                return;
+              }
+              // Also check the internal _session field (set by _onSessionConnect)
+              if (_session != null) {
+                approvedSession = _session;
+                if (kDebugMode) { debugPrint('✅ [POLL] _session set by event on attempt ${i + 1}'); }
+                return;
+              }
+            }
+          }(),
+        ]);
+
+        if (approvedSession == null) {
+          throw Exception('Connection timeout — user did not approve in MetaMask');
         }
+
+        _session = approvedSession;
+        _extractAddressFromSession();
+
+        // Save session securely
+        if (_connectedAddress != null && _chainId != null) {
+          await app_session.SessionService.instance.saveSession(
+            app_session.SessionData(
+              walletAddress: _connectedAddress!,
+              walletProvider: walletName,
+              chainId: _chainId!,
+              connectedAt: DateTime.now(),
+              sessionTopic: approvedSession!.topic,
+            ),
+          );
+        }
+
+        if (kDebugMode) { debugPrint('✅ Session approved! Address: $_connectedAddress'); }
+        notifyListeners();
+        return true;
       }
       
       return false;
@@ -493,4 +526,11 @@ class WalletConnectService extends ChangeNotifier {
     _web3App?.onSessionEvent.unsubscribe(_onSessionEvent);
     super.dispose();
   }
+}
+
+/// Sentinel thrown inside the session-future path when it times out.
+/// This lets the catchError handler distinguish a timeout (which is expected
+/// while the polling path is still running) from a real rejection error.
+class _TimeoutSentinel implements Exception {
+  const _TimeoutSentinel();
 }

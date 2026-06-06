@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
@@ -5,8 +6,6 @@ import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
-import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 class WalletConnectModal extends StatefulWidget {
   final String title;
@@ -29,26 +28,26 @@ class WalletConnectModal extends StatefulWidget {
 
     try {
       final result = await showGeneralDialog<bool>(
-      context: context,
-      barrierDismissible: true,
-      barrierLabel: 'Wallet Connect Modal',
-      barrierColor: Colors.black.withValues(alpha: 0.8),
-      transitionDuration: const Duration(milliseconds: 300),
-      pageBuilder: (context, animation, secondaryAnimation) {
-        return WalletConnectModal(title: title, message: message);
-      },
-      transitionBuilder: (context, animation, secondaryAnimation, child) {
-        return FadeTransition(
-          opacity: animation,
-          child: ScaleTransition(
-            scale: Tween<double>(begin: 0.95, end: 1.0).animate(
-              CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+        context: context,
+        barrierDismissible: true,
+        barrierLabel: 'Wallet Connect Modal',
+        barrierColor: Colors.black.withValues(alpha: 0.8),
+        transitionDuration: const Duration(milliseconds: 300),
+        pageBuilder: (context, animation, secondaryAnimation) {
+          return WalletConnectModal(title: title, message: message);
+        },
+        transitionBuilder: (context, animation, secondaryAnimation, child) {
+          return FadeTransition(
+            opacity: animation,
+            child: ScaleTransition(
+              scale: Tween<double>(begin: 0.95, end: 1.0).animate(
+                CurvedAnimation(parent: animation, curve: Curves.easeOutBack),
+              ),
+              child: child,
             ),
-            child: child,
-          ),
-        );
-      },
-    );
+          );
+        },
+      );
       return result ?? false;
     } finally {
       _isDialogOpen = false;
@@ -59,9 +58,14 @@ class WalletConnectModal extends StatefulWidget {
   State<WalletConnectModal> createState() => _WalletConnectModalState();
 }
 
-class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBindingObserver {
+class _WalletConnectModalState extends State<WalletConnectModal>
+    with WidgetsBindingObserver {
   bool _isConnecting = false;
   bool _isClosing = false;
+
+  // Resume-polling state
+  Timer? _resumePoller;
+  bool _isCheckingManually = false;
 
   @override
   void initState() {
@@ -80,55 +84,93 @@ class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBin
   void _safePop(bool result) {
     if (_isClosing || !mounted) return;
     _isClosing = true;
-    Web3Service.instance.removeListener(_onWeb3Changed); // Cancel listener before pop
+    _cancelResumePoller();
+    Web3Service.instance.removeListener(_onWeb3Changed);
     Navigator.of(context).pop(result);
   }
 
   @override
   void dispose() {
+    _cancelResumePoller();
     WidgetsBinding.instance.removeObserver(this);
     Web3Service.instance.removeListener(_onWeb3Changed);
     super.dispose();
   }
 
+  // ── Polling helpers ────────────────────────────────────────────────────
+
+  void _cancelResumePoller() {
+    _resumePoller?.cancel();
+    _resumePoller = null;
+  }
+
+  /// Starts aggressive 500 ms polling for up to [durationSeconds].
+  /// Silently closes the modal if the connection is detected.
+  void _startResumePolling({int durationSeconds = 30}) {
+    _cancelResumePoller(); // avoid duplicates
+
+    int elapsed = 0;
+    const interval = 500; // ms
+
+    _resumePoller = Timer.periodic(
+      const Duration(milliseconds: 500),
+      (timer) {
+        elapsed += interval;
+
+        if (!mounted || _isClosing) {
+          timer.cancel();
+          return;
+        }
+
+        // Connected — auto-close silently
+        if (Web3Service.instance.isConnected) {
+          timer.cancel();
+          if (mounted && !_isClosing) setState(() => _isConnecting = false);
+          _safePop(true);
+          return;
+        }
+
+        // Polling window expired — stop silently, keep UI as-is
+        if (elapsed >= durationSeconds * 1000) {
+          timer.cancel();
+          if (mounted && !_isClosing) {
+            setState(() => _isConnecting = false);
+          }
+        }
+      },
+    );
+  }
+
+  // ── AppLifecycle ───────────────────────────────────────────────────────
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed && _isConnecting) {
-      // User returned to the app. Give WalletConnect a 15-second grace period
-      // to finalize the connection in case the deep link callback failed.
-      Future.delayed(const Duration(seconds: 15), () {
-        if (!mounted || _isClosing) return;
-        
-        if (Web3Service.instance.isConnected) {
-          setState(() => _isConnecting = false);
-          _safePop(true);
-        } else {
-          // Still not connected after 15s of returning to app.
-          // Connection likely failed or was rejected.
-          setState(() => _isConnecting = false);
-          NotificationManager.show(
-            context: context,
-            title: 'Connection Status',
-            message: 'No connection received. Did you approve in MetaMask?',
-            type: NotificationType.warning,
-          );
-        }
-      });
+      // User came back from MetaMask — start aggressive 500 ms polling for 30 s.
+      // This works even when the deep-link callback is swallowed by OEM ROMs.
+      _startResumePolling(durationSeconds: 30);
+    } else if (state == AppLifecycleState.paused) {
+      // App went to background — stop polling to save battery
+      _cancelResumePoller();
     }
   }
+
+  // ── Web3 listener ──────────────────────────────────────────────────────
 
   void _onWeb3Changed() {
     if (!mounted) return;
     if (Web3Service.instance.isConnected) {
-      // Wallet just connected - dismiss modal automatically
+      // Wallet just connected — dismiss modal immediately
       if (mounted && !_isClosing) setState(() => _isConnecting = false);
       _safePop(true);
     }
   }
 
+  // ── Connection trigger ─────────────────────────────────────────────────
+
   Future<void> _handleConnect() async {
     if (_isConnecting || _isClosing) return;
-    // Guard: already connected - just close
+    // Guard: already connected — just close
     if (Web3Service.instance.isConnected) {
       _safePop(true);
       return;
@@ -138,23 +180,48 @@ class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBin
 
     try {
       await WalletUtils.showConnectDialog(context, Web3Service.instance);
-      // If connectWallet() returned and we're connected, the listener
-      // above already handles pop(). If not, reset the spinner here.
-      if (!Web3Service.instance.isConnected) {
-        if (mounted) setState(() => _isConnecting = false);
+      // If connectWallet() returned and we're still not connected, the
+      // listener or resume-poller will handle it. Just reset the spinner.
+      if (mounted && !Web3Service.instance.isConnected && !_isClosing) {
+        setState(() => _isConnecting = false);
       }
-    } catch (e) {
-      if (!mounted) return;
-      NotificationManager.show(
-        context: context,
-        title: 'Connection Failed',
-        message: e.toString().replaceFirst("Exception: ", ""),
-        type: NotificationType.error,
-      );
-    } finally {
+    } catch (_) {
+      // Suppress errors — keep retrying silently via polling
       if (mounted && !_isClosing) setState(() => _isConnecting = false);
     }
   }
+
+  // ── Manual "Already approved?" check ──────────────────────────────────
+
+  Future<void> _handleManualCheck() async {
+    if (_isClosing || _isCheckingManually) return;
+    setState(() => _isCheckingManually = true);
+
+    try {
+      // Check both: in-memory state and WalletConnect SDK sessions
+      if (Web3Service.instance.isConnected) {
+        _safePop(true);
+        return;
+      }
+
+      // Give the SDK a brief moment to propagate the session if the event
+      // fired just before the user tapped the button
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      if (Web3Service.instance.isConnected) {
+        _safePop(true);
+        return;
+      }
+
+      // Not yet connected — start a fresh polling burst (15 s)
+      // so the user doesn't have to tap repeatedly
+      _startResumePolling(durationSeconds: 15);
+    } finally {
+      if (mounted && !_isClosing) setState(() => _isCheckingManually = false);
+    }
+  }
+
+  // ── UI ─────────────────────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -193,11 +260,12 @@ class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBin
                 ),
                 child: Image.asset(
                   'assets/images/metamask_fox.png',
-                  errorBuilder: (_, __, ___) => const Icon(Icons.account_balance_wallet, size: 36, color: AppColors.primary),
+                  errorBuilder: (_, __, ___) =>
+                      const Icon(Icons.account_balance_wallet, size: 36, color: AppColors.primary),
                 ),
               ),
               const SizedBox(height: 24),
-              
+
               Text(
                 widget.title,
                 style: AppTextStyles.h3.copyWith(
@@ -207,7 +275,7 @@ class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBin
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 12),
-              
+
               Text(
                 widget.message,
                 style: AppTextStyles.bodyMedium.copyWith(
@@ -217,8 +285,8 @@ class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBin
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 32),
-              
-              // Connect Button
+
+              // ── Connect Button ───────────────────────────────────────
               SizedBox(
                 width: double.infinity,
                 height: 52,
@@ -248,18 +316,55 @@ class _WalletConnectModalState extends State<WalletConnectModal> with WidgetsBin
                             const SizedBox(width: 8),
                             Text(
                               'Connect Wallet',
-                              style: AppTextStyles.labelLarge.copyWith(fontWeight: FontWeight.bold),
+                              style: AppTextStyles.labelLarge
+                                  .copyWith(fontWeight: FontWeight.bold),
                             ),
                           ],
                         ),
                 ),
               ),
-              const SizedBox(height: 16),
-              
-              // Cancel Button
+              const SizedBox(height: 12),
+
+              // ── "Already approved?" manual check ────────────────────
               SizedBox(
                 width: double.infinity,
-                height: 52,
+                height: 44,
+                child: OutlinedButton.icon(
+                  onPressed:
+                      (_isCheckingManually || _isClosing) ? null : _handleManualCheck,
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppColors.primary,
+                    side: BorderSide(
+                      color: AppColors.primary.withValues(alpha: 0.5),
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(AppRadius.lg),
+                    ),
+                  ),
+                  icon: _isCheckingManually
+                      ? const SizedBox(
+                          height: 14,
+                          width: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 1.5,
+                            color: AppColors.primary,
+                          ),
+                        )
+                      : const Icon(Icons.check_circle_outline, size: 16),
+                  label: Text(
+                    'Already approved? Tap here',
+                    style: AppTextStyles.labelMedium.copyWith(
+                      color: AppColors.primary,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 12),
+
+              // ── Cancel Button ────────────────────────────────────────
+              SizedBox(
+                width: double.infinity,
+                height: 44,
                 child: TextButton(
                   onPressed: () => _safePop(false),
                   style: TextButton.styleFrom(
