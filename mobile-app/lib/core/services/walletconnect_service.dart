@@ -96,7 +96,7 @@ class WalletConnectService extends ChangeNotifier {
       await app_session.SessionService.instance.clearSession();
     }
 
-    if (kDebugMode) debugPrint('✅ WalletConnect initialized');
+    if (kDebugMode) debugPrint('[LOGIN] WALLETCONNECT_INITIALIZED');
   }
 
   // ── Session event handlers ──────────────────────────────────────────────
@@ -106,7 +106,11 @@ class WalletConnectService extends ChangeNotifier {
       _session = event!.session;
       _extractAddressFromSession();
       notifyListeners();
-      if (kDebugMode) debugPrint('✅ [EVENT] Session connected: $_connectedAddress');
+      if (kDebugMode) {
+        debugPrint('✅ [EVENT] Session connected: $_connectedAddress');
+        debugPrint('[LOGIN] SESSION_APPROVED');
+        debugPrint('[LOGIN] SESSION_RECEIVED');
+      }
     }
   }
 
@@ -157,6 +161,8 @@ class WalletConnectService extends ChangeNotifier {
         if (parts.length >= 3) {
           _chainId = int.tryParse(parts[1]);
           _connectedAddress = parts[2];
+          if (kDebugMode) debugPrint('[LOGIN] WALLET_ADDRESS_RECEIVED');
+          if (kDebugMode) debugPrint('[T3] Wallet Address Received: $_connectedAddress');
         }
       }
     }
@@ -175,7 +181,7 @@ class WalletConnectService extends ChangeNotifier {
     _pendingConnect = null;
 
     final connectResponse = await _web3App!.connect(
-      requiredNamespaces: {
+      optionalNamespaces: {
         'eip155': RequiredNamespace(
           chains: ['eip155:${ContractConfig.chainId}'],
           methods: [
@@ -232,7 +238,10 @@ class WalletConnectService extends ChangeNotifier {
     bool launched = false;
     try {
       if (await canLaunchUrl(appUri)) {
-        if (kDebugMode) debugPrint('🚀 Launching $walletName via deep link...');
+        if (kDebugMode) {
+          debugPrint('🚀 Launching $walletName via deep link...');
+          debugPrint('[LOGIN] OPENING_METAMASK');
+        }
         await launchUrl(appUri, mode: LaunchMode.externalApplication);
         launched = true;
       }

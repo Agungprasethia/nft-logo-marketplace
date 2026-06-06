@@ -1,11 +1,15 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
+import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WalletConnectModal
@@ -78,6 +82,7 @@ enum _ConnState {
   launching,    // generating URI + opening MetaMask
   waiting,      // MetaMask is open, polling for session
   checking,     // manual "Already Approved" check in progress
+  manual,       // user is entering address manually
 }
 
 class _WalletConnectModalState extends State<WalletConnectModal>
@@ -85,6 +90,10 @@ class _WalletConnectModalState extends State<WalletConnectModal>
   _ConnState _state = _ConnState.idle;
   bool _isClosing = false;
   String _selectedWallet = 'metamask';
+
+  // Manual address entry
+  final _manualAddressController = TextEditingController();
+  String? _manualAddressError;
 
   // Polling timer — 500 ms ticks
   Timer? _poller;
@@ -105,6 +114,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
   @override
   void dispose() {
     _cancelPoller();
+    _manualAddressController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     WalletConnectService.instance.removeListener(_onWcChanged);
     Web3Service.instance.removeListener(_onWeb3Changed);
@@ -130,7 +140,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
   /// Starts a 500 ms poller for [maxSeconds].
   /// Calls [WalletConnectService.checkForNewSession] on every tick.
   /// Silently auto-closes modal if a session is found.
-  void _startPoller({int maxSeconds = 180}) {
+  void _startPoller({int maxSeconds = 20}) {
     _cancelPoller();
     int ticks = 0;
     final maxTicks = maxSeconds * 2; // 500 ms per tick
@@ -154,6 +164,11 @@ class _WalletConnectModalState extends State<WalletConnectModal>
           .checkForNewSession(walletName: _selectedWallet);
 
       if (found) {
+        if (kDebugMode) {
+          debugPrint('[LOGIN] SESSION_FOUND');
+          debugPrint('[LOGIN] SESSION_RESTORED');
+          debugPrint('[T2] Session Restored');
+        }
         timer.cancel();
         // WalletConnectService.checkForNewSession() calls notifyListeners()
         // which triggers _onWcChanged / connectMobileWallet completion.
@@ -170,11 +185,17 @@ class _WalletConnectModalState extends State<WalletConnectModal>
         return;
       }
 
-      // Stop polling silently after max time
+      // Stop polling and show timeout failsafe after max time
       if (ticks >= maxTicks) {
         timer.cancel();
         if (mounted && !_isClosing) {
           setState(() => _state = _ConnState.idle);
+          NotificationManager.show(
+            context: context,
+            title: 'Connection Timeout',
+            message: 'Unable to receive wallet session. Please try reconnecting your wallet.',
+            type: NotificationType.error,
+          );
         }
       }
     });
@@ -205,9 +226,11 @@ class _WalletConnectModalState extends State<WalletConnectModal>
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed &&
         (_state == _ConnState.waiting || _state == _ConnState.launching)) {
-      // User returned from MetaMask — do an immediate check then fast-poll 60 s
+      if (kDebugMode) debugPrint('[LOGIN] APP_RESUMED');
+      // User returned from MetaMask — do an immediate check then fast-poll 20 s
       _doImmediateCheckOnResume();
     } else if (state == AppLifecycleState.paused) {
+      if (kDebugMode) debugPrint('[LOGIN] APP_PAUSED');
       // App went to background — stop polling (MetaMask is in foreground now)
       _cancelPoller();
     }
@@ -215,6 +238,18 @@ class _WalletConnectModalState extends State<WalletConnectModal>
 
   Future<void> _doImmediateCheckOnResume() async {
     if (!mounted || _isClosing) return;
+
+    // Force reconnect relay client in case the OS dropped the websocket in the background
+    try {
+      final web3App = WalletConnectService.instance.web3App;
+      if (web3App != null) {
+        if (kDebugMode) debugPrint('[RELAY] RECONNECT_START');
+        await web3App.core.relayClient.connect();
+        if (kDebugMode) debugPrint('[RELAY] RECONNECT_SUCCESS');
+      }
+    } catch (_) {
+      // Ignore if already connected or error
+    }
 
     // Immediate synchronous check
     if (Web3Service.instance.isConnected) {
@@ -225,6 +260,11 @@ class _WalletConnectModalState extends State<WalletConnectModal>
     final found = await WalletConnectService.instance
         .checkForNewSession(walletName: _selectedWallet);
     if (found) {
+      if (kDebugMode) {
+        debugPrint('[LOGIN] SESSION_FOUND');
+        debugPrint('[LOGIN] SESSION_RESTORED');
+        debugPrint('[T2] Session Restored');
+      }
       await Future.delayed(const Duration(milliseconds: 800));
       if (!mounted || _isClosing) return;
       if (Web3Service.instance.isConnected) {
@@ -235,10 +275,10 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       return;
     }
 
-    // Not connected yet — start aggressive 60 s polling after resume
+    // Not connected yet — start aggressive 20 s polling after resume
     if (mounted && !_isClosing) {
       setState(() => _state = _ConnState.waiting);
-      _startPoller(maxSeconds: 60);
+      _startPoller(maxSeconds: 20);
     }
   }
 
@@ -289,7 +329,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       setState(() => _state = _ConnState.waiting);
 
       // Step 4: Start polling — completely independent of deep-link callback
-      _startPoller(maxSeconds: 180);
+      _startPoller(maxSeconds: 20);
     } catch (_) {
       if (mounted && !_isClosing) setState(() => _state = _ConnState.idle);
     }
@@ -313,12 +353,33 @@ class _WalletConnectModalState extends State<WalletConnectModal>
     try {
       if (Web3Service.instance.isConnected) { _safePop(true); return; }
 
+      // Paksa bangunkan WebSocket (RelayClient) sebelum mengecek session
+      // Sangat penting untuk OS seperti Xiaomi HyperOS yang memutus jaringan di background
+      try {
+        final web3App = WalletConnectService.instance.web3App;
+        if (web3App != null) {
+          if (kDebugMode) debugPrint('[RELAY] MANUAL_CHECK_RECONNECT_START');
+          await web3App.core.relayClient.connect();
+          if (kDebugMode) debugPrint('[RELAY] MANUAL_CHECK_RECONNECT_SUCCESS');
+        }
+      } catch (_) {
+        // Abaikan error jika sudah terkoneksi
+      }
+
+      // Beri jeda 1.5 detik agar WebSocket selesai mendownload session dari server
+      await Future.delayed(const Duration(milliseconds: 1500));
+
       final found = await WalletConnectService.instance
           .checkForNewSession(walletName: _selectedWallet);
 
       if (!mounted || _isClosing) return;
 
       if (found) {
+        if (kDebugMode) {
+          debugPrint('[LOGIN] SESSION_FOUND');
+          debugPrint('[LOGIN] SESSION_RESTORED');
+          debugPrint('[T2] Session Restored');
+        }
         await Future.delayed(const Duration(milliseconds: 800));
         if (!mounted || _isClosing) return;
         if (Web3Service.instance.isConnected) {
@@ -330,11 +391,55 @@ class _WalletConnectModalState extends State<WalletConnectModal>
         // Not found — quietly go back to waiting + restart poller
         if (mounted && !_isClosing) {
           setState(() => _state = _ConnState.waiting);
-          _startPoller(maxSeconds: 60);
+          _startPoller(maxSeconds: 20);
         }
       }
     } catch (_) {
       if (mounted && !_isClosing) setState(() => _state = _ConnState.waiting);
+    }
+  }
+
+  // ── Manual address entry ──────────────────────────────────────────────────
+
+  void _showManualInput() {
+    if (_isClosing) return;
+    _cancelPoller();
+    _manualAddressController.clear();
+    setState(() {
+      _state = _ConnState.manual;
+      _manualAddressError = null;
+    });
+  }
+
+  Future<void> _submitManualAddress() async {
+    final address = _manualAddressController.text.trim();
+
+    // Validate Ethereum address format
+    if (!address.startsWith('0x') || address.length != 42) {
+      setState(() {
+        _manualAddressError = 'Invalid address. Must start with 0x and be 42 characters long.';
+      });
+      return;
+    }
+
+    setState(() {
+      _state = _ConnState.checking;
+      _manualAddressError = null;
+    });
+
+    try {
+      if (kDebugMode) debugPrint('[LOGIN] MANUAL_ADDRESS_SUBMIT: $address');
+      // Cast to dynamic — setManualWalletAddress is only on the mobile implementation
+      await (Web3Service.instance as dynamic).setManualWalletAddress(address);
+      if (mounted && !_isClosing) _safePop(true);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[LOGIN] MANUAL_ADDRESS_ERROR: $e');
+      if (mounted && !_isClosing) {
+        setState(() {
+          _state = _ConnState.manual;
+          _manualAddressError = 'Failed to connect. Please try again.';
+        });
+      }
     }
   }
 
@@ -444,6 +549,9 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       case _ConnState.checking:
         text = 'Checking connection status…';
         break;
+      case _ConnState.manual:
+        text = 'Enter your wallet address manually as a fallback.';
+        break;
       case _ConnState.idle:
         text = widget.message;
     }
@@ -489,6 +597,16 @@ class _WalletConnectModalState extends State<WalletConnectModal>
             onPressed: _tryAgain,
           ),
           const SizedBox(height: 10),
+          TextButton.icon(
+            onPressed: _showManualInput,
+            icon: const Icon(Icons.edit_outlined, size: 15),
+            label: const Text('Enter Address Manually'),
+            style: TextButton.styleFrom(
+              foregroundColor: AppColors.textSecondary,
+              textStyle: AppTextStyles.labelSmall,
+            ),
+          ),
+          const SizedBox(height: 4),
           _CancelButton(onPressed: () => _safePop(false)),
         ];
 
@@ -500,6 +618,72 @@ class _WalletConnectModalState extends State<WalletConnectModal>
             icon: Icons.check_circle_outline,
             isLoading: true,
             onPressed: null,
+          ),
+          const SizedBox(height: 10),
+          _CancelButton(onPressed: () => _safePop(false)),
+        ];
+
+      // ── Manual: show text field + connect button ──────────────────────
+      case _ConnState.manual:
+        return [
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              TextField(
+                controller: _manualAddressController,
+                style: AppTextStyles.bodySmall.copyWith(fontFamily: 'monospace'),
+                keyboardType: TextInputType.text,
+                inputFormatters: [FilteringTextInputFormatter.deny(RegExp(r'\s'))],
+                decoration: InputDecoration(
+                  hintText: 'Paste your wallet address (0x...)',
+                  hintStyle: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary.withValues(alpha: 0.5)),
+                  filled: true,
+                  fillColor: AppColors.surfaceLight.withValues(alpha: 0.3),
+                  errorText: _manualAddressError,
+                  errorMaxLines: 2,
+                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    borderSide: BorderSide(color: AppColors.border.withValues(alpha: 0.5)),
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(AppRadius.lg),
+                    borderSide: const BorderSide(color: AppColors.primary, width: 1.5),
+                  ),
+                  suffixIcon: IconButton(
+                    icon: const Icon(Icons.paste, size: 18, color: AppColors.textSecondary),
+                    tooltip: 'Paste from clipboard',
+                    onPressed: () async {
+                      final data = await Clipboard.getData('text/plain');
+                      if (data?.text != null) {
+                        _manualAddressController.text = data!.text!.trim();
+                      }
+                    },
+                  ),
+                ),
+                onSubmitted: (_) => _submitManualAddress(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          _PrimaryButton(
+            label: 'Connect with This Address',
+            icon: Icons.link,
+            onPressed: _submitManualAddress,
+          ),
+          const SizedBox(height: 10),
+          _SecondaryButton(
+            label: 'Back to MetaMask',
+            icon: Icons.arrow_back,
+            isLoading: false,
+            onPressed: () => setState(() {
+              _state = _ConnState.idle;
+              _manualAddressError = null;
+            }),
           ),
           const SizedBox(height: 10),
           _CancelButton(onPressed: () => _safePop(false)),

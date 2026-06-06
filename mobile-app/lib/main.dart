@@ -34,12 +34,15 @@ void main() async {
   runApp(const NFTLogoMarketplaceApp());
 }
 
+final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+
 class NFTLogoMarketplaceApp extends StatelessWidget {
   const NFTLogoMarketplaceApp({super.key});
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'L E O',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.darkTheme,

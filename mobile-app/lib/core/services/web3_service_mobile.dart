@@ -18,6 +18,8 @@ import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/notification_service.dart';
 import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
 import 'package:nft_logo_marketplace/core/services/fcm_service.dart';
+import 'package:flutter/material.dart';
+import 'package:nft_logo_marketplace/main.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
 import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
@@ -411,10 +413,66 @@ class Web3Service extends Web3ServiceBase {
 
   final _walletConnect = WalletConnectService.instance;
 
+  /// Fallback: manually set a wallet address without WalletConnect.
+  /// Used when MetaMask deep-link flow fails on strict OEM devices.
+  /// The user copies their address from MetaMask and pastes it in the app.
+  Future<void> setManualWalletAddress(String address) async {
+    if (kDebugMode) debugPrint('[LOGIN] setManualWalletAddress: $address');
+
+    _currentAddress = address;
+    _isConnected = true;
+    _connectionType = 'manual';
+    _chainId = Web3ServiceBase.sepoliaChainId;
+
+    // Persist to SharedPreferences for session recovery
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('manual_wallet_address', address);
+      await prefs.setString('connection_type', 'manual');
+    } catch (e) {
+      if (kDebugMode) debugPrint('[LOGIN] setManualWalletAddress prefs error: $e');
+    }
+
+    notifyListeners();
+
+    // Background: sync Firebase profile
+    Future.microtask(() async {
+      try {
+        final firebaseUser = AuthService.instance.currentUser;
+        if (firebaseUser != null) {
+          final userData = await AuthService.instance.getUserData(firebaseUser.uid);
+          if (userData != null) {
+            final stored = userData.walletAddress;
+            if (stored == null || stored.isEmpty) {
+              await AuthService.instance.updateWalletAddress(firebaseUser.uid, address);
+            }
+          } else {
+            await AuthService.instance.createUserProfile(
+              uid: firebaseUser.uid,
+              email: firebaseUser.email ?? '',
+              fullName: firebaseUser.displayName ?? 'New User',
+              walletAddress: address,
+            );
+          }
+        }
+        _registerAsSeller(address);
+        await loadFromChain().timeout(const Duration(seconds: 15), onTimeout: () => throw Exception('timeout'));
+        await _updateBalance();
+        notifyListeners();
+        if (kDebugMode) debugPrint('[LOGIN] Manual wallet sync complete');
+      } catch (e) {
+        if (kDebugMode) debugPrint('[LOGIN] Manual wallet sync error: $e');
+      }
+    });
+  }
+
   @override
   Future<bool> connectMobileWallet({String walletName = 'metamask', bool restoreSession = false}) async {
     try {
-      if (kDebugMode) { debugPrint('[LOGIN] Step 1 Connect Started (restoreSession: $restoreSession, wallet: $walletName)'); }
+      if (kDebugMode) {
+        debugPrint('[LOGIN] CONNECT_BUTTON_CLICKED');
+        debugPrint('[T1] Connect Started (restoreSession: $restoreSession, wallet: $walletName)');
+      }
 
       bool connected = false;
 
@@ -500,9 +558,19 @@ class Web3Service extends Web3ServiceBase {
                       firebaseUser.uid, connectedAddress);
                 } else if (storedWallet.toLowerCase() !=
                     connectedAddress.toLowerCase()) {
+                  if (kDebugMode) { debugPrint('[LOGIN] WALLET_MISMATCH — disconnecting'); }
+                  
+                  // Tampilkan Snackbar notifikasi kepada user
+                  scaffoldMessengerKey.currentState?.showSnackBar(
+                    const SnackBar(
+                      content: Text('Wallet address tidak sesuai dengan akun ini. Silakan gunakan wallet address yang terdaftar.'),
+                      backgroundColor: Colors.redAccent,
+                      duration: Duration(seconds: 4),
+                    ),
+                  );
+
                   _walletConnect.disconnect();
                   _disconnect();
-                  if (kDebugMode) { debugPrint('[LOGIN] WALLET_MISMATCH — disconnecting'); }
                   return;
                 }
               } else {
@@ -521,8 +589,13 @@ class Web3Service extends Web3ServiceBase {
           _registerAsSeller(connectedAddress);
 
           try {
+            if (kDebugMode) {
+              debugPrint('[LOGIN] FIRESTORE_LOAD_START');
+              debugPrint('[T4] Firestore Load Start');
+            }
             await loadFromChain().timeout(const Duration(seconds: 15),
                 onTimeout: () => throw Exception('loadFromChain timeout'));
+            if (kDebugMode) debugPrint('[LOGIN] FIRESTORE_LOAD_DONE');
           } catch (e) {
             if (kDebugMode) { debugPrint('[LOGIN] loadFromChain error: $e'); }
           }
@@ -539,7 +612,10 @@ class Web3Service extends Web3ServiceBase {
             if (kDebugMode) { debugPrint('[LOGIN] updateBalance error: $e'); }
           }
 
-          if (kDebugMode) { debugPrint('[LOGIN] Background sync complete'); }
+          if (kDebugMode) {
+            debugPrint('[LOGIN] HOMEPAGE_OPENED');
+            debugPrint('[T5] Homepage Opened & Sync Complete');
+          }
           notifyListeners();
         } catch (e) {
           if (kDebugMode) { debugPrint('[LOGIN] Background sync fatal: $e'); }
