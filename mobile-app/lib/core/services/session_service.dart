@@ -82,7 +82,7 @@ class SessionService {
 
   static const String _marketplaceSessionKey = 'leo_marketplace_session';
   static const String _adminSessionKey = 'leo_admin_session';
-  static const Duration _maxSessionAge = Duration(days: 7);
+  static const Duration _maxSessionAge = Duration(hours: 24);
   
   String _getKeyForType(String sessionType) {
     return sessionType == 'admin' ? _adminSessionKey : _marketplaceSessionKey;

@@ -279,6 +279,20 @@ class Web3Service extends Web3ServiceBase {
   }
 
   @override
+  Future<bool?> getTransactionStatus(String txHash) async {
+    try {
+      final receipt = await _getTransactionReceipt(txHash);
+      if (receipt != null) {
+        return receipt['status'] == '0x1';
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[WEB3_WEB] Error getting tx receipt: $e'); }
+      return null;
+    }
+  }
+
+  @override
   void openInMetaMaskBrowser() {
     final currentUrl = html.window.location.href;
     final cleanUrl = currentUrl.replaceFirst(RegExp(r'^https?://'), '');

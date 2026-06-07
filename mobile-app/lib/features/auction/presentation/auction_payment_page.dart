@@ -26,9 +26,98 @@ class AuctionPaymentPage extends StatefulWidget {
   State<AuctionPaymentPage> createState() => _AuctionPaymentPageState();
 }
 
-class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
+class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBindingObserver {
   final _web3 = Web3Service.instance;
   bool _isProcessingPayment = false;
+  DateTime? _paymentStartedAt;
+  String? _pendingTransactionHash;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkPaymentRecovery();
+    }
+  }
+
+  Future<void> _checkPaymentRecovery() async {
+    if (!_isProcessingPayment) return;
+    
+    if (kDebugMode) { debugPrint('[PAYMENT RECOVERY] Checking on resume. Pending Hash: $_pendingTransactionHash'); }
+
+    if (_pendingTransactionHash != null) {
+      if (kDebugMode) { debugPrint('[PAYMENT RESUME] Hash exists, waiting for confirmation...'); }
+      // CASE A: Check blockchain status
+      try {
+        final status = await _web3.getTransactionStatus(_pendingTransactionHash!);
+        if (status == true) {
+          if (kDebugMode) { debugPrint('[PAYMENT RESUME] Transaction SUCCESS on chain. Proceeding.'); }
+          // Let the existing await finish, ownership transfer will continue.
+        } else {
+          if (kDebugMode) { debugPrint('[PAYMENT RESET] Transaction FAILED or NOT FOUND on chain.'); }
+          
+          await FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
+          
+          if (mounted) {
+            setState(() {
+              _isProcessingPayment = false;
+              _paymentStartedAt = null;
+              _pendingTransactionHash = null;
+            });
+            
+            Navigator.of(context, rootNavigator: true).pop();
+            
+            NotificationManager.show(
+              context: context,
+              title: 'Payment Failed',
+              message: 'Blockchain transaction failed or not found.',
+              type: NotificationType.error,
+            );
+          }
+        }
+      } catch (e) {
+        if (kDebugMode) { debugPrint('[PAYMENT RESET] Error checking tx status: $e'); }
+      }
+    } else {
+      // CASE B: No hash, check timeout
+      if (_paymentStartedAt != null) {
+        final diff = DateTime.now().difference(_paymentStartedAt!);
+        if (diff.inSeconds > 60) {
+          if (kDebugMode) { debugPrint('[PAYMENT RESET] > 60s without tx hash. Resetting.'); }
+          
+          await FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
+          
+          if (mounted) {
+            setState(() {
+              _isProcessingPayment = false;
+              _paymentStartedAt = null;
+            });
+            
+            // Pop the processing dialog if it's showing
+            Navigator.of(context, rootNavigator: true).pop();
+            
+            NotificationManager.show(
+              context: context,
+              title: 'Payment Incomplete',
+              message: 'Previous payment attempt was not completed.',
+              type: NotificationType.warning,
+            );
+          }
+        }
+      }
+    }
+  }
 
   Future<LogoNFT?> _fetchLogo(int tokenId) async {
     try {
@@ -438,7 +527,11 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
       return;
     }
 
-    setState(() => _isProcessingPayment = true);
+    setState(() {
+      _isProcessingPayment = true;
+      _paymentStartedAt = DateTime.now();
+      _pendingTransactionHash = null;
+    });
     await FirestoreService.instance.setPaymentProcessing(logo.tokenId, true);
 
     if (!mounted) return;
@@ -476,6 +569,9 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> {
 
     try {
       final txHash = await _web3.payAuctionWinner(logo.creatorWallet, auction.highestBid);
+      if (mounted) {
+        setState(() => _pendingTransactionHash = txHash);
+      }
 
       await FirestoreService.instance.completePayment(
         logo.tokenId,

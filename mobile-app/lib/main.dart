@@ -7,6 +7,7 @@ import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/firebase_options.dart';
 import 'package:nft_logo_marketplace/shared/widgets/offline_banner.dart';
 import 'package:nft_logo_marketplace/core/services/fcm_service.dart';
+import 'package:nft_logo_marketplace/core/services/auction_notification_service.dart';
 
 import 'package:flutter_dotenv/flutter_dotenv.dart';
 
@@ -31,10 +32,14 @@ void main() async {
     await FCMService.instance.initialize();
   }
 
+  // Start global realtime auction monitoring
+  AuctionNotificationService.instance.startGlobalAuctionMonitoring();
+
   runApp(const NFTLogoMarketplaceApp());
 }
 
 final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey = GlobalKey<ScaffoldMessengerState>();
+final GlobalKey<NavigatorState> navigatorKey = GlobalKey<NavigatorState>();
 
 class NFTLogoMarketplaceApp extends StatelessWidget {
   const NFTLogoMarketplaceApp({super.key});
@@ -42,6 +47,7 @@ class NFTLogoMarketplaceApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
+      navigatorKey: navigatorKey,
       scaffoldMessengerKey: scaffoldMessengerKey,
       title: 'L E O',
       debugShowCheckedModeBanner: false,

@@ -58,6 +58,11 @@ class Web3Service extends Web3ServiceBase {
   @override Future<String> payAuctionWinner(String sellerWallet, double amountInEth) async => throw UnimplementedError();
   @override Future<String> createAuctionOnChain({required int tokenId, required String creatorAddress, required double startingPrice, required int durationSeconds}) async => throw UnimplementedError();
 
+  @override
+  Future<bool?> getTransactionStatus(String txHash) async {
+    return null;
+  }
+
   @override List<LogoNFT> getMyLogos() => [];
   @override List<LogoNFT> getMyCreatedLogos() => [];
   @override Auction? getAuctionForLogo(int tokenId) => null;

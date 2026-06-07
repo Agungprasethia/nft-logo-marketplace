@@ -653,6 +653,20 @@ class Web3Service extends Web3ServiceBase {
   }
 
   @override
+  Future<bool?> getTransactionStatus(String txHash) async {
+    try {
+      final receipt = await _client.getTransactionReceipt(txHash);
+      if (receipt != null) {
+        return receipt.status;
+      }
+      return null;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[WEB3] Error getting tx receipt: $e'); }
+      return null;
+    }
+  }
+
+  @override
   Future<bool> switchToSepolia() async {
     return false;
   }

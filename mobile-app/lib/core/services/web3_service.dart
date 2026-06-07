@@ -82,6 +82,9 @@ abstract class Web3ServiceBase extends ChangeNotifier {
     required int durationSeconds,
   });
 
+  // Transaction Status
+  Future<bool?> getTransactionStatus(String txHash);
+
   // Query methods
   List<LogoNFT> getMyLogos();
   List<LogoNFT> getMyCreatedLogos();

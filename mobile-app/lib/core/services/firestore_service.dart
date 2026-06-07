@@ -1118,7 +1118,7 @@ class FirestoreService {
         }
 
         // Validate bid amount (Minimum Increment Rule)
-        final double minIncrement = Auction.defaultMinimumIncrement;
+        final double minIncrement = Auction.getMinimumIncrement(currentHighestBid);
         final double minRequiredBid = currentHighestBid > 0 ? currentHighestBid + minIncrement : startingPrice;
         
         // Use a small epsilon for floating point comparison to avoid precision issues

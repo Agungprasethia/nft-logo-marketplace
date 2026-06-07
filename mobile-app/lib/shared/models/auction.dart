@@ -6,6 +6,12 @@ enum AuctionStatus { draft, active, ended, endedNoBids, paymentPending, paymentC
 class Auction {
   static const double defaultMinimumIncrement = 0.1;
   
+  static double getMinimumIncrement(double currentBid) {
+    if (currentBid <= 0) return 0.01;
+    double increment = currentBid * 0.01;
+    return increment < 0.01 ? 0.01 : increment;
+  }
+  
   final int auctionId;
   final int tokenId;
   final String sellerId;

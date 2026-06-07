@@ -5,6 +5,7 @@ import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/widgets/premium_notification.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:uuid/uuid.dart';
+import 'package:nft_logo_marketplace/main.dart';
 
 class NotificationManager {
   static final NotificationManager _instance = NotificationManager._internal();
@@ -19,7 +20,7 @@ class NotificationManager {
   /// Show a premium Web3 notification
   /// Automatically saves to Firestore if [saveToHistory] is true and a wallet is connected.
   static void show({
-    required BuildContext context,
+    BuildContext? context,
     required String title,
     required String message,
     NotificationType type = NotificationType.info,
@@ -53,8 +54,13 @@ class NotificationManager {
     }
 
     // Add to UI queue
-    _instance._queue.add(_NotificationData(context: context, notification: notification));
-    _instance._processQueue();
+    final ctx = context ?? navigatorKey.currentContext;
+    if (ctx != null) {
+      _instance._queue.add(_NotificationData(context: ctx, notification: notification));
+      _instance._processQueue();
+    } else {
+      debugPrint('NotificationManager: Cannot show notification, no context available.');
+    }
   }
 
   void _processQueue() {

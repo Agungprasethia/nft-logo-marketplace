@@ -3,6 +3,11 @@ import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
+import 'package:nft_logo_marketplace/core/services/session_service.dart';
+import 'package:nft_logo_marketplace/core/services/web3_service.dart';
+import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
+import 'package:flutter/foundation.dart';
 
 class OfflineBannerWrapper extends StatefulWidget {
   final Widget child;
@@ -13,13 +18,14 @@ class OfflineBannerWrapper extends StatefulWidget {
   State<OfflineBannerWrapper> createState() => _OfflineBannerWrapperState();
 }
 
-class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> {
+class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> with WidgetsBindingObserver {
   bool _isOffline = false;
   late StreamSubscription<List<ConnectivityResult>> _subscription;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _checkInitialConnectivity();
     _subscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
       final isOffline = results.isEmpty || results.contains(ConnectivityResult.none);
@@ -41,8 +47,39 @@ class _OfflineBannerWrapperState extends State<OfflineBannerWrapper> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _subscription.cancel();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      _checkSessionExpiration();
+    }
+  }
+
+  Future<void> _checkSessionExpiration() async {
+    final session = await SessionService.instance.getSession();
+    if (session == null) return;
+    
+    if (kDebugMode) { debugPrint('[SESSION CHECK] Checking session expiration on resume'); }
+    
+    if (SessionService.instance.isSessionStale(session)) {
+      if (kDebugMode) { debugPrint('[SESSION EXPIRED] Session older than 24 hours. Disconnecting.'); }
+      
+      await SessionService.instance.fullLogout();
+      Web3Service.instance.disconnectWallet();
+      
+      if (mounted) {
+        NotificationManager.show(
+          context: context,
+          title: 'Session Expired',
+          message: 'Wallet session expired. Please reconnect.',
+          type: NotificationType.warning,
+        );
+      }
+    }
   }
 
   @override

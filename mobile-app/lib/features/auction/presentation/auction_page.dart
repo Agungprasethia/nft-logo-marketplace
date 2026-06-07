@@ -10,7 +10,6 @@ import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
-import 'package:nft_logo_marketplace/core/services/notification_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/bid_dialog.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/report_dialog.dart';
@@ -41,18 +40,14 @@ class _AuctionPageState extends State<AuctionPage> {
   StreamSubscription? _auctionStreamSub;
   List<Bid> _firestoreBids = [];
   Auction? _liveAuction;
-  int? _previousRank;
-  bool _hasNotified = false;
   DateTime? _lastBidAttempt;
   bool _hasEndedAuction = false; // Idempotent guard for auto-end
   bool _hasTimedOut = false;
   Timer? _timeoutTimer;
 
-  // Realtime Notification Caches
-  String? _lastHighestBidderWallet;
-  int _lastBidCount = 0;
-  bool _notified60s = false;
-  bool _notified30s = false;
+  // NOTE: Bid-level realtime notifications are now delegated to
+  // AuctionNotificationService which is attached in initState.
+
 
   @override
   void initState() {
@@ -103,11 +98,11 @@ class _AuctionPageState extends State<AuctionPage> {
           (bids) {
             if (mounted) {
               setState(() => _firestoreBids = bids);
-              _checkRankChange(_mergedBids);
+              // AuctionNotificationService handles notification logic
             }
           },
           onError: (e) {
-            debugPrint('âš ï¸ Bid stream error, trying fallback: $e');
+            debugPrint('⚠️ Bid stream error, trying fallback: $e');
             _bidStreamSub?.cancel();
             _bidStreamSub = FirestoreService.instance
                 .getAuctionBidsStreamFallback(widget.logo.tokenId)
@@ -115,11 +110,10 @@ class _AuctionPageState extends State<AuctionPage> {
                   (bids) {
                     if (mounted) {
                       setState(() => _firestoreBids = bids);
-                      _checkRankChange(_mergedBids);
                     }
                   },
                   onError: (e2) =>
-                      debugPrint('âš ï¸ Fallback bid stream also failed: $e2'),
+                      debugPrint('⚠️ Fallback bid stream also failed: $e2'),
                 );
           },
         );
@@ -138,100 +132,9 @@ class _AuctionPageState extends State<AuctionPage> {
         );
   }
 
-  void _checkRankChange(List<Bid> bids) {
-    if (bids.isEmpty) return;
 
-    // 1. New Bidder Notification
-    if (_lastBidCount > 0 && bids.length > _lastBidCount) {
-      NotificationService().showNotification(
-        id: widget.logo.tokenId * 10 + 1,
-        title: '🔔 New Bidder Joined',
-        body: 'A new participant has entered the auction.\nCurrent Bidders: ${bids.length}',
-      );
-    }
-    _lastBidCount = bids.length;
 
-    // 2. Outbid Notification
-    String currentHighestBidder = bids.first.bidderWallet.toLowerCase();
-    double currentHighestBid = bids.first.amount;
-    
-    if (_lastHighestBidderWallet != null && _lastHighestBidderWallet != currentHighestBidder) {
-      final currentWallet = _web3.currentAddress?.toLowerCase();
-      // If the current user was the previous highest bidder, they got outbid!
-      if (currentWallet != null && _lastHighestBidderWallet == currentWallet) {
-        final double nextMinBid = currentHighestBid + Auction.defaultMinimumIncrement;
-        NotificationService().showNotification(
-          id: widget.logo.tokenId * 10 + 2,
-          title: '🔔 Your Bid Has Been Outbid',
-          body: 'Someone placed a higher bid.\n\nCurrent Highest Bid:\n${currentHighestBid.toStringAsFixed(2)} ETH\n\nMinimum Next Bid:\n${nextMinBid.toStringAsFixed(2)} ETH\n\nAction:\nBid Again',
-        );
-      }
-    }
-    _lastHighestBidderWallet = currentHighestBidder;
 
-    // Check rank change for current user
-    if (_web3.currentAddress == null) return;
-
-    final currentWallet = _web3.currentAddress!.toLowerCase();
-    int currentRank = -1;
-
-    for (int i = 0; i < bids.length; i++) {
-      if (bids[i].bidderWallet.toLowerCase() == currentWallet) {
-        currentRank = i + 1;
-        break;
-      }
-    }
-
-    if (currentRank == -1) return;
-
-    if (_previousRank != null && _previousRank != currentRank) {
-      if (currentRank < _previousRank!) {
-        if (currentRank == 1) {
-          _showSnackbar(
-            '🏆 You are now the highest bidder!',
-            AppColors.accentOrange,
-          );
-        } else {
-          _showSnackbar(
-            '🔥 Your rank increased to #$currentRank!',
-            AppColors.success,
-          );
-        }
-      } else {
-        // 3. Leaderboard Position Change Notification
-        NotificationService().showNotification(
-          id: widget.logo.tokenId * 10 + 3,
-          title: '🔔 Ranking Changed',
-          body: 'You moved from #$_previousRank to #$currentRank\nPlace a higher bid to regain the lead.',
-        );
-        _showSnackbar(
-          '⚠️ You dropped to position #$currentRank',
-          AppColors.danger,
-        );
-      }
-    }
-
-    _previousRank = currentRank;
-  }
-
-  void _showSnackbar(String message, Color color) {
-    if (!mounted) return;
-    NotificationType type = NotificationType.info;
-    if (color == AppColors.success) {
-      type = NotificationType.success;
-    } else if (color == AppColors.danger) {
-      type = NotificationType.error;
-    } else if (color == AppColors.accentOrange) {
-      type = NotificationType.warning;
-    }
-
-    NotificationManager.show(
-      context: context,
-      title: 'Auction Update',
-      message: message,
-      type: type,
-    );
-  }
 
   @override
   void dispose() {
@@ -243,6 +146,7 @@ class _AuctionPageState extends State<AuctionPage> {
     _web3.removeListener(_refresh);
     super.dispose();
   }
+
 
   List<Bid> get _mergedBids {
     final Map<String, Bid> bidMap = {};
@@ -301,48 +205,6 @@ class _AuctionPageState extends State<AuctionPage> {
               // Reset guard so it can retry
               _hasEndedAuction = false;
             });
-      }
-      
-      // Auction Ending Soon Notification
-      if (logo.isAuctionActive && logo.endTime != null && !logo.isFrozen && logo.status != ValidationStatus.rejected) {
-        final remainingSeconds = logo.endTime!.difference(DateTime.now()).inSeconds;
-        
-        if (remainingSeconds <= 60 && remainingSeconds > 30 && !_notified60s) {
-          _notified60s = true;
-          NotificationService().showNotification(
-            id: widget.logo.tokenId * 10 + 4,
-            title: '🔔 Auction Ending Soon',
-            body: 'Only 60 seconds remaining.\nCurrent Highest Bid: ${logo.highestBid} ETH',
-          );
-        } else if (remainingSeconds <= 30 && remainingSeconds > 0 && !_notified30s) {
-          _notified30s = true;
-          NotificationService().showNotification(
-            id: widget.logo.tokenId * 10 + 5,
-            title: '🔔 Auction Ending Soon',
-            body: 'Only 30 seconds remaining.\nCurrent Highest Bid: ${logo.highestBid} ETH',
-          );
-        }
-      }
-
-      // Winner notification
-      if (!_hasNotified &&
-          !(logo.isAuctionActive &&
-              logo.endTime != null &&
-              DateTime.now().isBefore(logo.endTime!)) &&
-          !(!logo.isAuctionActive) &&
-          _web3.currentAddress != null &&
-          _web3.currentAddress!.toLowerCase() ==
-              logo.highestBidderWallet?.toLowerCase()) {
-        _hasNotified = true;
-        NotificationService().showNotification(
-          id: widget.logo.tokenId,
-          title: '🏆 Congratulations',
-          body: 'You won the auction.\nComplete payment to claim ownership.',
-        );
-        _notificationResetTimer?.cancel();
-        _notificationResetTimer = Timer(const Duration(minutes: 5), () {
-          if (mounted) setState(() => _hasNotified = false);
-        });
       }
     } catch (_) {}
   }
@@ -1663,7 +1525,7 @@ class _AuctionPageState extends State<AuctionPage> {
                       ),
                     ),
                     Text(
-                      '${(auction.highestBid > 0 ? auction.highestBid + Auction.defaultMinimumIncrement : auction.startingPrice).toStringAsFixed(2)} ETH',
+                      '${(auction.highestBid > 0 ? auction.highestBid + Auction.getMinimumIncrement(auction.highestBid) : auction.startingPrice).toStringAsFixed(2)} ETH',
                       style: AppTextStyles.labelLarge.copyWith(
                         color: AppColors.frozenBlue,
                       ),

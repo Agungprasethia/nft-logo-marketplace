@@ -30,7 +30,7 @@ class _BidDialogState extends State<BidDialog> {
   String? _error;
 
   double get minBid =>
-      widget.currentBid > 0 ? widget.currentBid + Auction.defaultMinimumIncrement : widget.startingPrice;
+      widget.currentBid > 0 ? widget.currentBid + Auction.getMinimumIncrement(widget.currentBid) : widget.startingPrice;
 
   @override
   void initState() {
@@ -140,47 +140,33 @@ class _BidDialogState extends State<BidDialog> {
                   borderRadius: BorderRadius.circular(AppRadius.lg),
                   border: Border.all(color: AppColors.border),
                 ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                child: Column(
                   children: [
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            widget.currentBid > 0 ? 'Highest Bid' : 'Starting Price',
-                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
-                          ),
-                          const SizedBox(height: 4),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '${(widget.currentBid > 0 ? widget.currentBid : widget.startingPrice).toStringAsFixed(2)} ETH',
-                              style: AppTextStyles.h3.copyWith(color: AppColors.accentOrange),
-                            ),
-                          ),
-                        ],
-                      ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Starting Price', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+                        Text('${widget.startingPrice.toStringAsFixed(2)} ETH', style: AppTextStyles.subtitle1),
+                      ],
                     ),
-                    const SizedBox(width: 12),
-                    Flexible(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        children: [
-                          Text(
-                            'Minimum Bid',
-                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
-                          ),
-                          const SizedBox(height: 4),
-                          FittedBox(
-                            fit: BoxFit.scaleDown,
-                            child: Text(
-                              '${minBid.toStringAsFixed(2)} ETH',
-                              style: AppTextStyles.h3.copyWith(color: AppColors.frozenBlue),
-                            ),
-                          ),
-                        ],
-                      ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Current Highest Bid', style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
+                        Text('${widget.currentBid.toStringAsFixed(2)} ETH', style: AppTextStyles.subtitle1.copyWith(color: AppColors.accentOrange)),
+                      ],
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 8),
+                      child: Divider(color: AppColors.border),
+                    ),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('Minimum Next Bid', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textPrimary)),
+                        Text('${minBid.toStringAsFixed(2)} ETH', style: AppTextStyles.h3.copyWith(color: AppColors.frozenBlue)),
+                      ],
                     ),
                   ],
                 ),
@@ -247,9 +233,9 @@ class _BidDialogState extends State<BidDialog> {
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildIncrementButton('+${Auction.defaultMinimumIncrement}', Auction.defaultMinimumIncrement),
-                  _buildIncrementButton('+0.5', 0.5),
-                  _buildIncrementButton('+1.0', 1.0),
+                  _buildIncrementButton('+0.01', 0.01),
+                  _buildIncrementButton('+0.05', 0.05),
+                  _buildIncrementButton('+0.10', 0.10),
                 ],
               ),
               const SizedBox(height: AppSpacing.xxl),
