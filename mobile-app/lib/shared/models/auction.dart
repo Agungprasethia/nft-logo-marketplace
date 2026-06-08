@@ -193,6 +193,9 @@ class Auction {
         return AuctionStatus.endedNoBids;
       case 'payment_pending':
         return AuctionStatus.paymentPending;
+      // Legacy alias: old Firestore docs stored 'PENDING_PAYMENT' (words reversed)
+      case 'pending_payment':
+        return AuctionStatus.paymentPending;
       case 'payment_completed':
         return AuctionStatus.paymentCompleted;
       case 'payment_expired':

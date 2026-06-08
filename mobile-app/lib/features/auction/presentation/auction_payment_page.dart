@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
@@ -32,10 +33,15 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
   DateTime? _paymentStartedAt;
   String? _pendingTransactionHash;
 
+  // localStorage key for persisting txHash across reloads (Web)
+  String get _txHashStorageKey => 'orphan_tx_${widget.tokenId}';
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    // Check for orphaned payment on every page open
+    WidgetsBinding.instance.addPostFrameCallback((_) => _checkForOrphanedPayment());
   }
 
   @override
@@ -51,19 +57,89 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
     }
   }
 
+  /// Called on page open: checks if a previous payment succeeded on-chain
+  /// but ownership was never transferred (orphaned payment).
+  Future<void> _checkForOrphanedPayment() async {
+    if (!mounted) return;
+    final wallet = _web3.currentAddress;
+    if (wallet == null || wallet.isEmpty) return;
+
+    try {
+      // Look up the NFT state in Firestore
+      final data = await FirestoreService.instance.getNFTData(widget.tokenId);
+      if (data == null) return;
+
+      final rawStatus = (data['status'] as String? ?? '').toLowerCase();
+      final rawAuctionStatus = (data['auctionStatus'] as String? ?? '').toUpperCase();
+      final highestBidderWallet = (data['highestBidderWallet'] as String? ?? '').toLowerCase();
+
+      // Only attempt recovery if:
+      // 1. NFT is still in payment_pending state
+      // 2. Current wallet IS the highest bidder
+      // 3. There is no paymentTxHash already stored (not already completed)
+      final alreadyHasTxHash = (data['paymentTxHash'] as String? ?? '').isNotEmpty;
+      final isPending = rawStatus == 'payment_pending' &&
+          (rawAuctionStatus == 'PAYMENT_PENDING' || rawAuctionStatus == 'PENDING_PAYMENT');
+
+      if (!isPending || highestBidderWallet != wallet.toLowerCase() || alreadyHasTxHash) return;
+
+      // Check if there's a stored txHash from a previous attempt
+      final prefs = await SharedPreferences.getInstance();
+      String? storedTxHash = prefs.getString(_txHashStorageKey);
+
+      if (storedTxHash == null || storedTxHash.isEmpty) return;
+
+      if (kDebugMode) {
+        debugPrint('[ORPHAN CHECK] Found stored txHash=$storedTxHash for NFT #${widget.tokenId}');
+      }
+
+      // Verify it succeeded on-chain
+      final txStatus = await _web3.getTransactionStatus(storedTxHash);
+      if (txStatus != true) return;
+
+      if (kDebugMode) { debugPrint('[ORPHAN CHECK] On-chain SUCCESS confirmed. Triggering recovery...'); }
+
+      final recovered = await FirestoreService.instance.recoverOrphanedPayment(
+        widget.tokenId, wallet, storedTxHash,
+      );
+
+      if (recovered && mounted) {
+        // Clear stored hash
+        try {
+          final prefs = await SharedPreferences.getInstance();
+          await prefs.remove(_txHashStorageKey);
+        } catch (_) {}
+        await _handleSuccessfulPayment(storedTxHash);
+      }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[ORPHAN CHECK] Error: $e'); }
+    }
+  }
+
   Future<void> _checkPaymentRecovery() async {
     if (!_isProcessingPayment) return;
     
     if (kDebugMode) { debugPrint('[PAYMENT RECOVERY] Checking on resume. Pending Hash: $_pendingTransactionHash'); }
 
     if (_pendingTransactionHash != null) {
-      if (kDebugMode) { debugPrint('[PAYMENT RESUME] Hash exists, waiting for confirmation...'); }
+      if (kDebugMode) { debugPrint('[PAYMENT RESUME] Hash exists, checking chain status...'); }
       // CASE A: Check blockchain status
       try {
         final status = await _web3.getTransactionStatus(_pendingTransactionHash!);
         if (status == true) {
-          if (kDebugMode) { debugPrint('[PAYMENT RESUME] Transaction SUCCESS on chain. Proceeding.'); }
-          // Let the existing await finish, ownership transfer will continue.
+          if (kDebugMode) { debugPrint('[PAYMENT RESUME] Transaction SUCCESS on chain. Triggering recovery.'); }
+          // Transaction is confirmed on-chain — attempt to complete the Firestore transfer
+          // in case the earlier completePayment() call failed due to the status bug.
+          final wallet = _web3.currentAddress;
+          if (wallet != null && mounted) {
+            final recovered = await FirestoreService.instance.recoverOrphanedPayment(
+              widget.tokenId, wallet, _pendingTransactionHash!,
+            );
+            if (recovered && mounted) {
+              Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+              await _handleSuccessfulPayment(_pendingTransactionHash!);
+            }
+          }
         } else {
           if (kDebugMode) { debugPrint('[PAYMENT RESET] Transaction FAILED or NOT FOUND on chain.'); }
           
@@ -94,7 +170,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
       if (_paymentStartedAt != null) {
         final diff = DateTime.now().difference(_paymentStartedAt!);
         if (diff.inSeconds > 60) {
-          if (kDebugMode) { debugPrint('[PAYMENT RESET] > 60s without tx hash. Resetting.'); }
+          if (kDebugMode) { debugPrint('[PAYMENT RESET] >60s without tx hash. Resetting.'); }
           
           await FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
           
@@ -117,6 +193,59 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
         }
       }
     }
+  }
+
+  /// Show the payment success dialog and navigate away
+  Future<void> _handleSuccessfulPayment(String txHash) async {
+    if (!mounted) return;
+    setState(() {
+      _isProcessingPayment = false;
+      _pendingTransactionHash = null;
+    });
+    // Fire-and-forget — don't await before using context
+    FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
+    // context is safe to use here: no awaits between mounted check and usage
+    await showDialog( // ignore: use_build_context_synchronously
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        backgroundColor: AppColors.surface,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+        insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        title: const Row(
+          children: [
+            Icon(Icons.check_circle, color: AppColors.success, size: 28),
+            SizedBox(width: 12),
+            Expanded(
+              child: Text('Payment Successful!', style: TextStyle(color: AppColors.textPrimary)),
+            ),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              'Ownership Successfully Transferred. The NFT is now in your collection.',
+              style: TextStyle(color: AppColors.textSecondary, height: 1.5),
+            ),
+            const SizedBox(height: AppSpacing.md),
+            const Text('Transaction Hash:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
+            const SizedBox(height: 4),
+            SelectableText(txHash, style: const TextStyle(color: AppColors.primary, fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context); // Close dialog
+              Navigator.pop(context); // Return to profile
+            },
+            child: const Text('Go to Collection', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<LogoNFT?> _fetchLogo(int tokenId) async {
@@ -572,6 +701,11 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
       if (mounted) {
         setState(() => _pendingTransactionHash = txHash);
       }
+      
+      try {
+        final prefs = await SharedPreferences.getInstance();
+        await prefs.setString(_txHashStorageKey, txHash);
+      } catch (_) {}
 
       await FirestoreService.instance.completePayment(
         logo.tokenId,

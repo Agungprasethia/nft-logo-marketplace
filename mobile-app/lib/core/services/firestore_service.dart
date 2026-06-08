@@ -1429,7 +1429,7 @@ class FirestoreService {
           transaction.update(nftRef, {
             'isAuctionActive': false,
             'isInAuction': false,
-            'auctionStatus': 'PENDING_PAYMENT',
+            'auctionStatus': _sPending,   // canonical: 'PAYMENT_PENDING'
             'status': 'payment_pending',
             'paymentPending': true,
             'paymentDeadline': DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
@@ -1439,7 +1439,7 @@ class FirestoreService {
           
           if (auctionDoc.exists) {
             transaction.update(auctionRef, {
-              'status': 'PENDING_PAYMENT',
+              'status': _sPending,   // canonical: 'PAYMENT_PENDING'
               'highestBid': highestBid,
               'highestBidderId': highestBidderId,
               'highestBidderWallet': highestBidderWallet,
@@ -1620,6 +1620,9 @@ class FirestoreService {
   // WINNING AN AUCTION ≠ OWNING THE NFT
   // Ownership ONLY transfers after ALL validations pass.
   //
+  // STATUS CANONICAL VALUE: 'PAYMENT_PENDING'
+  // (stored by endOffChainAuction & handleFailedPayment)
+  //
   // 1. STRICT STATUS GATE       — auctionStatus must be PAYMENT_PENDING
   // 2. PAYMENT DEADLINE          — reject if deadline expired
   // 3. DUPLICATE TX HASH         — reject reused transaction hashes
@@ -1628,6 +1631,11 @@ class FirestoreService {
   // 6. EXACT ETH AMOUNT           — no underpayment / overpayment
   // 7. CHAIN VALIDATION           — Sepolia only (chainId 11155111)
   // ═══════════════════════════════════════════════════════════════════
+
+  // ── Centralized status constants (prevent future typo bugs) ──
+  static const String _sPending  = 'PAYMENT_PENDING';   // canonical write value
+  static const String _sLegacy   = 'PENDING_PAYMENT';   // old write value (backward compat)
+  static const String _sCompleted = 'PAYMENT_COMPLETED';
 
   /// Set payment processing lock to prevent duplicate tx
   Future<void> setPaymentProcessing(int tokenId, bool isProcessing) async {
@@ -1707,9 +1715,11 @@ class FirestoreService {
           debugPrint('[PAYMENT CHECK] Gate: auctionStatus==$auctionStatus  aStatus==$aStatus');
         }
 
-        // Accept PENDING_PAYMENT from EITHER nft.auctionStatus OR auction.status
-        final bool isNftPending = auctionStatus == 'PENDING_PAYMENT';
-        final bool isAuctionPending = aStatus == 'PENDING_PAYMENT';
+        // ── STATUS GATE: Accept canonical 'PAYMENT_PENDING' OR legacy 'PENDING_PAYMENT' ──
+        // Both are accepted for backward compatibility with Firestore documents written
+        // before the status naming was unified.
+        final bool isNftPending    = auctionStatus == _sPending || auctionStatus == _sLegacy;
+        final bool isAuctionPending = aStatus == _sPending || aStatus == _sLegacy;
         if (!isNftPending && !isAuctionPending) {
           throw Exception('Auction is not in a payment pending state. Current: $auctionStatus / $aStatus');
         }
@@ -1858,6 +1868,167 @@ class FirestoreService {
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ completePayment error: $e'); }
       rethrow;
+    }
+  }
+
+  /// Recovery method for orphaned payments:
+  /// Handles the case where the user's MetaMask payment succeeded on-chain
+  /// but ownership was NOT transferred due to the PENDING_PAYMENT / PAYMENT_PENDING
+  /// status mismatch bug. Safe to call on every payment page load — it is
+  /// idempotent and no-ops if the payment was already completed correctly.
+  ///
+  /// Returns true if recovery was performed, false if not needed or not eligible.
+  Future<bool> recoverOrphanedPayment(int tokenId, String winnerWallet, String txHash) async {
+    try {
+      if (txHash.isEmpty || winnerWallet.isEmpty) return false;
+
+      final txHashNorm = txHash.toLowerCase().trim();
+      final winnerNorm = winnerWallet.toLowerCase().trim();
+
+      if (kDebugMode) {
+        debugPrint('[RECOVERY] Checking orphaned payment for NFT #$tokenId');
+        debugPrint('[RECOVERY] Winner: $winnerNorm  TxHash: $txHashNorm');
+      }
+
+      final nftRef = _nftsCollection.doc(tokenId.toString());
+      final auctionRef = _auctionsCollection.doc(tokenId.toString());
+
+      final nftDoc = await nftRef.get();
+      if (!nftDoc.exists) return false;
+
+      final data = nftDoc.data()!;
+      final rawAuctionStatus = (data['auctionStatus'] as String? ?? '').toUpperCase().trim();
+      final rawNftStatus = (data['status'] as String? ?? '').toLowerCase().trim();
+
+      // Only recover if still in payment_pending state (not already sold/completed)
+      final isStillPending = rawNftStatus == 'payment_pending' &&
+          (rawAuctionStatus == _sPending || rawAuctionStatus == _sLegacy);
+      if (!isStillPending) {
+        if (kDebugMode) {
+          debugPrint('[RECOVERY] Not eligible. nftStatus=$rawNftStatus auctionStatus=$rawAuctionStatus');
+        }
+        return false;
+      }
+
+      // Confirm this winner is the highest bidder
+      final storedBidderWallet = (data['highestBidderWallet'] as String? ?? '').toLowerCase();
+      if (storedBidderWallet != winnerNorm) {
+        if (kDebugMode) {
+          debugPrint('[RECOVERY] Wallet mismatch. stored=$storedBidderWallet winner=$winnerNorm');
+        }
+        return false;
+      }
+
+      // Confirm the txHash is not already used
+      final isDuplicate = await checkDuplicateTxHash(txHashNorm);
+      if (isDuplicate) {
+        // txHash already processed — likely payment already completed via another path.
+        if (kDebugMode) { debugPrint('[RECOVERY] TxHash already used — payment already completed.'); }
+        return false;
+      }
+
+      if (kDebugMode) { debugPrint('[RECOVERY] Orphaned payment confirmed. Executing ownership transfer...'); }
+
+      final highestBidderId = data['highestBidderId'] as String?;
+      final highestBidderWallet = data['highestBidderWallet'] as String?;
+      final highestBid = (data['highestBid'] as num?)?.toDouble() ?? 0.0;
+      final sellerId = data['ownerId'] as String?;
+      final sellerWallet = data['ownerWallet'] as String?;
+
+      await _db.runTransaction((txn) async {
+        final freshNft = await txn.get(nftRef);
+        final freshAuction = await txn.get(auctionRef);
+
+        // Re-validate inside transaction (race-condition safe)
+        final freshStatus = (freshNft.data()?['status'] as String? ?? '').toLowerCase();
+        if (freshStatus != 'payment_pending') {
+          if (kDebugMode) { debugPrint('[RECOVERY] Already processed inside transaction. Skipping.'); }
+          return;
+        }
+
+        txn.update(nftRef, {
+          'ownerId': highestBidderId,
+          'ownerWallet': highestBidderWallet,
+          'status': 'sold',
+          'auctionStatus': _sCompleted,
+          'ownershipType': 'collected',
+          'copyrightVerifiedAt': FieldValue.serverTimestamp(),
+          'auctionWinner': highestBidderWallet,
+          'isAuctionActive': false,
+          'auctionCreated': false,
+          'isActive': false,
+          'paymentPending': false,
+          'paymentCompletedAt': FieldValue.serverTimestamp(),
+          'paymentTxHash': txHashNorm,
+          'updatedAt': FieldValue.serverTimestamp(),
+          'auctionHistory': FieldValue.arrayUnion([{
+            'winner': highestBidderWallet,
+            'amount': highestBid,
+            'txHash': txHashNorm,
+            'date': DateTime.now().millisecondsSinceEpoch,
+            'recoveredAt': DateTime.now().millisecondsSinceEpoch,
+          }]),
+        });
+
+        if (freshAuction.exists) {
+          txn.update(auctionRef, {
+            'status': _sCompleted,
+            'paymentTxHash': txHashNorm,
+            'paymentCompletedAt': FieldValue.serverTimestamp(),
+          });
+        }
+
+        // Record sale transaction
+        final txId = 'recovery_${tokenId}_${DateTime.now().millisecondsSinceEpoch}';
+        final saleTx = TransactionModel(
+          transactionId: txId,
+          nftId: tokenId.toString(),
+          auctionId: tokenId.toString(),
+          sellerId: sellerId ?? '',
+          buyerId: highestBidderId ?? '',
+          sellerWallet: sellerWallet ?? '',
+          buyerWallet: highestBidderWallet ?? '',
+          amount: highestBid,
+          transactionHash: txHashNorm,
+          type: TransactionType.sale,
+          status: TransactionStatus.success,
+        );
+        txn.set(_transactionsCollection.doc(txId), saleTx.toFirestore());
+      });
+
+      // Send recovery notifications
+      final winnerNotifId = _userNotificationsCollection(winnerNorm).doc().id;
+      await saveNotification(winnerNorm, AppNotification(
+        id: winnerNotifId,
+        title: 'Ownership Recovered! 🎉',
+        message: 'Your payment for NFT #$tokenId was verified. The NFT is now in your collection.',
+        type: NotificationType.success,
+        category: 'auction',
+        createdAt: DateTime.now(),
+        isRead: false,
+        actionRoute: '/nft/$tokenId',
+      ));
+
+      final creatorWallet = nftDoc.data()?['creatorWallet'] as String? ?? '';
+      if (creatorWallet.isNotEmpty && creatorWallet.toLowerCase() != winnerNorm) {
+        final creatorNotifId = _userNotificationsCollection(creatorWallet).doc().id;
+        await saveNotification(creatorWallet, AppNotification(
+          id: creatorNotifId,
+          title: 'NFT Sold! 💰',
+          message: 'Payment confirmed for NFT #$tokenId. Ownership has been transferred.',
+          type: NotificationType.success,
+          category: 'auction',
+          createdAt: DateTime.now(),
+          isRead: false,
+          actionRoute: '/nft/$tokenId',
+        ));
+      }
+
+      if (kDebugMode) { debugPrint('[RECOVERY] ✅ Orphaned payment recovered for NFT #$tokenId'); }
+      return true;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[RECOVERY] ❌ Recovery failed: $e'); }
+      return false;
     }
   }
 
@@ -2044,13 +2215,13 @@ class FirestoreService {
           secondBidAmount = secondBidder.amount;
           passedToSecond = true;
 
-          // Reset NFT status to PENDING_PAYMENT for the 2nd bidder
+          // Reset NFT status to PAYMENT_PENDING for the 2nd bidder
           transaction.update(nftRef, {
             'highestBid': secondBidder.amount,
             'highestBidderId': secondBidder.bidderId,
             'highestBidderWallet': secondBidder.bidderWallet,
             'isAuctionActive': false,
-            'auctionStatus': 'PENDING_PAYMENT',
+            'auctionStatus': _sPending,   // canonical: 'PAYMENT_PENDING'
             'status': 'payment_pending',
             'paymentPending': true,
             'paymentDeadline': DateTime.now().add(const Duration(hours: 24)).millisecondsSinceEpoch,
@@ -2059,7 +2230,7 @@ class FirestoreService {
 
           if (auctionDoc.exists) {
             transaction.update(auctionRef, {
-              'status': 'PENDING_PAYMENT',  // UPPERCASE — source of truth
+              'status': _sPending,   // canonical: 'PAYMENT_PENDING'
               'highestBid': secondBidder.amount,
               'highestBidderId': secondBidder.bidderId,
               'highestBidderWallet': secondBidder.bidderWallet,
