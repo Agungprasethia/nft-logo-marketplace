@@ -3,13 +3,15 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
+import 'package:flutter/services.dart';
 import 'package:walletconnect_flutter_v2/walletconnect_flutter_v2.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:nft_logo_marketplace/config/contract_config.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart' as app_session;
 
-class WalletConnectService extends ChangeNotifier {
+class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   static WalletConnectService? _instance;
   static WalletConnectService get instance => _instance ??= WalletConnectService._();
 
@@ -34,6 +36,8 @@ class WalletConnectService extends ChangeNotifier {
 
   Future<void> initialize() async {
     if (_web3App != null) return;
+
+    WidgetsBinding.instance.addObserver(this);
 
     _web3App = await Web3App.createInstance(
       projectId: ContractConfig.walletConnectProjectId,
@@ -350,13 +354,16 @@ class WalletConnectService extends ChangeNotifier {
       await Future.any([
         // Path A: SDK event
         _pendingConnect!.session.future
-            .timeout(const Duration(seconds: 180), onTimeout: () => throw _TimeoutSentinel())
+            .timeout(const Duration(seconds: 30), onTimeout: () {
+              stopWalletConnectService();
+              throw TimeoutException('Connection timeout');
+            })
             .then((s) { approvedSession = s; })
-            .catchError((e) { if (e is! _TimeoutSentinel) throw e; }),
+            .catchError((e) { if (e is! TimeoutException) throw e; }),
 
-        // Path B: Polling every 500 ms for 180 s
+        // Path B: Polling every 500 ms for 30 s
         () async {
-          for (int i = 0; i < 360; i++) {
+          for (int i = 0; i < 60; i++) {
             await Future.delayed(const Duration(milliseconds: 500));
             final live = _web3App!.sessions.getAll();
             if (live.isNotEmpty) {
@@ -370,10 +377,13 @@ class WalletConnectService extends ChangeNotifier {
               return;
             }
           }
+          stopWalletConnectService();
+          throw TimeoutException('Connection timeout');
         }(),
       ]);
 
       if (approvedSession == null) {
+        stopWalletConnectService();
         throw Exception('Connection timeout — user did not approve in MetaMask');
       }
 
@@ -566,6 +576,7 @@ class WalletConnectService extends ChangeNotifier {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _web3App?.onSessionConnect.unsubscribe(_onSessionConnect);
     _web3App?.onSessionDelete.unsubscribe(_onSessionDelete);
     _web3App?.onSessionExpire.unsubscribe(_onSessionExpire);
@@ -573,10 +584,39 @@ class WalletConnectService extends ChangeNotifier {
     _web3App?.onSessionEvent.unsubscribe(_onSessionEvent);
     super.dispose();
   }
-}
 
-/// Sentinel thrown inside the session-future timeout.
-/// Distinguishes expected timeout from real rejection errors.
-class _TimeoutSentinel implements Exception {
-  const _TimeoutSentinel();
+  // ── Foreground Service ──────────────────────────────────────────────────
+
+  static const MethodChannel _channel = MethodChannel('com.example.nft_logo_marketplace/walletconnect');
+
+  Future<void> startWalletConnectService() async {
+    try {
+      await _channel.invokeMethod('startService');
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to start Foreground Service: $e');
+    }
+  }
+
+  Future<void> stopWalletConnectService() async {
+    try {
+      await _channel.invokeMethod('stopService');
+    } catch (e) {
+      if (kDebugMode) debugPrint('Failed to stop Foreground Service: $e');
+    }
+  }
+
+  // ── App Lifecycle ───────────────────────────────────────────────────────
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      if (_session == null && _pendingConnect != null) {
+        if (_web3App != null) {
+          try {
+            _web3App!.core.relayClient.connect();
+          } catch (_) {}
+        }
+      }
+    }
+  }
 }

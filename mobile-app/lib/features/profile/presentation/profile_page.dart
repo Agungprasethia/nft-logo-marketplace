@@ -125,8 +125,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
 
     if (wallet != _currentWalletForStreams) {
       _currentWalletForStreams = wallet;
-      _createdNFTsStream = FirestoreService.instance.getUserCreatedNFTsStream(wallet).asBroadcastStream();
-      _ownedNFTsStream = FirestoreService.instance.getUserNFTsStream(wallet).asBroadcastStream();
+      _createdNFTsStream = FirestoreService.instance.getUserCreatedNFTsStream(wallet);
+      _ownedNFTsStream = FirestoreService.instance.getUserNFTsStream(wallet);
       
       _participatedSub?.cancel();
       _participatedBids = null; // reset while loading
@@ -270,8 +270,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       body: TabBarView(
         controller: _tabController,
         children: [
-          _buildCreationsTab(),
-          _buildCollectionTab(),
+          _KeepAliveTab(child: _buildCreationsTab()),
+          _KeepAliveTab(child: _buildCollectionTab()),
           _buildPaymentTab(),
           _buildAuctionsTab(),
           _buildWalletTab(),
@@ -1774,4 +1774,23 @@ class _SliverAppBarDelegate extends SliverPersistentHeaderDelegate {
   Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) => SizedBox.expand(child: child);
   @override
   bool shouldRebuild(_SliverAppBarDelegate oldDelegate) => maxHeight != oldDelegate.maxHeight || minHeight != oldDelegate.minHeight || child != oldDelegate.child;
+}
+
+class _KeepAliveTab extends StatefulWidget {
+  final Widget child;
+  const _KeepAliveTab({required this.child});
+
+  @override
+  State<_KeepAliveTab> createState() => _KeepAliveTabState();
+}
+
+class _KeepAliveTabState extends State<_KeepAliveTab> with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return widget.child;
+  }
 }

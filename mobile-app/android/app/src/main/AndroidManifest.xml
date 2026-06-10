@@ -1,8 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CONNECTED_DEVICE" />
+
     <application
         android:label="L E O"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
+        
+        <service
+            android:name=".WalletConnectForegroundService"
+            android:foregroundServiceType="connectedDevice"
+            android:exported="false"/>
+
         <activity
             android:name=".MainActivity"
             android:exported="true"

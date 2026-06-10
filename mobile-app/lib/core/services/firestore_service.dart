@@ -821,7 +821,7 @@ class FirestoreService {
       final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
-    }).asBroadcastStream();
+    });
     
     return _userCollectionStreams[wallet]!;
   }
@@ -855,7 +855,7 @@ class FirestoreService {
       final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
       list.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       return list;
-    }).asBroadcastStream();
+    });
     
     return _userCreationsStreams[wallet]!;
   }

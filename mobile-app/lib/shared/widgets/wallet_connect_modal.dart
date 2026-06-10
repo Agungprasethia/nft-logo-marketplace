@@ -8,8 +8,6 @@ import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
-import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
-import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WalletConnectModal
@@ -83,6 +81,7 @@ enum _ConnState {
   waiting,      // MetaMask is open, polling for session
   checking,     // manual "Already Approved" check in progress
   manual,       // user is entering address manually
+  timeout,      // timeout after 30s
 }
 
 class _WalletConnectModalState extends State<WalletConnectModal>
@@ -114,6 +113,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
   @override
   void dispose() {
     _cancelPoller();
+    WalletConnectService.instance.stopWalletConnectService();
     _manualAddressController.dispose();
     WidgetsBinding.instance.removeObserver(this);
     WalletConnectService.instance.removeListener(_onWcChanged);
@@ -127,6 +127,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
     if (_isClosing || !mounted) return;
     _isClosing = true;
     _cancelPoller();
+    WalletConnectService.instance.stopWalletConnectService();
     Navigator.of(context).pop(result);
   }
 
@@ -140,7 +141,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
   /// Starts a 500 ms poller for [maxSeconds].
   /// Calls [WalletConnectService.checkForNewSession] on every tick.
   /// Silently auto-closes modal if a session is found.
-  void _startPoller({int maxSeconds = 20}) {
+  void _startPoller({int maxSeconds = 30}) {
     _cancelPoller();
     int ticks = 0;
     final maxTicks = maxSeconds * 2; // 500 ms per tick
@@ -188,14 +189,9 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       // Stop polling and show timeout failsafe after max time
       if (ticks >= maxTicks) {
         timer.cancel();
+        WalletConnectService.instance.stopWalletConnectService();
         if (mounted && !_isClosing) {
-          setState(() => _state = _ConnState.idle);
-          NotificationManager.show(
-            context: context,
-            title: 'Connection Timeout',
-            message: 'Unable to receive wallet session. Please try reconnecting your wallet.',
-            type: NotificationType.error,
-          );
+          setState(() => _state = _ConnState.timeout);
         }
       }
     });
@@ -275,10 +271,10 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       return;
     }
 
-    // Not connected yet — start aggressive 20 s polling after resume
+    // Not connected yet — start aggressive 30 s polling after resume
     if (mounted && !_isClosing) {
       setState(() => _state = _ConnState.waiting);
-      _startPoller(maxSeconds: 20);
+      _startPoller(maxSeconds: 30);
     }
   }
 
@@ -322,6 +318,8 @@ class _WalletConnectModalState extends State<WalletConnectModal>
         return;
       }
 
+      await WalletConnectService.instance.startWalletConnectService();
+
       // Step 3: Open MetaMask (fire-and-forget — no await on approval)
       await WalletConnectService.instance.launchWalletApp(wcUri, walletName: wallet);
 
@@ -329,7 +327,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       setState(() => _state = _ConnState.waiting);
 
       // Step 4: Start polling — completely independent of deep-link callback
-      _startPoller(maxSeconds: 20);
+      _startPoller(maxSeconds: 30);
     } catch (_) {
       if (mounted && !_isClosing) setState(() => _state = _ConnState.idle);
     }
@@ -391,7 +389,7 @@ class _WalletConnectModalState extends State<WalletConnectModal>
         // Not found — quietly go back to waiting + restart poller
         if (mounted && !_isClosing) {
           setState(() => _state = _ConnState.waiting);
-          _startPoller(maxSeconds: 20);
+          _startPoller(maxSeconds: 30);
         }
       }
     } catch (_) {
@@ -552,6 +550,9 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       case _ConnState.manual:
         text = 'Enter your wallet address manually as a fallback.';
         break;
+      case _ConnState.timeout:
+        text = 'Koneksi membutuhkan waktu lebih lama dari biasanya';
+        break;
       case _ConnState.idle:
         text = widget.message;
     }
@@ -608,6 +609,19 @@ class _WalletConnectModalState extends State<WalletConnectModal>
           ),
           const SizedBox(height: 4),
           _CancelButton(onPressed: () => _safePop(false)),
+        ];
+
+      // ── Timeout: show Try Again + Batal ────────────────────────────────
+      case _ConnState.timeout:
+        return [
+          _SecondaryButton(
+            label: 'Coba Lagi',
+            icon: Icons.refresh,
+            isLoading: false,
+            onPressed: _tryAgain,
+          ),
+          const SizedBox(height: 10),
+          _CancelButton(label: 'Batal', onPressed: () => _safePop(false)),
         ];
 
       // ── Checking: show spinner ─────────────────────────────────────────
@@ -778,7 +792,8 @@ class _SecondaryButton extends StatelessWidget {
 
 class _CancelButton extends StatelessWidget {
   final VoidCallback onPressed;
-  const _CancelButton({required this.onPressed});
+  final String label;
+  const _CancelButton({required this.onPressed, this.label = 'Cancel'});
 
   @override
   Widget build(BuildContext context) {
@@ -793,7 +808,7 @@ class _CancelButton extends StatelessWidget {
             borderRadius: BorderRadius.circular(AppRadius.lg),
           ),
         ),
-        child: const Text('Cancel', style: AppTextStyles.labelLarge),
+        child: Text(label, style: AppTextStyles.labelLarge),
       ),
     );
   }
