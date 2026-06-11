@@ -1,6 +1,6 @@
 // Web-specific implementation of Web3Service
 // Uses dart:html and dart:js_util for MetaMask integration
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
+// ignore_for_file: uri_does_not_exist, avoid_web_libraries_in_flutter, deprecated_member_use
 import 'dart:async';
 import 'dart:convert';
 import 'dart:js_util' as js_util;

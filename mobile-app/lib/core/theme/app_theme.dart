@@ -140,16 +140,6 @@ class AppTheme {
         elevation: 24,
       ),
 
-      // â”€â”€â”€ Page Transitions â”€â”€â”€
-      pageTransitionsTheme: const PageTransitionsTheme(
-        builders: {
-          TargetPlatform.android: ZoomPageTransitionsBuilder(),
-          TargetPlatform.iOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.macOS: CupertinoPageTransitionsBuilder(),
-          TargetPlatform.windows: FadeUpwardsPageTransitionsBuilder(),
-        },
-      ),
-
       // â”€â”€â”€ Bottom Navigation Bar â”€â”€â”€
       bottomNavigationBarTheme: BottomNavigationBarThemeData(
         backgroundColor: AppColors.surface,
