@@ -10,10 +10,12 @@ import 'package:nft_logo_marketplace/features/profile/presentation/widgets/leade
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_page.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
-
+import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
+import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
+import 'package:nft_logo_marketplace/shared/models/user_model.dart';
 import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
 
-class LiveAuctionCard extends StatelessWidget {
+class LiveAuctionCard extends StatefulWidget {
   final Auction auction;
   final LogoNFT? logo;
 
@@ -23,14 +25,55 @@ class LiveAuctionCard extends StatelessWidget {
     this.logo,
   });
 
-  String _shortenAddress(String address) {
-    if (address.length <= 10) return address;
-    return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
+  @override
+  State<LiveAuctionCard> createState() => _LiveAuctionCardState();
+}
+
+class _LiveAuctionCardState extends State<LiveAuctionCard> {
+  final Map<String, UserModel> _userCache = {};
+  Future<UserModel?>? _highestBidderFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initHighestBidder();
+  }
+
+  @override
+  void didUpdateWidget(LiveAuctionCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.auction.highestBidderWallet != oldWidget.auction.highestBidderWallet) {
+      _initHighestBidder();
+    }
+  }
+
+  void _initHighestBidder() {
+    final wallet = widget.auction.highestBidderWallet;
+    if (wallet != null && wallet.isNotEmpty) {
+      final lowerWallet = wallet.toLowerCase();
+      if (_userCache.containsKey(lowerWallet)) {
+        _highestBidderFuture = Future.value(_userCache[lowerWallet]);
+      } else {
+        _highestBidderFuture = FirestoreService.instance.db.collection('users')
+            .where('walletAddress', isEqualTo: wallet)
+            .limit(1).get()
+            .then((q) {
+              if (q.docs.isNotEmpty) {
+                final user = UserModel.fromFirestore(q.docs.first.data());
+                _userCache[lowerWallet] = user;
+                return user;
+              }
+              return null;
+            }).catchError((_) => null);
+      }
+    } else {
+      _highestBidderFuture = null;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    final bool isLive = auction.isOngoing;
+    final bool isLive = widget.auction.isOngoing;
     
     String statusText;
     Color statusColor;
@@ -41,7 +84,7 @@ class LiveAuctionCard extends StatelessWidget {
       statusColor = AppColors.primary;
       glowColor = AppColors.primary.withValues(alpha: 0.2);
     } else {
-      switch (auction.status) {
+      switch (widget.auction.status) {
         case AuctionStatus.paymentPending:
           statusText = 'PAYMENT PENDING';
           statusColor = AppColors.accentOrange;
@@ -49,7 +92,7 @@ class LiveAuctionCard extends StatelessWidget {
           break;
         case AuctionStatus.ended:
         case AuctionStatus.endedNoBids:
-          if (auction.totalBids == 0 || auction.status == AuctionStatus.endedNoBids) {
+          if (widget.auction.totalBids == 0 || widget.auction.status == AuctionStatus.endedNoBids) {
             statusText = 'NO BIDS';
             statusColor = AppColors.danger;
             glowColor = Colors.transparent;
@@ -60,7 +103,7 @@ class LiveAuctionCard extends StatelessWidget {
           }
           break;
         default:
-          statusText = auction.status.name.toUpperCase();
+          statusText = widget.auction.status.name.toUpperCase();
           statusColor = AppColors.textSecondary;
           glowColor = Colors.transparent;
       }
@@ -87,9 +130,9 @@ class LiveAuctionCard extends StatelessWidget {
                   child: SizedBox(
                     width: 80,
                     height: 80,
-                    child: logo != null && logo!.imageUrl.isNotEmpty
+                    child: widget.logo != null && widget.logo!.imageUrl.isNotEmpty
                         ? CachedNetworkImage(
-                            imageUrl: logo!.imageUrl,
+                            imageUrl: widget.logo!.imageUrl,
                             fit: BoxFit.cover,
                             memCacheWidth: 200,
                             memCacheHeight: 200,
@@ -112,7 +155,7 @@ class LiveAuctionCard extends StatelessWidget {
                         children: [
                           Expanded(
                             child: Text(
-                              logo?.name ?? 'Token #${auction.tokenId}',
+                              widget.logo?.name ?? 'Token #${widget.auction.tokenId}',
                               style: AppTextStyles.h3,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -139,7 +182,7 @@ class LiveAuctionCard extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('Highest Bid', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
-                                Text('${auction.highestBid.toStringAsFixed(4)} ETH', style: AppTextStyles.labelMedium, overflow: TextOverflow.ellipsis),
+                                Text('${widget.auction.highestBid.toStringAsFixed(4)} ETH', style: AppTextStyles.labelMedium, overflow: TextOverflow.ellipsis),
                               ],
                             ),
                           ),
@@ -148,13 +191,20 @@ class LiveAuctionCard extends StatelessWidget {
                               crossAxisAlignment: CrossAxisAlignment.end,
                               children: [
                                 Text('Highest Bidder', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
-                                Text(
-                                  auction.highestBidderWallet != null && auction.highestBidderWallet!.isNotEmpty 
-                                      ? _shortenAddress(auction.highestBidderWallet!) 
-                                      : '-',
-                                  style: AppTextStyles.labelMedium,
-                                  overflow: TextOverflow.ellipsis,
-                                ),
+                                if (widget.auction.highestBidderWallet != null && widget.auction.highestBidderWallet!.isNotEmpty)
+                                  FutureBuilder<UserModel?>(
+                                    future: _highestBidderFuture,
+                                    builder: (context, snapshot) {
+                                      final displayName = UserDisplayUtils.getDisplayName(snapshot.data, widget.auction.highestBidderWallet!);
+                                      return Text(
+                                        displayName,
+                                        style: AppTextStyles.labelMedium,
+                                        overflow: TextOverflow.ellipsis,
+                                      );
+                                    }
+                                  )
+                                else
+                                  Text('-', style: AppTextStyles.labelMedium, overflow: TextOverflow.ellipsis),
                               ],
                             ),
                           ),
@@ -167,9 +217,9 @@ class LiveAuctionCard extends StatelessWidget {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text('${auction.totalBids} bids', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
-                          if (isLive || auction.status == AuctionStatus.active)
-                            LiveAuctionCountdown(endTime: auction.endTime),
+                          Text('${widget.auction.totalBids} bids', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                          if (isLive || widget.auction.status == AuctionStatus.active)
+                            LiveAuctionCountdown(endTime: widget.auction.endTime),
                         ],
                       ),
                     ],
@@ -187,7 +237,7 @@ class LiveAuctionCard extends StatelessWidget {
               children: [
                 OutlinedButton.icon(
                   onPressed: () {
-                    final l = logo ?? Web3Service.instance.allLogos.cast<LogoNFT?>().firstWhere((l) => l?.tokenId == auction.tokenId, orElse: () => null);
+                    final l = widget.logo ?? Web3Service.instance.allLogos.cast<LogoNFT?>().firstWhere((l) => l?.tokenId == widget.auction.tokenId, orElse: () => null);
                     if (l != null) {
                       Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: l)));
                     }
@@ -205,8 +255,8 @@ class LiveAuctionCard extends StatelessWidget {
                   onPressed: () {
                     LeaderboardModal.show(
                       context,
-                      tokenId: auction.tokenId,
-                      status: auction.status,
+                      tokenId: widget.auction.tokenId,
+                      status: widget.auction.status,
                       isLive: isLive,
                     );
                   },

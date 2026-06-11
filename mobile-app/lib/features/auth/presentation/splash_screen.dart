@@ -8,6 +8,7 @@ import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/home_page.dart';
 import 'package:nft_logo_marketplace/features/auth/presentation/login_page.dart';
 import 'package:nft_logo_marketplace/features/admin/presentation/admin_dashboard.dart';
+import 'package:nft_logo_marketplace/features/profile/presentation/profile_setup_page.dart';
 import 'package:nft_logo_marketplace/core/utils/route_utils.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
@@ -101,6 +102,27 @@ class _SplashScreenState extends State<SplashScreen>
       if (hasSession) {
         _splashState.value = SplashState.authenticated;
         _performBackgroundValidation();
+
+        // ── Profile completion check ──────────────────────────────────────
+        // Load the Firestore user document and verify all required fields are
+        // present. If the profile is incomplete (new wallet or user deleted
+        // required fields), redirect to the mandatory onboarding page.
+        final uid = AuthService.instance.currentUser?.uid;
+        if (uid != null) {
+          try {
+            final userData = await AuthService.instance.getUserData(uid);
+            if (userData != null && !userData.isProfileComplete) {
+              if (kDebugMode) { debugPrint('[ONBOARDING] Profile incomplete — redirecting to ProfileSetupPage'); }
+              _navigateTo(const ProfileSetupPage());
+              return;
+            }
+          } catch (e) {
+            if (kDebugMode) { debugPrint('[ONBOARDING] Profile check error (non-fatal): $e'); }
+            // Non-fatal: proceed to HomePage if check fails
+          }
+        }
+        // ─────────────────────────────────────────────────────────────────
+
         _navigateTo(const HomePage());
       } else {
         _splashState.value = SplashState.unauthenticated;

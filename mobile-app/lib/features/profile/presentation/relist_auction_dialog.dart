@@ -142,6 +142,17 @@ class _RelistAuctionDialogState extends State<RelistAuctionDialog> {
               const SizedBox(height: AppSpacing.lg),
               
               Text('Starting Price (ETH)', style: AppTextStyles.labelMedium),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Wallet Balance: ${Web3Service.instance.balance.toStringAsFixed(4)} ETH',
+                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.sm),
               TextFormField(
                 controller: _priceController,
@@ -161,6 +172,23 @@ class _RelistAuctionDialogState extends State<RelistAuctionDialog> {
                   if (price == null || price <= 0) return 'Enter a valid price > 0';
                   return null;
                 },
+              ),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Wallet balance is shown for reference only. Starting Price is not limited by your current balance.',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSpacing.md),
               

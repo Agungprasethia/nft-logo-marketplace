@@ -8,6 +8,8 @@ import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
 import '../../../shared/widgets/auction_badge.dart';
+import 'package:nft_logo_marketplace/shared/models/user_model.dart';
+import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
 
 class AuctionDetailPage extends StatefulWidget {
   final Auction auction;
@@ -21,6 +23,26 @@ class AuctionDetailPage extends StatefulWidget {
 
 class _AuctionDetailPageState extends State<AuctionDetailPage> {
   final _firestore = FirestoreService.instance;
+  final Map<String, UserModel> _userCache = {};
+
+  Future<UserModel?> _resolveUser(String? wallet) async {
+    if (wallet == null || wallet.isEmpty) return null;
+    final lowerWallet = wallet.toLowerCase();
+    if (_userCache.containsKey(lowerWallet)) {
+      return _userCache[lowerWallet];
+    }
+    try {
+      final q = await _firestore.db.collection('users')
+          .where('walletAddress', isEqualTo: wallet)
+          .limit(1).get();
+      if (q.docs.isNotEmpty) {
+        final user = UserModel.fromFirestore(q.docs.first.data());
+        _userCache[lowerWallet] = user;
+        return user;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -149,7 +171,32 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
           _buildStatRow('Start Time', _formatDate(widget.auction.startTime)),
           _buildStatRow('End Time', _formatDate(widget.auction.endTime)),
           if (widget.auction.status == AuctionStatus.paymentCompleted || widget.auction.status == AuctionStatus.claimed)
-            _buildStatRow('Winner', _shortenWallet(widget.auction.highestBidderWallet)),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 12),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text('Winner', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                  FutureBuilder<UserModel?>(
+                    future: _resolveUser(widget.auction.highestBidderWallet),
+                    builder: (context, snapshot) {
+                      final displayName = UserDisplayUtils.getDisplayName(snapshot.data, widget.auction.highestBidderWallet ?? '');
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          UserDisplayUtils.buildAvatar(snapshot.data, widget.auction.highestBidderWallet ?? '', radius: 10),
+                          const SizedBox(width: 6),
+                          Text(
+                            displayName,
+                            style: AppTextStyles.bodyLarge.copyWith(color: AppColors.textPrimary, fontWeight: FontWeight.w500),
+                          ),
+                        ],
+                      );
+                    }
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
     );
@@ -197,7 +244,20 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
             ],
           ),
           const SizedBox(height: AppSpacing.md),
-          Text('Winner: ${_shortenWallet(widget.auction.highestBidderWallet)}', style: AppTextStyles.bodyMedium),
+          FutureBuilder<UserModel?>(
+            future: _resolveUser(widget.auction.highestBidderWallet),
+            builder: (context, snapshot) {
+              final displayName = UserDisplayUtils.getDisplayName(snapshot.data, widget.auction.highestBidderWallet ?? '');
+              return Row(
+                children: [
+                  Text('Winner: ', style: AppTextStyles.bodyMedium),
+                  UserDisplayUtils.buildAvatar(snapshot.data, widget.auction.highestBidderWallet ?? '', radius: 10),
+                  const SizedBox(width: 6),
+                  Text(displayName, style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
+                ],
+              );
+            }
+          ),
           const SizedBox(height: 4),
           Text('Amount Due: ${widget.auction.highestBid} ETH', style: AppTextStyles.bodyMedium.copyWith(fontWeight: FontWeight.bold)),
           const SizedBox(height: AppSpacing.md),
@@ -244,11 +304,35 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
                 itemBuilder: (context, index) {
                   final bid = bids[index];
                   return ListTile(
-                    leading: CircleAvatar(
-                      backgroundColor: index == 0 ? AppColors.warning : AppColors.surface,
-                      child: Text('${index + 1}', style: TextStyle(color: index == 0 ? Colors.white : AppColors.textPrimary)),
+                    leading: FutureBuilder<UserModel?>(
+                      future: _resolveUser(bid.bidderWallet),
+                      builder: (context, userSnapshot) {
+                        return Stack(
+                          clipBehavior: Clip.none,
+                          children: [
+                            UserDisplayUtils.buildAvatar(userSnapshot.data, bid.bidderWallet, radius: 20),
+                            Positioned(
+                              bottom: -4,
+                              right: -4,
+                              child: CircleAvatar(
+                                radius: 10,
+                                backgroundColor: index == 0 ? AppColors.warning : AppColors.surface,
+                                child: Text('${index + 1}', style: TextStyle(color: index == 0 ? Colors.white : AppColors.textPrimary, fontSize: 10)),
+                              ),
+                            ),
+                          ],
+                        );
+                      }
                     ),
-                    title: Text(_shortenWallet(bid.bidderWallet), style: AppTextStyles.bodyMedium),
+                    title: FutureBuilder<UserModel?>(
+                      future: _resolveUser(bid.bidderWallet),
+                      builder: (context, userSnapshot) {
+                        return Text(
+                          UserDisplayUtils.getDisplayName(userSnapshot.data, bid.bidderWallet),
+                          style: AppTextStyles.bodyMedium
+                        );
+                      }
+                    ),
                     subtitle: Text(_formatDate(bid.firstBidTimestamp), style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary)),
                     trailing: Text('${bid.amount} ETH', style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary)),
                   );

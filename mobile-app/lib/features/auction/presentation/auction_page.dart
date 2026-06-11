@@ -22,6 +22,7 @@ import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_payment_page.dart';
 import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart';
 import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
+import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
 
 class AuctionPage extends StatefulWidget {
   final LogoNFT logo;
@@ -44,6 +45,34 @@ class _AuctionPageState extends State<AuctionPage> {
   bool _hasEndedAuction = false; // Idempotent guard for auto-end
   bool _hasTimedOut = false;
   Timer? _timeoutTimer;
+  final Map<String, UserModel> _userCache = {};
+
+  Future<UserModel?> _resolveUser(String? wallet, String? userId) async {
+    if (wallet == null || wallet.isEmpty) return null;
+    final lowerWallet = wallet.toLowerCase();
+    if (_userCache.containsKey(lowerWallet)) {
+      return _userCache[lowerWallet];
+    }
+    try {
+      if (userId != null && userId.isNotEmpty) {
+        final doc = await FirestoreService.instance.db.collection('users').doc(userId).get();
+        if (doc.exists) {
+          final user = UserModel.fromFirestore(doc.data()!);
+          _userCache[lowerWallet] = user;
+          return user;
+        }
+      }
+      final q = await FirestoreService.instance.db.collection('users')
+          .where('walletAddress', isEqualTo: wallet)
+          .limit(1).get();
+      if (q.docs.isNotEmpty) {
+        final user = UserModel.fromFirestore(q.docs.first.data());
+        _userCache[lowerWallet] = user;
+        return user;
+      }
+    } catch (_) {}
+    return null;
+  }
 
   // NOTE: Bid-level realtime notifications are now delegated to
   // AuctionNotificationService which is attached in initState.
@@ -1413,17 +1442,32 @@ class _AuctionPageState extends State<AuctionPage> {
                     ),
                     const SizedBox(width: 8),
                     Text(
-                      'Bidder: ',
+                      'Top Bidder: ',
                       style: AppTextStyles.bodySmall.copyWith(
                         color: AppColors.textSecondary,
                       ),
                     ),
                     Flexible(
-                      child: Text(
-                        _shortenAddress(logo.highestBidderWallet!),
-                        style: AppTextStyles.labelLarge,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                      child: FutureBuilder<UserModel?>(
+                        future: _resolveUser(logo.highestBidderWallet, null),
+                        builder: (context, snap) {
+                          final displayName = UserDisplayUtils.getDisplayName(snap.data, logo.highestBidderWallet!);
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              UserDisplayUtils.buildAvatar(snap.data, logo.highestBidderWallet!, radius: 12),
+                              const SizedBox(width: 8),
+                              Expanded(
+                                child: Text(
+                                  displayName,
+                                  style: AppTextStyles.labelLarge,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
                   ],
@@ -2224,20 +2268,14 @@ class _AuctionPageState extends State<AuctionPage> {
       );
     }
 
-    // Fetch user profile based on wallet address
-    final future = bid.bidderId.isNotEmpty 
-        ? FirestoreService.instance.db.collection('users').doc(bid.bidderId).get().then((doc) => doc.exists ? UserModel.fromFirestore(doc.data()!) : null)
-        : FirestoreService.instance.db.collection('users').where('walletAddress', isEqualTo: bid.bidderWallet).limit(1).get().then((q) => q.docs.isNotEmpty ? UserModel.fromFirestore(q.docs.first.data()) : null);
-
     return FutureBuilder<UserModel?>(
       key: key,
-      future: future,
+      future: _resolveUser(bid.bidderWallet, bid.bidderId),
       builder: (context, snapshot) {
         final user = snapshot.data;
         
-        final username = user?.username ?? 'Anonymous Bidder';
+        final displayName = UserDisplayUtils.getDisplayName(user, bid.bidderWallet);
         final country = user?.country ?? 'Unknown';
-        final profileImageUrl = user?.profileImage;
 
         return Container(
           margin: const EdgeInsets.only(bottom: AppSpacing.sm),
@@ -2288,20 +2326,7 @@ class _AuctionPageState extends State<AuctionPage> {
               const SizedBox(width: 16),
               
               // Avatar
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: AppColors.card,
-                  border: Border.all(color: AppColors.border),
-                ),
-                clipBehavior: Clip.hardEdge,
-                child: profileImageUrl != null && profileImageUrl.isNotEmpty
-                    ? Image.network(profileImageUrl, fit: BoxFit.cover,
-                        errorBuilder: (_, __, ___) => const Icon(Icons.person, color: AppColors.textSecondary))
-                    : const Icon(Icons.person, color: AppColors.textSecondary),
-              ),
+              UserDisplayUtils.buildAvatar(user, bid.bidderWallet, radius: 20, isFirst: rank == 1),
               const SizedBox(width: 12),
 
               // Bidder Info
@@ -2310,7 +2335,7 @@ class _AuctionPageState extends State<AuctionPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      username,
+                      displayName,
                       style: AppTextStyles.labelLarge.copyWith(
                         color: AppColors.textPrimary,
                       ),

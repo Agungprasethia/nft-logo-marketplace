@@ -35,6 +35,7 @@ import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/utils/firestore_error_handler.dart';
 import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
+import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
 
 class DetailLogoPage extends StatefulWidget {
   final LogoNFT logo;
@@ -49,6 +50,22 @@ class DetailLogoPage extends StatefulWidget {
 class _DetailLogoPageState extends State<DetailLogoPage> {
   final _web3 = Web3Service.instance;
   DateTime? _lastBidAttempt;
+  final Map<String, UserModel> _userCache = {};
+
+  Future<UserModel?> _getUserProfile(String walletAddress) async {
+    final lowerWallet = walletAddress.toLowerCase();
+    if (_userCache.containsKey(lowerWallet)) return _userCache[lowerWallet];
+
+    try {
+      final q = await FirestoreService.instance.db.collection('users').where('walletAddress', isEqualTo: walletAddress).limit(1).get();
+      if (q.docs.isNotEmpty) {
+        final user = UserModel.fromFirestore(q.docs.first.data());
+        _userCache[lowerWallet] = user;
+        return user;
+      }
+    } catch (_) {}
+    return null;
+  }
 
 
   @override
@@ -564,7 +581,13 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                       const SizedBox(width: 12),
                       Text('Highest Bidder', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
                       const Spacer(),
-                      Text('${logo.highestBidderWallet!.substring(0, 6)}...${logo.highestBidderWallet!.substring(logo.highestBidderWallet!.length - 4)}', style: AppTextStyles.labelLarge),
+                      FutureBuilder<UserModel?>(
+                        future: _getUserProfile(logo.highestBidderWallet!),
+                        builder: (context, snapshot) {
+                          final displayName = UserDisplayUtils.getDisplayName(snapshot.data, logo.highestBidderWallet!);
+                          return Text(displayName, style: AppTextStyles.labelLarge);
+                        },
+                      ),
                     ],
                   ),
                 ],

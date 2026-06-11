@@ -642,7 +642,19 @@ class _UploadPageState extends State<UploadPage> {
                     const SizedBox(height: AppSpacing.xl),
 
                     // Starting price field
+                    // Starting price field
                     _buildLabel('Starting Price (ETH)'),
+                    const SizedBox(height: 2),
+                    Row(
+                      children: [
+                        const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Wallet Balance: ${_web3.balance.toStringAsFixed(4)} ETH',
+                          style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
                     const SizedBox(height: AppSpacing.sm),
                     TextFormField(
                       controller: _priceController,
@@ -659,9 +671,26 @@ class _UploadPageState extends State<UploadPage> {
                       validator: (v) {
                         if (v == null || v.isEmpty) return 'Price is required';
                         final price = double.tryParse(v);
-                        if (price == null || price < 0) return 'Invalid price';
+                        if (price == null || price <= 0) return 'Invalid price';
                         return null;
                       },
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                        const SizedBox(width: 4),
+                        Expanded(
+                          child: Text(
+                            'Wallet balance is shown for reference only. Starting Price is not limited by your current balance.',
+                            style: AppTextStyles.bodySmall.copyWith(
+                              color: AppColors.textSecondary,
+                              fontStyle: FontStyle.italic,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: AppSpacing.xl),
 

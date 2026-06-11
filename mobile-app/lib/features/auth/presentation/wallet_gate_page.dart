@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
+import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/home_page.dart';
+import 'package:nft_logo_marketplace/features/profile/presentation/profile_setup_page.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
@@ -79,8 +81,37 @@ class _WalletGatePageState extends State<WalletGatePage>
 
   void _onWalletChanged() {
     if (_web3.isConnected && mounted) {
-      _navigateToHome();
+      _checkProfileAndNavigate();
     }
+  }
+
+  /// Loads the user's Firestore profile and checks [UserModel.isProfileComplete].
+  /// - First-time wallets (no profile data) → [ProfileSetupPage].
+  /// - Returning wallets with complete profile → [HomePage].
+  Future<void> _checkProfileAndNavigate() async {
+    try {
+      final uid = AuthService.instance.currentUser?.uid;
+      if (uid != null) {
+        final userData = await AuthService.instance.getUserData(uid);
+        if (!mounted) return;
+        if (userData == null || !userData.isProfileComplete) {
+          if (kDebugMode) { debugPrint('[ONBOARDING] New wallet detected — forcing ProfileSetupPage'); }
+          Navigator.of(context).pushReplacement(
+            PageRouteBuilder(
+              pageBuilder: (_, __, ___) => const ProfileSetupPage(),
+              transitionsBuilder: (_, animation, __, child) =>
+                  FadeTransition(opacity: animation, child: child),
+              transitionDuration: const Duration(milliseconds: 500),
+            ),
+          );
+          return;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[ONBOARDING] Profile check error (non-fatal): $e'); }
+      // Non-fatal: proceed to HomePage if check fails
+    }
+    _navigateToHome();
   }
 
   void _navigateToHome() {

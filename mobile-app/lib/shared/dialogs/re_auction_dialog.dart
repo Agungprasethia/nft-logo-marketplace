@@ -9,6 +9,7 @@ import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
+import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 
 class ReAuctionDialog extends StatefulWidget {
   final LogoNFT logo;
@@ -173,6 +174,17 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
 
               // Starting Price
               Text('New Starting Price (ETH)', style: AppTextStyles.labelMedium),
+              const SizedBox(height: 2),
+              Row(
+                children: [
+                  const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Wallet Balance: ${Web3Service.instance.balance.toStringAsFixed(4)} ETH',
+                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                  ),
+                ],
+              ),
               const SizedBox(height: AppSpacing.sm),
               TextFormField(
                 controller: _priceController,
@@ -193,6 +205,23 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
                   if (price == null || price <= 0) return 'Invalid price';
                   return null;
                 },
+              ),
+              const SizedBox(height: 6),
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                  const SizedBox(width: 4),
+                  Expanded(
+                    child: Text(
+                      'Wallet balance is shown for reference only. Starting Price is not limited by your current balance.',
+                      style: AppTextStyles.bodySmall.copyWith(
+                        color: AppColors.textSecondary,
+                        fontStyle: FontStyle.italic,
+                      ),
+                    ),
+                  ),
+                ],
               ),
               const SizedBox(height: AppSpacing.lg),
 

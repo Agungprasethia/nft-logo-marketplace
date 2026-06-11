@@ -100,6 +100,15 @@ class UserModel {
     return '${walletAddress!.substring(0, 6)}...${walletAddress!.substring(walletAddress!.length - 4)}';
   }
 
+  /// Dynamically computed — no Firestore field required.
+  /// Returns true only when all three mandatory fields are non-empty.
+  /// Profile degradation (user removing required fields) is automatically
+  /// detected on next app launch without any stored flags.
+  bool get isProfileComplete =>
+      (username?.trim().isNotEmpty ?? false) &&
+      fullName.trim().isNotEmpty &&
+      (country?.trim().isNotEmpty ?? false);
+
   Map<String, dynamic> toJson() {
     return {
       'uid': uid,

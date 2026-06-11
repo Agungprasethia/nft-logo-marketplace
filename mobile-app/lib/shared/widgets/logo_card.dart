@@ -8,6 +8,9 @@ import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
+import 'package:nft_logo_marketplace/shared/models/user_model.dart';
+import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
+import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 
@@ -34,6 +37,33 @@ class LogoCard extends StatefulWidget {
 class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin {
   bool _isHovered = false;
   bool _isFavorited = false;
+  Future<UserModel?>? _highestBidderFuture;
+
+  @override
+  void initState() {
+    super.initState();
+    _initHighestBidder();
+  }
+
+  @override
+  void didUpdateWidget(LogoCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.auction?.highestBidderWallet != oldWidget.auction?.highestBidderWallet) {
+      _initHighestBidder();
+    }
+  }
+
+  void _initHighestBidder() {
+    if (widget.auction != null && widget.auction!.highestBidderWallet?.isNotEmpty == true) {
+      _highestBidderFuture = FirestoreService.instance.db.collection('users')
+          .where('walletAddress', isEqualTo: widget.auction!.highestBidderWallet)
+          .limit(1).get()
+          .then((q) => q.docs.isNotEmpty ? UserModel.fromFirestore(q.docs.first.data()) : null)
+          .catchError((_) => null);
+    } else {
+      _highestBidderFuture = null;
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -242,23 +272,29 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                           // ── Highest Bidder ──
                           if (hasActiveAuction && (widget.auction!.highestBidderWallet?.isNotEmpty ?? false)) ...[
                             const SizedBox(height: 2),
-                            Row(
-                              children: [
-                                Icon(Icons.emoji_events, size: 10, color: AppColors.accentOrange),
-                                const SizedBox(width: 4),
-                                Expanded(
-                                  child: Text(
-                                    'Top Bidder: ${widget.auction!.highestBidderWallet?.substring(0, 4)}...${widget.auction!.highestBidderWallet?.substring((widget.auction!.highestBidderWallet?.length ?? 0) - 4)}',
-                                    style: AppTextStyles.caption.copyWith(
-                                      color: AppColors.accentOrange,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.w600,
+                            FutureBuilder<UserModel?>(
+                              future: _highestBidderFuture,
+                              builder: (context, snapshot) {
+                                final displayName = UserDisplayUtils.getDisplayName(snapshot.data, widget.auction!.highestBidderWallet!);
+                                return Row(
+                                  children: [
+                                    Icon(Icons.emoji_events, size: 10, color: AppColors.accentOrange),
+                                    const SizedBox(width: 4),
+                                    Expanded(
+                                      child: Text(
+                                        'Top Bidder: $displayName',
+                                        style: AppTextStyles.caption.copyWith(
+                                          color: AppColors.accentOrange,
+                                          fontSize: 10,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
                                     ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
+                                  ],
+                                );
+                              }
                             ),
                           ],
 
