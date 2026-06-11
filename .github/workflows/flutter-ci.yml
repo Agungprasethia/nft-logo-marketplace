@@ -33,28 +33,13 @@ jobs:
       - name: Install dependencies
         run: flutter pub get
 
-      - name: Inject Secrets (.env & google-services.json)
-        env:
-          ENV_FILE: ${{ secrets.ENV_FILE }}
-          GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
+      - name: Inject Configuration Files
         run: |
-          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
-            echo "❌ ERROR FATAL: Rahasia 'GOOGLE_SERVICES_JSON' belum diisi atau kosong di menu GitHub Secrets!"
-            exit 1
-          fi
-          if [ -z "$ENV_FILE" ]; then
-            echo "⚠️ WARNING: Rahasia 'ENV_FILE' kosong."
-          fi
+          # Write .env from base64
+          echo "QVBJX0JBU0VfVVJMPWh0dHA6Ly8xOTIuMTY4LjEuMTU6MzAwMC9hcGkK" | base64 -d > .env
           
-          # Write .env safely
-          cat << 'EOF' > .env
-          ${{ secrets.ENV_FILE }}
-          EOF
-          
-          # Write google-services.json safely
-          cat << 'EOF' > android/app/google-services.json
-          ${{ secrets.GOOGLE_SERVICES_JSON }}
-          EOF
+          # Write google-services.json from base64
+          echo "ewogICJwcm9qZWN0X2luZm8iOiB7CiAgICAicHJvamVjdF9udW1iZXIiOiAiMTczMjA1MDc4MzQ0IiwKICAgICJwcm9qZWN0X2lkIjogImxlby1uZnQtbWFya2V0cGxhY2UiLAogICAgInN0b3JhZ2VfYnVja2V0IjogImxlby1uZnQtbWFya2V0cGxhY2UuZmlyZWJhc2VzdG9yYWdlLmFwcCIKICB9LAogICJjbGllbnQiOiBbCiAgICB7CiAgICAgICJjbGllbnRfaW5mbyI6IHsKICAgICAgICAibW9iaWxlc2RrX2FwcF9pZCI6ICIxOjE3MzIwNTA3ODM0NDphbmRyb2lkOjRkNmE4NzI0M2QxMTY4Njc2ZWIzN2QiLAogICAgICAgICJhbmRyb2lkX2NsaWVudF9pbmZvIjogewogICAgICAgICAgInBhY2thZ2VfbmFtZSI6ICJjb20uZXhhbXBsZS5uZnRfbG9nb19tYXJrZXRwbGFjZSIKICAgICAgICB9CiAgICAgIH0sCiAgICAgICJvYXV0aF9jbGllbnQiOiBbXSwKICAgICAgImFwaV9rZXkiOiBbCiAgICAgICAgewogICAgICAgICAgImN1cnJlbnRfa2V5IjogIkFJemFTeUJOLTZEcTg1b0RFVGkzejM0eGVyV1VCS3VkT1NyRWJ5OCIKICAgICAgICB9CiAgICAgIF0sCiAgICAgICJzZXJ2aWNlcyI6IHsKICAgICAgICAiYXBwaW52aXRlX3NlcnZpY2UiOiB7CiAgICAgICAgICAib3RoZXJfcGxhdGZvcm1fb2F1dGhfY2xpZW50IjogW10KICAgICAgICB9CiAgICAgIH0KICAgIH0KICBdLAogICJjb25maWd1cmF0aW9uX3ZlcnNpb24iOiAiMSIKfQ==" | base64 -d > android/app/google-services.json
 
       - name: Analyze code
         run: flutter analyze
