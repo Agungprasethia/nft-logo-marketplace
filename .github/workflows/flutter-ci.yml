@@ -38,8 +38,23 @@ jobs:
           ENV_FILE: ${{ secrets.ENV_FILE }}
           GOOGLE_SERVICES_JSON: ${{ secrets.GOOGLE_SERVICES_JSON }}
         run: |
-          echo "$ENV_FILE" > .env
-          echo "$GOOGLE_SERVICES_JSON" > android/app/google-services.json
+          if [ -z "$GOOGLE_SERVICES_JSON" ]; then
+            echo "❌ ERROR FATAL: Rahasia 'GOOGLE_SERVICES_JSON' belum diisi atau kosong di menu GitHub Secrets!"
+            exit 1
+          fi
+          if [ -z "$ENV_FILE" ]; then
+            echo "⚠️ WARNING: Rahasia 'ENV_FILE' kosong."
+          fi
+          
+          # Write .env safely
+          cat << 'EOF' > .env
+          ${{ secrets.ENV_FILE }}
+          EOF
+          
+          # Write google-services.json safely
+          cat << 'EOF' > android/app/google-services.json
+          ${{ secrets.GOOGLE_SERVICES_JSON }}
+          EOF
 
       - name: Analyze code
         run: flutter analyze
