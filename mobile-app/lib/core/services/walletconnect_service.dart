@@ -590,19 +590,21 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   static const MethodChannel _channel = MethodChannel('com.example.nft_logo_marketplace/walletconnect');
 
   Future<void> startWalletConnectService() async {
-    try {
-      await _channel.invokeMethod('startService');
-    } catch (e) {
-      if (kDebugMode) debugPrint('Failed to start Foreground Service: $e');
-    }
+    // Foreground service is unnecessary for WalletConnect v2 relays 
+    // and causes SecurityException on Android 14+ for connectedDevice type.
+    // try {
+    //   await _channel.invokeMethod('startService');
+    // } catch (e) {
+    //   if (kDebugMode) debugPrint('Failed to start Foreground Service: $e');
+    // }
   }
 
   Future<void> stopWalletConnectService() async {
-    try {
-      await _channel.invokeMethod('stopService');
-    } catch (e) {
-      if (kDebugMode) debugPrint('Failed to stop Foreground Service: $e');
-    }
+    // try {
+    //   await _channel.invokeMethod('stopService');
+    // } catch (e) {
+    //   if (kDebugMode) debugPrint('Failed to stop Foreground Service: $e');
+    // }
   }
 
   // ── App Lifecycle ───────────────────────────────────────────────────────
