@@ -21,7 +21,6 @@ import 'package:nft_logo_marketplace/shared/widgets/primary_button.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/features/auction/presentation/auction_payment_page.dart';
 import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart';
-import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
 import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 

@@ -25,7 +25,6 @@ import 'package:nft_logo_marketplace/shared/widgets/primary_button.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
-import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/bid_dialog.dart';
 import 'package:nft_logo_marketplace/shared/models/user_model.dart';
 import 'package:nft_logo_marketplace/shared/widgets/auction_badge.dart';
