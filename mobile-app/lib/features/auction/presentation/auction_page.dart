@@ -1908,8 +1908,9 @@ class _AuctionPageState extends State<AuctionPage> {
                       return;
                     }
                     if (!_web3.isConnected) {
-                      WalletConnectModal.show(
+                      WalletUtils.showConnectDialog(
                         context,
+                        _web3,
                         title: 'Connect Wallet Required',
                         message: 'Please connect your wallet to place a bid.',
                       ).then((connected) {
@@ -2005,8 +2006,9 @@ class _AuctionPageState extends State<AuctionPage> {
               backgroundColor: AppColors.accentOrange,
               onPressed: () {
                 if (!_web3.isConnected) {
-                  WalletConnectModal.show(
+                  WalletUtils.showConnectDialog(
                     context,
+                    _web3,
                     title: 'Connect Wallet Required',
                     message: 'Please connect your wallet to complete payment.',
                   ).then((connected) {

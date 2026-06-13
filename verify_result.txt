@@ -1,0 +1,75 @@
+﻿=== Checking for remaining WalletGatePage references ===
+
+OK - No WalletGatePage references found!
+
+=== Key changed cells (TC-U01 & TC-U14) ===
+
+TC-U01 Row 1:
+  Langkah: 1. Buka aplikasi NFT Logo Marketplace
+2. Sistem menampilkan SplashScreen lalu masuk ke HomePage
+3. Tap ikon profil, lalu...
+  Diharapkan: 1. Wallet berhasil terhubung
+2. Alamat wallet ditampilkan
+3. Pengguna diarahkan ke ProfileSetupPage karena profil belum ...
+  Aktual: 1. Wallet berhasil terhubung
+2. Alamat wallet ditampilkan
+3. Pengguna diarahkan ke ProfileSetupPage...
+
+TC-U01 Row 2:
+  Langkah: 1. Buka aplikasi
+2. Sistem menampilkan SplashScreen
+3. Sesi wallet sebelumnya di-restore otomatis...
+  Diharapkan: 1. Sesi wallet berhasil di-restore otomatis
+2. Langsung diarahkan ke HomePage
+3. Data profil sebelumnya masih tersimpan...
+  Aktual: 1. Sesi wallet berhasil di-restore
+2. Langsung masuk ke HomePage
+3. Data profil sebelumnya masih tersimpan...
+
+TC-U01 Row 3:
+  Langkah: 1. Buka aplikasi, masuk ke HomePage
+2. Tap ikon profil, lalu tap "Connect Wallet"...
+  Diharapkan: 1. Muncul pesan error bahwa MetaMask tidak ditemukan
+2. Pengguna tetap di HomePage...
+  Aktual: 1. Muncul notifikasi error
+2. Tetap di HomePage...
+
+TC-U01 Row 4:
+  Langkah: 1. Buka aplikasi, masuk ke HomePage
+2. Tap ikon profil, lalu tap "Connect Wallet"
+3. MetaMask terbuka
+4. Tap "Reject" / ...
+  Diharapkan: 1. Koneksi dibatalkan
+2. Pengguna tetap di HomePage
+3. Tidak ada error crash...
+  Aktual: 1. Koneksi dibatalkan
+2. Tetap di HomePage
+3. Tidak crash...
+
+TC-U01 Row 5:
+  Langkah: 1. Buka aplikasi, masuk ke HomePage
+2. Connect wallet dari halaman profil
+3. Sistem mendeteksi chainId bukan Sepolia...
+  Diharapkan: 1. Muncul peringatan "Wrong Network"
+2. Pengguna diminta switch ke Sepolia Testnet...
+  Aktual: 1. Muncul peringatan "Wrong Network"
+2. Diminta switch ke Sepolia...
+
+TC-U14 Row 1:
+  Diharapkan: 1. Wallet terputus
+2. Sesi berakhir
+3. Pengguna tetap di ProfilePage dengan tampilan "Connect Wallet"
+4. Semua data lokal dibersihkan...
+  Aktual: 1. Wallet terputus
+2. Sesi berakhir
+3. Tetap di ProfilePage dengan connect prompt
+4. Data lokal bersih...
+
+TC-U14 Row 2:
+  Diharapkan: 1. Pengguna diperingatkan tentang proses yang sedang berjalan
+2. Disconnect tetap bisa dilakukan
+3. Tetap di ProfilePage dengan tampilan "Connect Wall...
+  Aktual: 1. Peringatan muncul
+2. Disconnect berhasil
+3. Tetap di ProfilePage dengan connect prompt...
+

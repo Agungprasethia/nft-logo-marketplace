@@ -111,8 +111,10 @@ class _SplashScreenState extends State<SplashScreen>
         if (uid != null) {
           try {
             final userData = await AuthService.instance.getUserData(uid);
-            if (userData != null && !userData.isProfileComplete) {
-              if (kDebugMode) { debugPrint('[ONBOARDING] Profile incomplete — redirecting to ProfileSetupPage'); }
+            final isComplete = userData?.isProfileComplete ?? false;
+            
+            if (!isComplete) {
+              if (kDebugMode) { debugPrint('[ONBOARDING] Profile incomplete or new user — redirecting to ProfileSetupPage'); }
               _navigateTo(const ProfileSetupPage());
               return;
             }

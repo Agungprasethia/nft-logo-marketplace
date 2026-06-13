@@ -1401,10 +1401,11 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
   void _showBidDialog(Auction auction) {
     if (!_web3.isConnected) {
-      WalletConnectModal.show(
+      WalletUtils.showConnectDialog(
         context,
+        _web3,
         title: 'Connect Wallet Required',
-        message: 'Please connect your wallet to place a bid.',
+        message: 'Please connect your wallet to purchase this artwork.',
       ).then((connected) {
          if (connected && mounted) setState(() {});
       });
@@ -1523,10 +1524,11 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
   Future<void> _downloadNFT(String imageUrl) async {
     if (!_web3.isConnected) {
-      WalletConnectModal.show(
+      WalletUtils.showConnectDialog(
         context,
+        _web3,
         title: 'Connect Wallet Required',
-        message: 'Please connect your wallet to download this NFT.',
+        message: 'Please connect your wallet to purchase this artwork.',
       ).then((connected) {
          if (connected && mounted) setState(() {});
       });

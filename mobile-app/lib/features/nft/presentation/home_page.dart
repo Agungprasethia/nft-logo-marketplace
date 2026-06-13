@@ -209,14 +209,15 @@ class _HomePageState extends State<HomePage> {
                         selectedIndex: _currentIndex,
                         onDestinationSelected: (index) async {
                           if ((index == 1 || index == 2) && !_web3.isConnected) {
-                            final connected = await WalletConnectModal.show(
+                            await WalletUtils.showConnectDialog(
                               context,
+                              _web3,
                               title: 'Connect Wallet Required',
                               message: index == 1 
                                 ? 'Please connect your wallet to mint and upload NFTs.' 
                                 : 'Please connect your wallet to access your profile and collection.',
                             );
-                            if (connected && mounted) setState(() => _currentIndex = index);
+                            if (_web3.isConnected && mounted) setState(() => _currentIndex = index);
                           } else {
                             setState(() => _currentIndex = index);
                           }
@@ -273,14 +274,15 @@ class _HomePageState extends State<HomePage> {
             selectedIndex: _currentIndex,
             onDestinationSelected: (index) async {
               if ((index == 1 || index == 2) && !_web3.isConnected) {
-                final connected = await WalletConnectModal.show(
+                await WalletUtils.showConnectDialog(
                   context,
+                  _web3,
                   title: 'Connect Wallet Required',
                   message: index == 1 
                     ? 'Please connect your wallet to mint and upload NFTs.' 
                     : 'Please connect your wallet to access your profile and collection.',
                 );
-                if (connected && mounted) setState(() => _currentIndex = index);
+                if (_web3.isConnected && mounted) setState(() => _currentIndex = index);
               } else {
                 setState(() => _currentIndex = index);
               }
