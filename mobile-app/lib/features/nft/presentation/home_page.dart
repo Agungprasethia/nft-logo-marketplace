@@ -14,7 +14,6 @@ import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:nft_logo_marketplace/core/theme/app_colors.dart';
 import 'package:nft_logo_marketplace/core/theme/app_text_styles.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
-import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
 
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';

@@ -23,6 +23,7 @@ import 'package:nft_logo_marketplace/features/auction/presentation/auction_payme
 import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart';
 import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
 import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
+import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 
 class AuctionPage extends StatefulWidget {
   final LogoNFT logo;

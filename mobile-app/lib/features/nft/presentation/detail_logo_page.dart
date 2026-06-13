@@ -36,6 +36,7 @@ import 'package:nft_logo_marketplace/core/utils/firestore_error_handler.dart';
 import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
 import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
+import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 
 class DetailLogoPage extends StatefulWidget {
   final LogoNFT logo;
