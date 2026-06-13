@@ -4,7 +4,6 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:flutter/services.dart';
 import 'package:walletconnect_flutter_v2/walletconnect_flutter_v2.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
@@ -587,7 +586,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
   // ── Foreground Service ──────────────────────────────────────────────────
 
-  static const MethodChannel _channel = MethodChannel('com.example.nft_logo_marketplace/walletconnect');
+  // static const MethodChannel _channel = MethodChannel('com.example.nft_logo_marketplace/walletconnect');
 
   Future<void> startWalletConnectService() async {
     // Foreground service is unnecessary for WalletConnect v2 relays 
