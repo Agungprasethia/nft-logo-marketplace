@@ -821,9 +821,9 @@ class FirestoreService {
     return _nftsCollection
         .snapshots()
         .map((snapshot) {
-      print("FIRESTORE DOCS = ${snapshot.docs.length}");
+      if (kDebugMode) { debugPrint("FIRESTORE DOCS = ${snapshot.docs.length}"); }
       final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
-      print("PARSED NFT = ${list.length}");
+      if (kDebugMode) { debugPrint("PARSED NFT = ${list.length}"); }
       
       // Client-side filtering to avoid composite index requirement
       final allowedStatuses = [
@@ -835,7 +835,7 @@ class FirestoreService {
       ];
       
       final filteredList = list.where((nft) => allowedStatuses.contains(nft.status) && nft.nftVisible).toList();
-      print("FILTERED NFT = ${filteredList.length}");
+      if (kDebugMode) { debugPrint("FILTERED NFT = ${filteredList.length}"); }
       filteredList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
       return filteredList;
@@ -1133,8 +1133,8 @@ class FirestoreService {
         final creatorWallet = data['creatorWallet'] as String? ?? '';
 
         // ══════ STRICT ENFORCEMENT ══════
-        if (bid.bidderWallet.toLowerCase() == creatorWallet.toLowerCase()) {
-          throw Exception('Creators cannot bid on their own NFT');
+        if (bid.bidderWallet.toLowerCase() == ownerWallet) {
+          throw Exception('Owners cannot bid on their own NFT');
         }
         if (isFrozen) {
           throw Exception('Auction is frozen');
@@ -1161,15 +1161,14 @@ class FirestoreService {
           throw Exception('Bid must be at least ${minRequiredBid.toStringAsFixed(2)} ETH');
         }
 
-        // Prevent creator from bidding on own NFT
-        if (creatorWallet.isNotEmpty &&
-            bid.bidderWallet.toLowerCase().trim() == creatorWallet.toLowerCase().trim()) {
-          throw Exception('Creator cannot bid on their own NFT');
+        // Prevent owner from bidding on own NFT
+        if (ownerWallet.isNotEmpty &&
+            bid.bidderWallet.toLowerCase().trim() == ownerWallet.trim()) {
+          throw Exception('Owners cannot bid on their own NFT');
         }
 
-        if (bid.bidderId.isNotEmpty && creatorId.isNotEmpty && bid.bidderId == creatorId) {
-          throw Exception('Creator cannot bid on their own NFT');
-        }
+        debugPrint('BID CHECK | bidder=${bid.bidderWallet} | owner=$ownerWallet');
+        debugPrint('BID ALLOWED: ${bid.bidderWallet.toLowerCase().trim() != ownerWallet.trim()}');
 
         // ══════ ALL WRITES AFTER ALL READS ══════
         final bidData = bid.toFirestore();

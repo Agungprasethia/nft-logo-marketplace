@@ -380,10 +380,11 @@ class _AuctionPageState extends State<AuctionPage> {
     }
 
     final currentWallet = _web3.currentAddress;
-    final isCreator =
+    final effectiveOwner = (logo.ownerWallet.isNotEmpty) ? logo.ownerWallet : logo.creatorWallet;
+    final isOwner =
         currentWallet != null &&
         currentWallet.toLowerCase().trim() ==
-            logo.creatorWallet.toLowerCase().trim();
+            effectiveOwner.toLowerCase().trim();
 
     String displayImageUrl = logo.imageUrl;
     if (displayImageUrl.contains('dweb.link/ipfs/')) {
@@ -439,7 +440,7 @@ class _AuctionPageState extends State<AuctionPage> {
                           children: [
                             _buildImageHero(displayImageUrl),
                             const SizedBox(height: AppSpacing.xxl),
-                            _buildAuctionInfo(logo, isLive, isCreator, auction),
+                            _buildAuctionInfo(logo, isLive, isOwner, auction),
                           ],
                         ),
                       ),
@@ -450,7 +451,7 @@ class _AuctionPageState extends State<AuctionPage> {
                         child: _buildLeaderboardAndActions(
                           logo,
                           isLive,
-                          isCreator,
+                          isOwner,
                           auction,
                         ),
                       ),
@@ -472,9 +473,9 @@ class _AuctionPageState extends State<AuctionPage> {
                 children: [
                   _buildImageHero(displayImageUrl),
                   const SizedBox(height: AppSpacing.xxl),
-                  _buildAuctionInfo(logo, isLive, isCreator, auction),
+                  _buildAuctionInfo(logo, isLive, isOwner, auction),
                   const SizedBox(height: AppSpacing.xxl),
-                  _buildLeaderboardAndActions(logo, isLive, isCreator, auction),
+                  _buildLeaderboardAndActions(logo, isLive, isOwner, auction),
                 ],
               ),
             );
@@ -512,7 +513,7 @@ class _AuctionPageState extends State<AuctionPage> {
     );
   }
 
-  Widget _buildAuctionInfo(logo, bool isLive, bool isCreator, auction) {
+  Widget _buildAuctionInfo(logo, bool isLive, bool isOwner, auction) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1160,7 +1161,7 @@ class _AuctionPageState extends State<AuctionPage> {
   Widget _buildLeaderboardAndActions(
     logo,
     bool isLive,
-    bool isCreator,
+    bool isOwner,
     auction,
   ) {
     Color statusColor;
@@ -1187,7 +1188,7 @@ class _AuctionPageState extends State<AuctionPage> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // â”€â”€â”€ Creator Mode Banner â”€â”€â”€
-        if (isCreator)
+        if (isOwner)
           Container(
             margin: const EdgeInsets.only(bottom: AppSpacing.lg),
             padding: const EdgeInsets.all(AppSpacing.md),
@@ -1213,7 +1214,7 @@ class _AuctionPageState extends State<AuctionPage> {
                       Row(
                         children: [
                           Text(
-                            'CREATOR VIEW',
+                            'OWNER VIEW',
                             style: AppTextStyles.labelLarge.copyWith(
                               color: AppColors.primary,
                               fontWeight: FontWeight.w900,
@@ -1231,7 +1232,7 @@ class _AuctionPageState extends State<AuctionPage> {
                               borderRadius: BorderRadius.circular(AppRadius.sm),
                             ),
                             child: Text(
-                              'SELLER',
+                              'OWNER',
                               style: AppTextStyles.labelSmall.copyWith(
                                 color: AppColors.background,
                               ),
@@ -1241,7 +1242,7 @@ class _AuctionPageState extends State<AuctionPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'You are monitoring this live auction as the creator.',
+                        'You are monitoring this live auction as the owner.',
                         style: AppTextStyles.bodySmall.copyWith(
                           color: AppColors.primary,
                         ),
@@ -1554,7 +1555,7 @@ class _AuctionPageState extends State<AuctionPage> {
                   ),
                 ],
               ),
-              if (!isCreator) ...[
+              if (!isOwner) ...[
                 Padding(
                   padding: const EdgeInsets.symmetric(vertical: AppSpacing.sm),
                   child: Divider(color: AppColors.border),
@@ -1838,7 +1839,7 @@ class _AuctionPageState extends State<AuctionPage> {
           ),
 
         // â”€â”€â”€ Re-Auction Button â”€â”€â”€
-        if (isCreator &&
+        if (isOwner &&
             !logo.isFrozen &&
             logo.status != ValidationStatus.rejected &&
             (auction.status == AuctionStatus.ended ||
@@ -1885,7 +1886,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        if (!isCreator &&
+        if (!isOwner &&
             (auction.status == AuctionStatus.active ||
                 auction.status == AuctionStatus.frozen))
           Padding(
@@ -1918,11 +1919,11 @@ class _AuctionPageState extends State<AuctionPage> {
                       });
                       return;
                     }
-                    if (isCreator) {
+                    if (isOwner) {
                       NotificationManager.show(
                         context: context,
                         title: 'Invalid Bid',
-                        message: 'Creators cannot bid on their own creations',
+                        message: 'Owners cannot bid on their own NFT',
                         type: NotificationType.warning,
                       );
                       return;
