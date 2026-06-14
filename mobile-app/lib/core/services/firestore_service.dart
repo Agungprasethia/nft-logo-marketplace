@@ -108,20 +108,53 @@ class FirestoreService {
   Future<void> approveNFT(int tokenId, String adminId) async {
     try {
       final docRef = _nftsCollection.doc(tokenId.toString());
+      final auctionRef = _auctionsCollection.doc(tokenId.toString());
       
       await _db.runTransaction((transaction) async {
         final doc = await transaction.get(docRef);
         if (!doc.exists) throw Exception('NFT not found');
 
-        // Atomic update for status and visibility
+        final data = doc.data()!;
+        final durationSeconds = data['auctionDuration'] as int? ?? 86400; // default 24h
+        final now = DateTime.now();
+        final endTime = now.add(Duration(seconds: durationSeconds));
+
+        // Atomic update for status, visibility, and auction state
         transaction.update(docRef, {
           'status': 'approved',
           'nftVisible': true,
+          'auctionStatus': 'ACTIVE',
+          'isInAuction': true,
+          'isAuctionActive': true,
+          'auctionCreated': true,
+          'isActive': true,
+          'startTime': FieldValue.serverTimestamp(),
+          'endTime': Timestamp.fromDate(endTime),
           'approvedBy': adminId,
           'approvedAt': FieldValue.serverTimestamp(),
           'copyrightVerifiedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
+
+        // Create active auction document
+        final auctionData = {
+          'auctionId': tokenId, // Save real on-chain ID, typically tokenId
+          'tokenId': tokenId,
+          'sellerId': data['ownerId'] as String? ?? '',
+          'sellerWallet': data['ownerWallet'] as String? ?? '',
+          'startingPrice': (data['price'] as num?)?.toDouble() ?? 0.0,
+          'highestBid': (data['highestBid'] as num?)?.toDouble() ?? 0.0,
+          'highestBidderId': data['highestBidderId'] as String? ?? '',
+          'highestBidderWallet': data['highestBidderWallet'] as String? ?? '',
+          'startTime': FieldValue.serverTimestamp(),
+          'endTime': Timestamp.fromDate(endTime),
+          'status': 'active',
+          'totalBids': data['totalBids'] as int? ?? 0,
+          'createdAt': FieldValue.serverTimestamp(),
+          'updatedAt': FieldValue.serverTimestamp(),
+        };
+
+        transaction.set(auctionRef, auctionData);
       });
 
       // Send notification
@@ -135,7 +168,7 @@ class FirestoreService {
           await saveNotification(creatorWallet, AppNotification(
             id: notifId,
             title: 'NFT Approved! ✅',
-            message: 'Your logo $nftName has been approved by the admin and is ready for auction.',
+            message: 'Your logo $nftName has been approved by the admin and the auction is now live.',
             type: NotificationType.nftApproved,
             category: 'system',
             createdAt: DateTime.now(),
@@ -145,7 +178,10 @@ class FirestoreService {
         }
       }
 
-      if (kDebugMode) { debugPrint('🔥 Firestore: NFT #$tokenId approved (Atomic Transaction)'); }
+      if (kDebugMode) { 
+        debugPrint('APPROVE NFT: NFT #$tokenId successfully approved. Status=approved, isAuctionActive=true, auctionStatus=ACTIVE');
+        debugPrint('🔥 Firestore: NFT #$tokenId approved and auction automatically started (Atomic Transaction)'); 
+      }
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ Firestore approveNFT error: $e'); }
       rethrow;
@@ -781,14 +817,13 @@ class FirestoreService {
     });
   }
 
-  Stream<List<LogoNFT>>? _approvedNFTsStream;
-
   Stream<List<LogoNFT>> getApprovedNFTsStream() {
-    _approvedNFTsStream ??= _nftsCollection
-        .where('nftVisible', isEqualTo: true)
+    return _nftsCollection
         .snapshots()
         .map((snapshot) {
+      print("FIRESTORE DOCS = ${snapshot.docs.length}");
       final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
+      print("PARSED NFT = ${list.length}");
       
       // Client-side filtering to avoid composite index requirement
       final allowedStatuses = [
@@ -799,12 +834,12 @@ class FirestoreService {
         ValidationStatus.pendingPayment,
       ];
       
-      final filteredList = list.where((nft) => allowedStatuses.contains(nft.status)).toList();
+      final filteredList = list.where((nft) => allowedStatuses.contains(nft.status) && nft.nftVisible).toList();
+      print("FILTERED NFT = ${filteredList.length}");
       filteredList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
       
       return filteredList;
-    }).asBroadcastStream();
-    return _approvedNFTsStream!;
+    });
   }
 
   final Map<String, Stream<List<LogoNFT>>> _userCollectionStreams = {};

@@ -266,7 +266,6 @@ class _PendingNftPageState extends State<PendingNftPage> {
                                 setState(() => _processingTokens.add(logo.tokenId));
                                 try {
                                   await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
-                                  await FirestoreService.instance.startAuction(logo.tokenId);
                                   if (!context.mounted) return;
                                   NotificationManager.show(
                                     context: context,
@@ -465,7 +464,6 @@ class _PendingNftPageState extends State<PendingNftPage> {
                                   if (confirm != true) return;
                                   try {
                                     await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
-                                    await FirestoreService.instance.startAuction(logo.tokenId);
                                     if (!context.mounted) return;
                                     Navigator.pop(context);
                                     NotificationManager.show(context: context, title: 'Success', message: 'NFT Approved!', type: NotificationType.success);

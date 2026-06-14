@@ -106,42 +106,44 @@ class _HomePageState extends State<HomePage> {
   }
 
   List<LogoNFT> _filterLogos(List<LogoNFT> logos) {
+    if (kDebugMode) { debugPrint('STREAM RECEIVED: \${logos.length} items from Firestore Stream'); }
     final uniqueIds = <String>{};
     
     return logos.where((logo) {
       if (!uniqueIds.add(logo.tokenId.toString())) return false;
       
+      if (!logo.nftVisible) return false;
+
       if (logo.isFrozen) {
         if (logo.status != ValidationStatus.frozenAuction && logo.status != ValidationStatus.underReview) return false;
       } else {
-        // 1. Cek apakah auction active
-        if (!logo.isAuctionActive) return false;
-
-        // 2. Cek apakah waktu belum habis
-        if (logo.endTime == null) return false;
-        if (DateTime.now().isAfter(logo.endTime!) || DateTime.now().isAtSameMomentAs(logo.endTime!)) {
-          return false;
-        }
-
-        // 3. Cek status auction harus ACTIVE atau LIVE_AUCTION
+        // 1. Cek business rule: isAuctionActive == true OR auctionStatus == ACTIVE
         final aStatus = (logo.auctionStatus ?? '').toUpperCase();
-        if (aStatus != 'ACTIVE' && aStatus != 'LIVE_AUCTION') {
+        bool isAuctionActiveStatus = logo.isAuctionActive || aStatus == 'ACTIVE' || aStatus == 'LIVE_AUCTION';
+        if (!isAuctionActiveStatus) return false;
+
+        // 2. Cek apakah waktu lelang sudah habis (jika ada endTime)
+        if (logo.endTime != null && (DateTime.now().isAfter(logo.endTime!) || DateTime.now().isAtSameMomentAs(logo.endTime!))) {
           return false;
         }
       }
 
-      // â”€â”€ Category filter â”€â”€
+      // ── Category filter ──
       if (_selectedCategory != NFTCategory.all &&
           logo.category != _selectedCategory) {
         return false;
       }
       
-      // â”€â”€ Search filter â”€â”€
+      // ── Search filter ──
       if (_searchQuery.isNotEmpty) {
         final query = _searchQuery.toLowerCase();
         final matchesName = logo.name.toLowerCase().contains(query);
         final matchesDesc = logo.description.toLowerCase().contains(query);
         if (!matchesName && !matchesDesc) return false;
+      }
+
+      if (kDebugMode) {
+        debugPrint('FILTER PASSED: ${logo.name} (Status: ${logo.status}, isAuctionActive: ${logo.isAuctionActive}, endTime: ${logo.endTime})');
       }
 
       return true;
@@ -644,6 +646,7 @@ class _HomePageState extends State<HomePage> {
                               return const Center(child: CustomLoadingIndicator(size: 24));
                             }
                             final logo = displayedLogos[index];
+                            if (kDebugMode) { debugPrint('CARD RENDERED: \${logo.name} in HomePage Grid'); }
                             Auction? activeAuction;
                             try {
                               activeAuction = _web3.activeAuctions.firstWhere((a) => a.tokenId == logo.tokenId);

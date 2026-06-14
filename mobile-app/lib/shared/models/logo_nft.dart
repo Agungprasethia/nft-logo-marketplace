@@ -1,3 +1,5 @@
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 /// Logo NFT Validation Status mapping to Smart Contract Enum
 enum ValidationStatus { pending, approvedPendingMint, approved, rejected, disabled, auction, available, pendingPayment, sold, underReview, frozenAuction, copyrightViolation }
 
@@ -569,64 +571,64 @@ class LogoNFT {
     DateTime parsedCreatedAt = DateTime.now();
     if (data['createdAt'] is int) {
       parsedCreatedAt = DateTime.fromMillisecondsSinceEpoch(data['createdAt'] as int);
-    } else if (data['createdAt'] != null && data['createdAt'].runtimeType.toString() == 'Timestamp') {
-      parsedCreatedAt = (data['createdAt'] as dynamic).toDate();
+    } else if (data['createdAt'] is Timestamp) {
+      parsedCreatedAt = (data['createdAt'] as Timestamp).toDate();
     }
     
     DateTime? parsedApprovedAt;
     if (data['approvedAt'] is int) {
       parsedApprovedAt = DateTime.fromMillisecondsSinceEpoch(data['approvedAt'] as int);
-    } else if (data['approvedAt'] != null && data['approvedAt'].runtimeType.toString() == 'Timestamp') {
-      parsedApprovedAt = (data['approvedAt'] as dynamic).toDate();
+    } else if (data['approvedAt'] is Timestamp) {
+      parsedApprovedAt = (data['approvedAt'] as Timestamp).toDate();
     }
 
     DateTime? parsedStartTime;
     if (data['startTime'] is int) {
       parsedStartTime = DateTime.fromMillisecondsSinceEpoch(data['startTime'] as int);
-    } else if (data['startTime'] != null && data['startTime'].runtimeType.toString() == 'Timestamp') {
-      parsedStartTime = (data['startTime'] as dynamic).toDate();
+    } else if (data['startTime'] is Timestamp) {
+      parsedStartTime = (data['startTime'] as Timestamp).toDate();
     }
 
     DateTime? parsedEndTime;
     if (data['endTime'] is int) {
       parsedEndTime = DateTime.fromMillisecondsSinceEpoch(data['endTime'] as int);
-    } else if (data['endTime'] != null && data['endTime'].runtimeType.toString() == 'Timestamp') {
-      parsedEndTime = (data['endTime'] as dynamic).toDate();
+    } else if (data['endTime'] is Timestamp) {
+      parsedEndTime = (data['endTime'] as Timestamp).toDate();
     }
 
     DateTime? parsedPaymentDeadline;
     if (data['paymentDeadline'] is int) {
       parsedPaymentDeadline = DateTime.fromMillisecondsSinceEpoch(data['paymentDeadline'] as int);
-    } else if (data['paymentDeadline'] != null && data['paymentDeadline'].runtimeType.toString() == 'Timestamp') {
-      parsedPaymentDeadline = (data['paymentDeadline'] as dynamic).toDate();
+    } else if (data['paymentDeadline'] is Timestamp) {
+      parsedPaymentDeadline = (data['paymentDeadline'] as Timestamp).toDate();
     }
 
     DateTime? parsedPaymentCompletedAt;
     if (data['paymentCompletedAt'] is int) {
       parsedPaymentCompletedAt = DateTime.fromMillisecondsSinceEpoch(data['paymentCompletedAt'] as int);
-    } else if (data['paymentCompletedAt'] != null && data['paymentCompletedAt'].runtimeType.toString() == 'Timestamp') {
-      parsedPaymentCompletedAt = (data['paymentCompletedAt'] as dynamic).toDate();
+    } else if (data['paymentCompletedAt'] is Timestamp) {
+      parsedPaymentCompletedAt = (data['paymentCompletedAt'] as Timestamp).toDate();
     }
 
     DateTime? parsedPaymentExpiredAt;
     if (data['paymentExpiredAt'] is int) {
       parsedPaymentExpiredAt = DateTime.fromMillisecondsSinceEpoch(data['paymentExpiredAt'] as int);
-    } else if (data['paymentExpiredAt'] != null && data['paymentExpiredAt'].runtimeType.toString() == 'Timestamp') {
-      parsedPaymentExpiredAt = (data['paymentExpiredAt'] as dynamic).toDate();
+    } else if (data['paymentExpiredAt'] is Timestamp) {
+      parsedPaymentExpiredAt = (data['paymentExpiredAt'] as Timestamp).toDate();
     }
 
     DateTime? parsedCopyrightVerifiedAt;
     if (data['copyrightVerifiedAt'] is int) {
       parsedCopyrightVerifiedAt = DateTime.fromMillisecondsSinceEpoch(data['copyrightVerifiedAt'] as int);
-    } else if (data['copyrightVerifiedAt'] != null && data['copyrightVerifiedAt'].runtimeType.toString() == 'Timestamp') {
-      parsedCopyrightVerifiedAt = (data['copyrightVerifiedAt'] as dynamic).toDate();
+    } else if (data['copyrightVerifiedAt'] is Timestamp) {
+      parsedCopyrightVerifiedAt = (data['copyrightVerifiedAt'] as Timestamp).toDate();
     }
 
     DateTime? parsedFrozenAt;
     if (data['frozenAt'] is int) {
       parsedFrozenAt = DateTime.fromMillisecondsSinceEpoch(data['frozenAt'] as int);
-    } else if (data['frozenAt'] != null && data['frozenAt'].runtimeType.toString() == 'Timestamp') {
-      parsedFrozenAt = (data['frozenAt'] as dynamic).toDate();
+    } else if (data['frozenAt'] is Timestamp) {
+      parsedFrozenAt = (data['frozenAt'] as Timestamp).toDate();
     }
 
 

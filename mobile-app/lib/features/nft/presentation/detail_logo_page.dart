@@ -32,8 +32,6 @@ import 'package:nft_logo_marketplace/shared/dialogs/re_auction_dialog.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/utils/firestore_error_handler.dart';
-import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
-import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
 import 'package:nft_logo_marketplace/core/utils/user_display_utils.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 
@@ -764,102 +762,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   ),
                 ),
 
-              // Show manual start auction button for creators when approved/available
-              if (isCreator && (status == 'approved' || status == 'available') && !isActive && (logo.auctionStatus == 'NONE' || logo.auctionStatus == 'COMPLETED' || logo.auctionStatus == 'ENDED_NO_BID' || logo.auctionStatus == 'PAYMENT_EXPIRED'))
-                Container(
-                  width: double.infinity,
-                  margin: const EdgeInsets.only(bottom: AppSpacing.md),
-                  padding: const EdgeInsets.all(AppSpacing.md),
-                  decoration: BoxDecoration(
-                    color: AppColors.success.withValues(alpha: 0.1),
-                    borderRadius: BorderRadius.circular(AppRadius.lg),
-                    border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        children: [
-                          const Icon(Icons.rocket_launch, color: AppColors.success, size: 20),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: Text(
-                              'Your NFT is ready! Start the auction to allow bidding.',
-                              style: AppTextStyles.bodyMedium.copyWith(color: AppColors.success, fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: AppSpacing.md),
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: () async {
-                            if (logo.isAuctionActive || logo.auctionStatus == 'ACTIVE') {
-                              NotificationManager.show(
-                                context: context,
-                                title: 'Error',
-                                message: 'An auction is already active for this NFT.',
-                                type: NotificationType.error,
-                              );
-                              return;
-                            }
-                            try {
-                              showDialog(
-                                context: context,
-                                barrierDismissible: false,
-                                builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
-                              );
-                              // 1. Create on-chain
-                              await _web3.createAuctionOnChain(
-                                tokenId: logo.tokenId,
-                                creatorAddress: logo.creatorWallet,
-                                startingPrice: logo.price,
-                                durationSeconds: logo.auctionDuration ?? 86400,
-                              );
-                              // 2. Start on Firestore
-                              await FirestoreService.instance.startAuction(logo.tokenId);
-                              if (!mounted) return;
-                              Navigator.pop(context); // close loading
-                              NotificationManager.show(
-                                context: context,
-                                title: 'Auction Started',
-                                message: 'Your NFT is now live for bidding!',
-                                type: NotificationType.success,
-                              );
-                            } on InsufficientBalanceException catch (e) {
-                              if (!mounted) return;
-                              Navigator.pop(context); // close loading
-                              showDialog(
-                                context: context,
-                                builder: (_) => InsufficientBalanceDialog(exception: e),
-                              );
-                            } catch (e) {
-                              if (!mounted) return;
-                              Navigator.pop(context); // close loading
-                              NotificationManager.show(
-                                context: context,
-                                title: 'Error',
-                                message: 'Failed to start auction: $e',
-                                type: NotificationType.error,
-                              );
-                            }
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppColors.success,
-                            foregroundColor: Colors.white,
-                          ),
-                          child: const Text('Start Auction Now'),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Text(
-                        'Estimated Gas Fee will be calculated by MetaMask',
-                        style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary, fontStyle: FontStyle.italic),
-                      ),
-                    ],
-                  ),
-                ),
+
 
               // Ended with no bids or payment expired info
               if (isCreator && (logo.auctionStatus == 'EXPIRED_NO_BID' || logo.auctionStatus == 'ENDED_NO_BIDS' || logo.auctionStatus == 'ENDED_NO_BID' || logo.auctionStatus == 'PAYMENT_EXPIRED'))
