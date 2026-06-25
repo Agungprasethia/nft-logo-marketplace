@@ -57,7 +57,8 @@ class _ProfileColors {
 }
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({super.key});
+  final int initialTabIndex;
+  const ProfilePage({super.key, this.initialTabIndex = 0});
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -81,7 +82,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 5, vsync: this);
+    _tabController = TabController(length: 5, vsync: this, initialIndex: widget.initialTabIndex);
     _tabController.addListener(_onTabChanged);
     _web3.addListener(_onWeb3StateChanged);
     _initData();
@@ -443,7 +444,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 lastLogin: DateTime.now(),
               );
               await Navigator.push(context, MaterialPageRoute(builder: (_) => EditProfilePage(user: userToEdit)));
-              _loadProfile();
+              await _loadProfile();
+              if (mounted) setState(() {});
             }),
           ],
         ),
@@ -786,7 +788,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         badgeText = _ProfileColors.textMuted;
     }
 
-    final isFav = _favorites.contains(logo.tokenId);
+
 
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo))),
@@ -813,27 +815,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                   Center(
                     child: _buildNetworkImage(logo.imageUrl),
                   ),
-                  // Heart Icon
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: GestureDetector(
-                      onTap: () {
-                        setState(() {
-                          if (isFav) {
-                            _favorites.remove(logo.tokenId);
-                          } else {
-                            _favorites.add(logo.tokenId);
-                          }
-                        });
-                      },
-                      child: Icon(
-                        isFav ? Icons.favorite : Icons.favorite_border,
-                        size: 16,
-                        color: isFav ? _ProfileColors.dangerText : _ProfileColors.textWhite,
-                      ),
-                    ),
-                  ),
+
                   // Status Badge
                   Positioned(
                     top: 8,
@@ -1138,7 +1120,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                       children: [
                         Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
                         const SizedBox(height: 2),
-                        Text('You won Â· $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
+                        Text('You won · $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
                       ],
                     ),
                   ),

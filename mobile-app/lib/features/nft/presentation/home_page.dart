@@ -28,15 +28,18 @@ import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 // Removed api_service.dart
 
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  static final GlobalKey<HomePageState> globalKey = GlobalKey<HomePageState>();
+
+  HomePage({Key? key}) : super(key: key ?? globalKey);
 
   @override
-  State<HomePage> createState() => _HomePageState();
+  State<HomePage> createState() => HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class HomePageState extends State<HomePage> {
   final _web3 = Web3Service.instance;
   int _currentIndex = 0;
+  int _profileInitialTab = 0;
   String _searchQuery = '';
   String _selectedCategory = NFTCategory.all;
   final _searchController = TextEditingController();
@@ -44,13 +47,14 @@ class _HomePageState extends State<HomePage> {
   final ScrollController _scrollController = ScrollController();
   Timer? _searchDebounce;
   
-  int _limit = 10;
+  int _limit = 50;
   bool _isRefreshing = false;
   late final Stream<List<LogoNFT>> _nftStream;
 
   @override
   void initState() {
     super.initState();
+    debugPrint('🔎 [INVESTIGASI] HomePageState: initState() DIPANGGIL!');
 
     _nftStream = FirestoreService.instance.getApprovedNFTsStream();
 
@@ -105,32 +109,64 @@ class _HomePageState extends State<HomePage> {
     }
   }
 
+  void goToProfileCollection() {
+    debugPrint('🔎 [INVESTIGASI] HomePageState: goToProfileCollection() dipanggil via GlobalKey!');
+    setState(() {
+      _currentIndex = 2; // index tab Profile di bottom nav
+      _profileInitialTab = 1; // index tab Collection di ProfilePage
+    });
+  }
+
   List<LogoNFT> _filterLogos(List<LogoNFT> logos) {
-    if (kDebugMode) { debugPrint('STREAM RECEIVED: \${logos.length} items from Firestore Stream'); }
+    if (kDebugMode) { debugPrint('FILTER INPUT: ${logos.length} items from Firestore Stream'); }
     final uniqueIds = <String>{};
     
     return logos.where((logo) {
-      if (!uniqueIds.add(logo.tokenId.toString())) return false;
+      if (!uniqueIds.add(logo.tokenId.toString())) {
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=duplicate'); }
+        return false;
+      }
       
-      if (!logo.nftVisible) return false;
+      if (!logo.nftVisible) {
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=nftVisible=false'); }
+        return false;
+      }
+
+      // ── ACTIVE AUCTION FILTER (gabungan, toleran terhadap data tidak konsisten) ──
+      final bool hasActiveFlag = logo.isAuctionActive == true;
+      final bool hasActiveStatus = logo.auctionStatus?.toUpperCase() == 'ACTIVE';
+      if (!hasActiveFlag && !hasActiveStatus) {
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=neither isAuctionActive nor auctionStatus indicates active (isAuctionActive=${logo.isAuctionActive}, auctionStatus=${logo.auctionStatus})'); }
+        return false;
+      }
+
+      if (logo.endTime == null) {
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=endTime is null'); }
+        return false;
+      }
+
+      if (DateTime.now().isAfter(logo.endTime!)) {
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=auction expired (ended at ${logo.endTime})'); }
+        return false;
+      }
 
       if (logo.isFrozen) {
-        if (logo.status != ValidationStatus.frozenAuction && logo.status != ValidationStatus.underReview) return false;
-      } else {
-        // 1. Cek business rule: isAuctionActive == true OR auctionStatus == ACTIVE
-        final aStatus = (logo.auctionStatus ?? '').toUpperCase();
-        bool isAuctionActiveStatus = logo.isAuctionActive || aStatus == 'ACTIVE' || aStatus == 'LIVE_AUCTION';
-        if (!isAuctionActiveStatus) return false;
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=NFT is frozen'); }
+        return false;
+      }
 
-        // 2. Cek apakah waktu lelang sudah habis (jika ada endTime)
-        if (logo.endTime != null && (DateTime.now().isAfter(logo.endTime!) || DateTime.now().isAtSameMomentAs(logo.endTime!))) {
-          return false;
-        }
+      if (kDebugMode) {
+        debugPrint('NFT: ${logo.tokenId}');
+        debugPrint('STATUS: ${logo.status}');
+        debugPrint('AUCTION STATUS: ${logo.auctionStatus}');
+        debugPrint('IS AUCTION ACTIVE: ${logo.isAuctionActive}');
+        debugPrint('VISIBLE: ${logo.nftVisible}');
       }
 
       // ── Category filter ──
       if (_selectedCategory != NFTCategory.all &&
           logo.category != _selectedCategory) {
+        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=category mismatch'); }
         return false;
       }
       
@@ -139,11 +175,14 @@ class _HomePageState extends State<HomePage> {
         final query = _searchQuery.toLowerCase();
         final matchesName = logo.name.toLowerCase().contains(query);
         final matchesDesc = logo.description.toLowerCase().contains(query);
-        if (!matchesName && !matchesDesc) return false;
+        if (!matchesName && !matchesDesc) {
+          if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=search mismatch'); }
+          return false;
+        }
       }
 
       if (kDebugMode) {
-        debugPrint('FILTER PASSED: ${logo.name} (Status: ${logo.status}, isAuctionActive: ${logo.isAuctionActive}, endTime: ${logo.endTime})');
+        debugPrint('FILTER PASSED: NFT=${logo.name} (Status: ${logo.status}, isAuctionActive: ${logo.isAuctionActive}, endTime: ${logo.endTime})');
       }
 
       return true;
@@ -180,6 +219,7 @@ class _HomePageState extends State<HomePage> {
 
   @override
   Widget build(BuildContext context) {
+    debugPrint('🔎 [INVESTIGASI] HomePageState: build() DIPANGGIL!');
     final content = IndexedStack(
       index: _currentIndex,
       children: [
@@ -190,7 +230,7 @@ class _HomePageState extends State<HomePage> {
             _loadBlockchainData();
           },
         ),
-        const ProfilePage(),
+        ProfilePage(key: ValueKey(_profileInitialTab), initialTabIndex: _profileInitialTab),
       ],
     );
 
@@ -318,14 +358,24 @@ class _HomePageState extends State<HomePage> {
       stream: _nftStream,
       builder: (context, snapshot) {
         final List<LogoNFT> allLogos = snapshot.hasData ? snapshot.data! : [];
+        debugPrint('🔎 [INVESTIGASI] HomePageState: _buildHomeContent() Stream mendapat ${allLogos.length} items (connectionState=${snapshot.connectionState})');
+        
+        if (kDebugMode) {
+          debugPrint("STREAM SNAPSHOT: connectionState=${snapshot.connectionState} hasData=${snapshot.hasData} data.length=${allLogos.length}");
+        }
         final filteredLogos = _filterLogos(allLogos);
+        debugPrint('🔎 [INVESTIGASI] HomePageState: _buildHomeContent() Setelah difilter tersisa ${filteredLogos.length} items');
+        
         final displayedLogos = filteredLogos.take(_limit).toList();
+        if (kDebugMode) {
+          debugPrint("DISPLAYED LOGOS COUNT: ${displayedLogos.length}");
+        }
         final bool hasMore = filteredLogos.length > _limit;
         final isLoading = snapshot.connectionState == ConnectionState.waiting;
         final hasError = snapshot.hasError;
 
         if (hasError && kDebugMode) {
-          debugPrint('ðŸ”¥ NFT Stream Error: ${snapshot.error}');
+          debugPrint('🔥 NFT Stream Error: ${snapshot.error}');
         }
 
         return RefreshIndicator(
@@ -642,11 +692,14 @@ class _HomePageState extends State<HomePage> {
                         ),
                         delegate: SliverChildBuilderDelegate(
                           (context, index) {
+                            if (index == 0 && kDebugMode) {
+                              debugPrint("GRIDVIEW ITEM COUNT: ${displayedLogos.length + (hasMore ? 1 : 0)}");
+                            }
                             if (index == displayedLogos.length) {
                               return const Center(child: CustomLoadingIndicator(size: 24));
                             }
                             final logo = displayedLogos[index];
-                            if (kDebugMode) { debugPrint('CARD RENDERED: \${logo.name} in HomePage Grid'); }
+                            if (kDebugMode) { debugPrint("CARD RENDERED:\nNFT=${logo.name}\nIndex=$index"); }
                             Auction? activeAuction;
                             try {
                               activeAuction = _web3.activeAuctions.firstWhere((a) => a.tokenId == logo.tokenId);
@@ -662,7 +715,10 @@ class _HomePageState extends State<HomePage> {
                                 logo: logo,
                                 auction: activeAuction,
                                 onTap: () {
-                                  if (logo.status == ValidationStatus.auction && logo.isAuctionActive) {
+                                  bool isActiveAuction = logo.isAuctionActive == true || 
+                                    (logo.auctionStatus?.toUpperCase() == 'ACTIVE');
+
+                                  if (isActiveAuction) {
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: logo)));
                                   } else {
                                     Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo)));

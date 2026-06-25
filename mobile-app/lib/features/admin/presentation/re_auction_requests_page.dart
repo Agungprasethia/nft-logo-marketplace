@@ -81,6 +81,8 @@ class _ReAuctionRequestsPageState extends State<ReAuctionRequestsPage> {
   }
 
   String _formatDuration(int seconds) {
+    if (seconds == 1500) return '25 Minutes';
+    if (seconds == 1800) return '30 Minutes';
     if (seconds == 3600) return '1 Hour';
     if (seconds == 21600) return '6 Hours';
     if (seconds == 43200) return '12 Hours';

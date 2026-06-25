@@ -77,16 +77,7 @@ class LogoNFTCard extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Favorite Icon (Top Right)
-                      const Positioned(
-                        top: 12,
-                        right: 12,
-                        child: Icon(
-                          Icons.favorite_border,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
+
                     ],
                   ),
                 ),

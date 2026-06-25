@@ -118,21 +118,41 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   void _onSessionDelete(SessionDelete? event) async {
+    if (kDebugMode) debugPrint('🔌 Received onSessionDelete event');
+    
+    // Grace period for network blips / OS background false positives
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (await _isSessionValid()) {
+      if (kDebugMode) debugPrint('⚡ Session still valid after grace period, ignoring delete event');
+      return;
+    }
+
     _session = null;
     _connectedAddress = null;
     _chainId = null;
     await app_session.SessionService.instance.clearSession();
     notifyListeners();
-    if (kDebugMode) debugPrint('🔌 Session deleted by wallet');
+    if (kDebugMode) debugPrint('🔌 Session deleted by wallet and cleared');
   }
 
   void _onSessionExpire(SessionExpire? event) async {
+    if (kDebugMode) debugPrint('🔌 Received onSessionExpire event');
+    
+    // Grace period for network blips / OS background false positives
+    await Future.delayed(const Duration(seconds: 2));
+    
+    if (await _isSessionValid()) {
+      if (kDebugMode) debugPrint('⚡ Session still valid after grace period, ignoring expire event');
+      return;
+    }
+
     _session = null;
     _connectedAddress = null;
     _chainId = null;
     await app_session.SessionService.instance.clearSession();
     notifyListeners();
-    if (kDebugMode) debugPrint('🔌 Session expired');
+    if (kDebugMode) debugPrint('🔌 Session expired and cleared');
   }
 
   void _onSessionUpdate(SessionUpdate? event) {
@@ -507,7 +527,14 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
       return txHash.toString();
     } catch (e) {
       if (kDebugMode) debugPrint('❌ Transaction failed: $e');
-      if (e.toString().contains('session') || e.toString().contains('topic')) {
+      final errStr = e.toString().toLowerCase();
+      
+      // Specifically check for valid session drop reasons, ignoring generic "session" or "topic"
+      // to avoid false positives on network blips.
+      if (errStr.contains('no matching key') || 
+          errStr.contains('no session found') || 
+          errStr.contains('session expired') || 
+          errStr.contains('topic does not exist')) {
         _session = null;
         _connectedAddress = null;
         _chainId = null;
@@ -611,12 +638,20 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      if (_session == null && _pendingConnect != null) {
-        if (_web3App != null) {
-          try {
-            _web3App!.core.relayClient.connect();
-          } catch (_) {}
+      // Selalu coba reconnect relay client saat resume, baik _session null maupun sudah ada,
+      // karena websocket relay bisa mati saat app di background meski session masih tersimpan.
+      if (_web3App != null) {
+        try {
+          _web3App!.core.relayClient.connect();
+          if (kDebugMode) debugPrint('🔄 Relay client reconnect attempted on app resume (session exists: ${_session != null})');
+        } catch (e) {
+          if (kDebugMode) debugPrint('⚠️ Relay reconnect on resume failed: $e');
         }
+      }
+
+      // Pertahankan logic _pendingConnect yang sudah ada jika memang diperlukan untuk flow connect awal
+      if (_session == null && _pendingConnect != null) {
+        // (logic asli yang sudah ada di sini tetap dipertahankan jika ada tambahan logic lain selain relayClient.connect())
       }
     }
   }

@@ -316,7 +316,15 @@ class _EditProfilePageState extends State<EditProfilePage> {
     });
 
     try {
-      final updatedUser = widget.user.copyWith(
+      final updatedUser = UserModel(
+        uid: widget.user.uid,
+        email: widget.user.email,
+        walletAddress: widget.user.walletAddress,
+        role: widget.user.role,
+        createdAt: widget.user.createdAt,
+        lastLogin: widget.user.lastLogin,
+        ownedTokenIds: widget.user.ownedTokenIds,
+        createdTokenIds: widget.user.createdTokenIds,
         fullName: _nameController.text.trim(),
         username: _usernameController.text.trim().isNotEmpty ? _usernameController.text.trim() : null,
         title: _selectedTitle,
@@ -333,6 +341,14 @@ class _EditProfilePageState extends State<EditProfilePage> {
       await UserService.saveProfile(updatedUser);
 
       if (!mounted) return;
+      
+      NotificationManager.show(
+        context: context,
+        title: 'Success',
+        message: 'Profile updated successfully',
+        type: NotificationType.success,
+      );
+
       setState(() {
         _hasChanges = false;
       });

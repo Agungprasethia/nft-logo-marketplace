@@ -8,9 +8,9 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
 
 import 'package:flutter/services.dart';
-import 'package:url_launcher/url_launcher.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:nft_logo_marketplace/config/contract_config.dart';
+
 import 'package:nft_logo_marketplace/shared/models/logo_nft.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/report_dialog.dart';
@@ -168,7 +168,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
           return CustomScrollView(
             slivers: [
-              // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ App Bar Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+              // ─────── App Bar ───────
               SliverAppBar(
                 pinned: true,
                 backgroundColor: AppColors.background,
@@ -187,7 +187,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ],
               ),
 
-              // Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬ Content Ã¢â€â‚¬Ã¢â€â‚¬Ã¢â€â‚¬
+              // ─────── Content ───────
               SliverToBoxAdapter(
                 child: LayoutBuilder(
                   builder: (context, constraints) {
@@ -611,10 +611,6 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           const SizedBox(height: AppSpacing.lg),
         ],
 
-        // Blockchain transaction
-        if (logo.txHash != null && logo.txHash!.isNotEmpty)
-          _buildBlockchainInfoCard(logo.txHash!),
-        const SizedBox(height: AppSpacing.xxl),
 
         // â€”â€”â€” Actions â€”â€”â€”
         Container(
@@ -676,41 +672,22 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
               if (!logo.isFrozen) ...[
                 // Completed Actions (Download / Save to Gallery)
                 if (canDownload) ...[
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                        onPressed: () => _downloadNFT(logo.imageUrl),
-                        icon: const Icon(Icons.download),
-                        label: const Text('Download NFT', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.primary,
-                          side: const BorderSide(color: AppColors.primary),
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
-                        ),
+                  ElevatedButton.icon(
+                    onPressed: () => _saveToGallery(logo.imageUrl),
+                    icon: const Icon(Icons.image),
+                    label: const Text('Save to Gallery', maxLines: 1, overflow: TextOverflow.ellipsis),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                      foregroundColor: AppColors.primary,
+                      elevation: 0,
+                      minimumSize: const Size(double.infinity, 0),
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AppRadius.lg),
+                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
                       ),
                     ),
-                    const SizedBox(width: AppSpacing.md),
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        onPressed: () => _saveToGallery(logo.imageUrl),
-                        icon: const Icon(Icons.image),
-                        label: const Text('Save to Gallery', maxLines: 1, overflow: TextOverflow.ellipsis),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                          foregroundColor: AppColors.primary,
-                          elevation: 0,
-                          padding: const EdgeInsets.symmetric(vertical: 16),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(AppRadius.lg),
-                            side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                  ),
                 const SizedBox(height: AppSpacing.md),
               ],
 
@@ -962,6 +939,8 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
   }
 
   String _formatDuration(int seconds) {
+    if (seconds == 1500) return '25 Minutes';
+    if (seconds == 1800) return '30 Minutes';
     if (seconds == 3600) return '1 Hour';
     if (seconds == 21600) return '6 Hours';
     if (seconds == 43200) return '12 Hours';
@@ -1347,7 +1326,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
             );
             await FirestoreService.instance.placeBid(widget.logo.tokenId, bid, userBalance: _web3.balance);
             if (!mounted) return;
-            NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! ðŸŽ‰', type: NotificationType.success);
+            NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
           } catch (e) {
             if (!mounted) return;
             NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
@@ -1363,110 +1342,16 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
     return _PremiumCopyrightCard(logo: logo);
   }
 
-  Widget _buildBlockchainInfoCard(String txHash) {
-    final explorerUrls = ContractConfig.getTxExplorerUrls(txHash);
-    return Container(
-      padding: const EdgeInsets.all(AppSpacing.md),
-      decoration: BoxDecoration(
-        color: AppColors.primary.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(AppRadius.lg),
-        border: Border.all(color: AppColors.primary.withValues(alpha: 0.3)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              const Icon(Icons.link, color: AppColors.primary, size: 24),
-              const SizedBox(width: 12),
-              Text('Blockchain Transaction', style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary)),
-              const Spacer(),
-              IconButton(
-                icon: const Icon(Icons.copy, size: 18, color: AppColors.textSecondary),
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(),
-                onPressed: () {
-                  Clipboard.setData(ClipboardData(text: txHash));
-                  NotificationManager.show(context: context, title: 'Copied', message: 'Copied!', type: NotificationType.info);
-                },
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            'Tx: ${txHash.substring(0, 10)}...${txHash.substring(txHash.length - 8)}',
-            style: AppTextStyles.bodySmall.copyWith(fontFamily: 'monospace'),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: explorerUrls.map((explorer) {
-              return ActionChip(
-                label: Text(explorer['name']!, style: AppTextStyles.labelMedium),
-                backgroundColor: AppColors.surface,
-                side: const BorderSide(color: AppColors.border),
-                onPressed: () => _openExplorer(explorer['url']!),
-              );
-            }).toList(),
-          ),
-        ],
-      ),
-    );
-  }
 
-  Future<void> _openExplorer(String url) async {
-    final uri = Uri.parse(url);
-    if (await canLaunchUrl(uri)) await launchUrl(uri, mode: LaunchMode.externalApplication);
-  }
+
+
 
   String _shortenAddress(String address) {
     if (address.length <= 10) return address;
     return '${address.substring(0, 6)}...${address.substring(address.length - 4)}';
   }
 
-  Future<void> _downloadNFT(String imageUrl) async {
-    if (!_web3.isConnected) {
-      WalletUtils.showConnectDialog(
-        context,
-        _web3,
-        title: 'Connect Wallet Required',
-        message: 'Please connect your wallet to purchase this artwork.',
-      ).then((connected) {
-         if (connected && mounted) setState(() {});
-      });
-      return;
-    }
-    try {
-      if (imageUrl.startsWith('data:image')) {
-        final bytes = base64Decode(imageUrl.split(',').last);
-        final tempDir = await getTemporaryDirectory();
-        final file = File('${tempDir.path}/nft_${DateTime.now().millisecondsSinceEpoch}.png');
-        await file.writeAsBytes(bytes);
-        if (!mounted) return;
-        NotificationManager.show(context: context, title: 'Success', message: 'NFT downloaded to temporary storage.', type: NotificationType.success);
-        return;
-      }
 
-      String url = imageUrl;
-      if (url.contains('dweb.link/ipfs/')) {
-        url = url.replaceAll('dweb.link/ipfs/', 'ipfs.io/ipfs/');
-      } else if (url.contains('ipfs://')) {
-        url = url.replaceAll('ipfs://', 'https://ipfs.io/ipfs/');
-      }
-
-      final tempDir = await getTemporaryDirectory();
-      final savePath = '${tempDir.path}/nft_${DateTime.now().millisecondsSinceEpoch}.png';
-
-      await Dio().download(url, savePath);
-
-      if (!mounted) return;
-      NotificationManager.show(context: context, title: 'Success', message: 'NFT downloaded successfully!', type: NotificationType.success);
-    } catch (e) {
-      if (!mounted) return;
-      NotificationManager.show(context: context, title: 'Error', message: 'Failed to download NFT.', type: NotificationType.error);
-    }
-  }
 
   Future<void> _saveToGallery(String imageUrl) async {
     try {
@@ -1505,7 +1390,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
       await Gal.putImage(filePath);
       if (!mounted) return;
-      NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! ðŸŽ‰', type: NotificationType.success);
+      NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
     } catch (e) {
       if (!mounted) return;
       NotificationManager.show(context: context, title: 'Error', message: 'Failed to save to gallery.', type: NotificationType.error);

@@ -105,7 +105,7 @@ contract LogoAuction is ReentrancyGuard {
         uint256 _reservePrice,
         uint256 _duration
     ) public nonReentrant returns (uint256) {
-        require(_duration >= 1 hours, "Duration too short");
+        require(_duration >= 25 minutes, "Duration too short");
         require(_duration <= 30 days, "Duration too long");
         require(tokenToAuction[_tokenId] == 0, "Token already in auction");
         require(_startingPrice > 0, "Starting price must be > 0");

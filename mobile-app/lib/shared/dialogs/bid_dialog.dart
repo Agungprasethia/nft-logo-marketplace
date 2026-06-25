@@ -28,6 +28,7 @@ class BidDialog extends StatefulWidget {
 class _BidDialogState extends State<BidDialog> {
   late TextEditingController _controller;
   String? _error;
+  double? _parsedValue;
 
   double get minBid =>
       widget.currentBid > 0 ? widget.currentBid + Auction.getMinimumIncrement(widget.currentBid) : widget.startingPrice;
@@ -36,6 +37,7 @@ class _BidDialogState extends State<BidDialog> {
   void initState() {
     super.initState();
     _controller = TextEditingController(text: minBid.toStringAsFixed(2));
+    _validate();
   }
 
   @override
@@ -45,8 +47,9 @@ class _BidDialogState extends State<BidDialog> {
   }
 
   void _validate() {
-    final value = double.tryParse(_controller.text);
+    final value = double.tryParse(_controller.text.trim().replaceAll(',', '.'));
     setState(() {
+      _parsedValue = value;
       if (value == null) {
         _error = 'Enter a valid number';
       } else if (widget.currentBid > 0 && value <= widget.currentBid) {
@@ -286,13 +289,10 @@ class _BidDialogState extends State<BidDialog> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: _error == null
+                      onPressed: (_error == null && _parsedValue != null)
                           ? () {
-                              final value = double.tryParse(_controller.text);
-                              if (value != null) {
-                                widget.onBid(value);
-                                Navigator.pop(context);
-                              }
+                              widget.onBid(_parsedValue!);
+                              Navigator.pop(context);
                             }
                           : null,
                       style: ElevatedButton.styleFrom(

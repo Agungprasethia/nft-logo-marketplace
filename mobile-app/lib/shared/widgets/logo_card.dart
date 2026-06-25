@@ -36,7 +36,6 @@ class LogoCard extends StatefulWidget {
 
 class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin {
   bool _isHovered = false;
-  bool _isFavorited = false;
   Future<UserModel?>? _highestBidderFuture;
 
   @override
@@ -97,7 +96,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                                widget.logo.isInAuction || 
                                widget.logo.isAuctionActive || 
                                widget.logo.status == ValidationStatus.auction;
-    final DateTime? auctionEndTime = widget.auction?.endTime ?? widget.logo.endTime;
+    final DateTime? auctionEndTime = widget.logo.endTime;
 
     return RepaintBoundary(
       child: MouseRegion(
@@ -185,30 +184,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                               child: const Text('❄️', style: TextStyle(fontSize: 12)),
                             ),
                           ),
-                        // Top-right: Heart icon
-                        Positioned(
-                          top: 8,
-                          right: 8,
-                          child: GestureDetector(
-                            onTap: () {
-                              setState(() => _isFavorited = !_isFavorited);
-                            },
-                            child: Container(
-                              width: 28,
-                              height: 28,
-                              decoration: BoxDecoration(
-                                color: AppColors.background.withValues(alpha: 0.6),
-                                shape: BoxShape.circle,
-                                border: Border.all(color: AppColors.border),
-                              ),
-                              child: Icon(
-                                _isFavorited ? Icons.favorite : Icons.favorite_border,
-                                size: 14,
-                                color: _isFavorited ? AppColors.danger : AppColors.textSecondary,
-                              ),
-                            ),
-                          ),
-                        ),
+
                       ],
                     ),
                   ),

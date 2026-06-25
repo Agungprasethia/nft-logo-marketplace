@@ -21,13 +21,23 @@ exports.testFirestore = async (req, res) => {
     }
 };
 
+const convertTimestamps = (data) => {
+    const result = { ...data };
+    for (const [key, value] of Object.entries(result)) {
+        if (value && typeof value === 'object' && value._seconds !== undefined) {
+            result[key] = value.toDate().getTime(); // Convert to milliseconds
+        }
+    }
+    return result;
+};
+
 exports.getAllNFTs = async (req, res) => {
     try {
         const db = getDb();
         if(!db) return res.status(500).json({ error: 'Firestore not initialized' });
 
         const nftsSnapshot = await db.collection('nfts').get();
-        const nfts = nftsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        const nfts = nftsSnapshot.docs.map(doc => ({ id: doc.id, ...convertTimestamps(doc.data()) }));
 
         res.status(200).json(nfts);
     } catch (error) {

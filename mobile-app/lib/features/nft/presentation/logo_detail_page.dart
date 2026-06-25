@@ -43,10 +43,7 @@ class LogoDetailPage extends StatelessWidget {
             icon: Icon(Icons.share_outlined, color: textColor),
             onPressed: () {},
           ),
-          IconButton(
-            icon: Icon(Icons.favorite_border, color: textColor),
-            onPressed: () {},
-          ),
+
         ],
       ),
       body: SingleChildScrollView(

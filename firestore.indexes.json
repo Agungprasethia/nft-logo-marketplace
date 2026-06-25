@@ -96,6 +96,15 @@
         { "fieldPath": "bidderWallet", "order": "ASCENDING" },
         { "fieldPath": "amount", "order": "DESCENDING" }
       ]
+    },
+    {
+      "collectionGroup": "bids",
+      "queryScope": "COLLECTION_GROUP",
+      "fields": [
+        { "fieldPath": "bidderWallet", "order": "ASCENDING" },
+        { "fieldPath": "firstBidTimestamp", "order": "DESCENDING" },
+        { "fieldPath": "__name__", "order": "DESCENDING" }
+      ]
     }
   ],
   "fieldOverrides": []

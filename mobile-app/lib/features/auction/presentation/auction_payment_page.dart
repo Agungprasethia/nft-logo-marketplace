@@ -17,6 +17,7 @@ import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart';
 import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
+import 'package:nft_logo_marketplace/features/nft/presentation/home_page.dart';
 
 class AuctionPaymentPage extends StatefulWidget {
   final int tokenId;
@@ -166,11 +167,11 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
         if (kDebugMode) { debugPrint('[PAYMENT RESET] Error checking tx status: $e'); }
       }
     } else {
-      // CASE B: No hash, check timeout
+      // CASE B: No hash, check timeout (dipersingkat agar tombol cepat aktif kembali)
       if (_paymentStartedAt != null) {
         final diff = DateTime.now().difference(_paymentStartedAt!);
-        if (diff.inSeconds > 60) {
-          if (kDebugMode) { debugPrint('[PAYMENT RESET] >60s without tx hash. Resetting.'); }
+        if (diff.inSeconds > 5) {
+          if (kDebugMode) { debugPrint('[PAYMENT RESET] >5s without tx hash on resume. Resetting.'); }
           
           await FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
           
@@ -190,6 +191,14 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
               type: NotificationType.warning,
             );
           }
+        }
+      } else {
+        // Tidak ada _paymentStartedAt tapi _isProcessingPayment true (state aneh/stale) - reset juga
+        if (_isProcessingPayment && mounted) {
+          setState(() {
+            _isProcessingPayment = false;
+          });
+          Navigator.of(context, rootNavigator: true).pop();
         }
       }
     }
@@ -229,19 +238,26 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
               'Ownership Successfully Transferred. The NFT is now in your collection.',
               style: TextStyle(color: AppColors.textSecondary, height: 1.5),
             ),
-            const SizedBox(height: AppSpacing.md),
-            const Text('Transaction Hash:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-            const SizedBox(height: 4),
-            SelectableText(txHash, style: const TextStyle(color: AppColors.primary, fontSize: 12)),
           ],
         ),
         actions: [
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context); // Close dialog
-              Navigator.pop(context); // Return to profile
-            },
-            child: const Text('Go to Collection', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                HomePage.globalKey.currentState?.goToProfileCollection();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+              ),
+              child: const Text('Go to Collection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
           ),
         ],
       ),
@@ -322,7 +338,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
                           ),
                           child: Row(
                             children: [
-                              const Text('ðŸŽ‰', style: TextStyle(fontSize: 40)),
+                              const Text('🎉', style: TextStyle(fontSize: 40)),
                               const SizedBox(width: AppSpacing.md),
                               Expanded(
                                 child: Column(
@@ -345,7 +361,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
                         _buildPaymentSummary(logo, auction),
                         const SizedBox(height: AppSpacing.xl),
                         _buildStrictWarning(),
-                        const SizedBox(height: 100), // Space for bottom button
+                        const SizedBox(height: 260), // Space for bottom button (banner + countdown + button + text)
                       ],
                     ),
                   ),
@@ -575,7 +591,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
                       ),
                       const SizedBox(width: 6),
                       Text(
-                        'Â· MetaMask needed',
+                        '· MetaMask needed',
                         style: AppTextStyles.labelSmall.copyWith(
                           color: Colors.amber.withValues(alpha: 0.8),
                         ),
@@ -651,7 +667,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
         context: context,
         title: 'Payment in Progress',
         message: 'A payment is already being processed for this NFT.',
-        type: NotificationType.warning,
+        type: NotificationType.paymentPending,
       );
       return;
     }
@@ -742,21 +758,28 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
                 'Ownership Successfully Transferred. The NFT is now in your collection.',
                 style: TextStyle(color: AppColors.textSecondary, height: 1.5),
               ),
-              const SizedBox(height: AppSpacing.md),
-              const Text('Transaction Hash:', style: TextStyle(color: AppColors.textSecondary, fontSize: 12)),
-              const SizedBox(height: 4),
-              SelectableText(txHash, style: const TextStyle(color: AppColors.primary, fontSize: 12)),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context); // Close dialog
-                Navigator.pop(context); // Close payment page (return to profile)
-              },
-              child: const Text('Go to Collection', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
-            ),
           ],
+        ),
+        actions: [
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).popUntil((route) => route.isFirst);
+                HomePage.globalKey.currentState?.goToProfileCollection();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppColors.primary,
+                foregroundColor: Colors.white,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(AppRadius.lg),
+                ),
+              ),
+              child: const Text('Go to Collection', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            ),
+          ),
+        ],
         ),
       );
     } on InsufficientBalanceException catch (e) {
@@ -770,10 +793,13 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
     } catch (e) {
       if (!mounted) return;
       Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+      
+      final errorText = e.toString().toLowerCase();
+      final isRejected = errorText.contains('reject') || errorText.contains('denied');
       NotificationManager.show(
         context: context,
         title: 'Payment Failed',
-        message: e.toString().replaceAll('Exception: ', ''),
+        message: isRejected ? 'User rejected the transaction' : e.toString().replaceAll('Exception: ', ''),
         type: NotificationType.error,
       );
     } finally {

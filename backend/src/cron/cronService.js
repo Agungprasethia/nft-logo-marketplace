@@ -6,6 +6,14 @@ const getDb = () => {
     return admin.firestore();
 };
 
+const toMillis = (val) => {
+    if (!val) return 0;
+    if (typeof val === 'number') return val;
+    if (val.toDate) return val.toDate().getTime(); // Firestore Timestamp
+    if (val instanceof Date) return val.getTime();
+    return 0;
+};
+
 const closeExpiredAuctions = async () => {
     const db = getDb();
     if (!db) return;
@@ -24,9 +32,9 @@ const closeExpiredAuctions = async () => {
 
         for (const doc of activeAuctions.docs) {
             const data = doc.data();
-            const endTime = data.endTime || 0;
+            const endTimeMs = toMillis(data.endTime);
 
-            if (endTime > 0 && now >= endTime) {
+            if (endTimeMs > 0 && now >= endTimeMs) {
                 const highestBid = data.highestBid || 0;
                 const auctionRef = db.collection('auctions').doc(doc.id);
 

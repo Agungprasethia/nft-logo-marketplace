@@ -180,19 +180,30 @@ class _AuctionPageState extends State<AuctionPage> {
   List<Bid> get _mergedBids {
     final Map<String, Bid> bidMap = {};
 
-    try {
-      final auction = _web3.allAuctions.firstWhere(
-        (a) => a.tokenId == widget.logo.tokenId || a.auctionId == widget.logo.tokenId,
-      );
-      for (final bid in auction.bids) {
-        bidMap[bid.bidderWallet.toLowerCase()] = bid;
+    // 1. Prioritaskan Firestore sebagai source of truth utama
+    // Untuk setiap wallet, simpan HANYA bid dengan amount TERBESAR
+    if (_firestoreBids.isNotEmpty) {
+      for (final bid in _firestoreBids) {
+        final walletKey = bid.bidderWallet.toLowerCase();
+        final existing = bidMap[walletKey];
+        if (existing == null || bid.amount > existing.amount) {
+          bidMap[walletKey] = bid;
+        }
       }
-    } catch (_) {}
+    }
 
-    for (final bid in _firestoreBids) {
-      final wallet = bid.bidderWallet.toLowerCase();
-      if (!bidMap.containsKey(wallet) || bidMap[wallet]!.amount < bid.amount) {
-        bidMap[wallet] = bid;
+    // 2. Web3 bids sebagai tambahan jika tidak ada di Firestore
+    final auction = _web3.allAuctions.cast<Auction?>().firstWhere(
+      (a) => a != null && (a.tokenId == widget.logo.tokenId || a.auctionId == widget.logo.tokenId),
+      orElse: () => null,
+    );
+
+    if (auction != null && auction.bids.isNotEmpty) {
+      for (final bid in auction.bids) {
+        final wallet = bid.bidderWallet.toLowerCase();
+        if (!bidMap.containsKey(wallet) || bidMap[wallet]!.amount < bid.amount) {
+          bidMap[wallet] = bid;
+        }
       }
     }
 
@@ -271,12 +282,25 @@ class _AuctionPageState extends State<AuctionPage> {
   Widget build(BuildContext context) {
     final logo = widget.logo;
 
-    final auction = _liveAuction ?? _web3.allAuctions.cast<Auction?>().firstWhere(
-      (a) => a!.tokenId == widget.logo.tokenId || a.auctionId == widget.logo.tokenId,
-      orElse: () => null,
-    );
+    final auction = _liveAuction ?? 
+      _web3.allAuctions.cast<Auction?>().firstWhere(
+        (a) => a!.tokenId == widget.logo.tokenId || a.auctionId == widget.logo.tokenId,
+        orElse: () => null,
+      ) ??
+      (widget.logo.isAuctionActive == true ? Auction(
+        auctionId: widget.logo.tokenId,
+        tokenId: widget.logo.tokenId,
+        sellerId: widget.logo.creatorId,
+        sellerWallet: widget.logo.creatorWallet,
+        startingPrice: widget.logo.price,
+        highestBid: widget.logo.highestBid,
+        status: AuctionStatus.active,
+        bids: [],
+        startTime: widget.logo.startTime ?? widget.logo.createdAt,
+        endTime: widget.logo.endTime ?? DateTime.now().add(const Duration(days: 1)),
+      ) : null);
 
-    debugPrint('ðŸ”¥ [AUCTION PAGE DEBUG] TokenID: ${logo.tokenId} | logo.highestBid: ${logo.highestBid} | auction.highestBid: ${auction?.highestBid}');
+    debugPrint('🔥 [AUCTION PAGE DEBUG] TokenID: ${logo.tokenId} | logo.highestBid: ${logo.highestBid} | auction.highestBid: ${auction?.highestBid}');
     debugPrint("Auction NFT: ${logo.tokenId}");
     debugPrint("Status: ${logo.status}");
     debugPrint("Auction Status: ${logo.auctionStatus}");
@@ -761,7 +785,7 @@ class _AuctionPageState extends State<AuctionPage> {
               children: [
                 if (_web3.currentAddress?.toLowerCase() ==
                     logo.highestBidderWallet?.toLowerCase())
-                  const Text('ðŸŽ‰', style: TextStyle(fontSize: 32))
+                  const Text('🎉', style: TextStyle(fontSize: 32))
                 else
                   const Icon(
                     Icons.payment,
@@ -848,7 +872,7 @@ class _AuctionPageState extends State<AuctionPage> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        isCreator ? 'Winner failed to pay. You may request a re-auction.' : 'The winner failed to complete the payment before the deadline.',
+                        isOwner ? 'Winner failed to pay. You may request a re-auction.' : 'The winner failed to complete the payment before the deadline.',
                         style: AppTextStyles.bodySmall.copyWith(
                           color: AppColors.danger,
                         ),
@@ -1973,7 +1997,7 @@ class _AuctionPageState extends State<AuctionPage> {
                           ),
                           const SizedBox(width: 6),
                           Text(
-                            'Â· No wallet charge',
+                            '· No wallet charge',
                             style: AppTextStyles.labelSmall.copyWith(
                               color: AppColors.success.withValues(alpha: 0.8),
                             ),
@@ -2031,7 +2055,7 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        if (isCreator) ...[
+        if (isOwner) ...[
           if (isLive && _mergedBids.isEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: AppSpacing.lg),
@@ -2260,7 +2284,7 @@ class _AuctionPageState extends State<AuctionPage> {
             const SizedBox(width: 16),
             Expanded(
               child: Text(
-                'â€”',
+                '\u2014',
                 style: AppTextStyles.labelLarge.copyWith(
                   color: AppColors.textSecondary.withValues(alpha: 0.3),
                 ),
@@ -2271,119 +2295,130 @@ class _AuctionPageState extends State<AuctionPage> {
       );
     }
 
+    final lowerWallet = bid.bidderWallet.toLowerCase();
+    
+    if (_userCache.containsKey(lowerWallet)) {
+      final user = _userCache[lowerWallet];
+      return _buildLeaderboardItemContent(user, bid, rank, rankColor, rankIcon, key: key);
+    }
+
     return FutureBuilder<UserModel?>(
       key: key,
       future: _resolveUser(bid.bidderWallet, bid.bidderId),
       builder: (context, snapshot) {
         final user = snapshot.data;
-        
-        final displayName = UserDisplayUtils.getDisplayName(user, bid.bidderWallet);
-        final country = user?.country ?? 'Unknown';
+        return _buildLeaderboardItemContent(user, bid, rank, rankColor, rankIcon);
+      }
+    );
+  }
 
-        return Container(
-          margin: const EdgeInsets.only(bottom: AppSpacing.sm),
-          padding: const EdgeInsets.all(AppSpacing.md),
-          decoration: BoxDecoration(
-            color: AppColors.surface,
-            borderRadius: BorderRadius.circular(AppRadius.lg),
-            border: Border.all(
-              color: rank <= 3 ? rankColor.withValues(alpha: 0.3) : AppColors.border,
-              width: 1,
-            ),
-            boxShadow: rank <= 3
-                ? [
-                    BoxShadow(
-                      color: rankColor.withValues(alpha: 0.15),
-                      blurRadius: 10,
-                      spreadRadius: 1,
-                    ),
-                  ]
-                : null,
-          ),
-          child: Row(
-            children: [
-              // Rank Badge
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: rank <= 3
-                      ? rankColor.withValues(alpha: 0.1)
-                      : AppColors.card,
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: rank <= 3 ? rankColor : Colors.transparent,
-                  ),
+  Widget _buildLeaderboardItemContent(UserModel? user, Bid bid, int rank, Color rankColor, IconData? rankIcon, {Key? key}) {
+    final displayName = UserDisplayUtils.getDisplayName(user, bid.bidderWallet);
+    final country = user?.country ?? 'Unknown';
+
+    return Container(
+      key: key,
+      margin: const EdgeInsets.only(bottom: AppSpacing.sm),
+      padding: const EdgeInsets.all(AppSpacing.md),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(AppRadius.lg),
+        border: Border.all(
+          color: rank <= 3 ? rankColor.withValues(alpha: 0.3) : AppColors.border,
+          width: 1,
+        ),
+        boxShadow: rank <= 3
+            ? [
+                BoxShadow(
+                  color: rankColor.withValues(alpha: 0.15),
+                  blurRadius: 10,
+                  spreadRadius: 1,
                 ),
-                child: Center(
-                  child: rankIcon != null
-                      ? Icon(rankIcon, color: rankColor, size: 20)
-                      : Text(
-                          '#$rank',
-                          style: AppTextStyles.labelLarge.copyWith(
-                            color: AppColors.textSecondary,
-                          ),
-                        ),
-                ),
+              ]
+            : null,
+      ),
+      child: Row(
+        children: [
+          // Rank Badge
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: rank <= 3
+                  ? rankColor.withValues(alpha: 0.1)
+                  : AppColors.card,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: rank <= 3 ? rankColor : Colors.transparent,
               ),
-              const SizedBox(width: 16),
-              
-              // Avatar
-              UserDisplayUtils.buildAvatar(user, bid.bidderWallet, radius: 20, isFirst: rank == 1),
-              const SizedBox(width: 12),
-
-              // Bidder Info
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
+            ),
+            child: Center(
+              child: rankIcon != null
+                  ? Icon(rankIcon, color: rankColor, size: 20)
+                  : Text(
+                      '#$rank',
                       style: AppTextStyles.labelLarge.copyWith(
-                        color: AppColors.textPrimary,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      country,
-                      style: AppTextStyles.bodySmall.copyWith(
                         color: AppColors.textSecondary,
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
                     ),
-                    if (rank == 1) ...[
-                      const SizedBox(height: 4),
-                      Text(
-                        'Current Leader',
-                        style: AppTextStyles.labelSmall.copyWith(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ],
-                  ],
-                ),
-              ),
-              
-              // Amount
-              Flexible(
-                flex: 0,
-                child: Text(
-                  '${bid.amount.toStringAsFixed(4)} ETH',
+            ),
+          ),
+          const SizedBox(width: 16),
+          
+          // Avatar
+          UserDisplayUtils.buildAvatar(user, bid.bidderWallet, radius: 20, isFirst: rank == 1),
+          const SizedBox(width: 12),
+
+          // Bidder Info
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  displayName,
                   style: AppTextStyles.labelLarge.copyWith(
-                    color: rank == 1 ? rankColor : AppColors.textPrimary,
+                    color: AppColors.textPrimary,
                   ),
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                const SizedBox(height: 2),
+                Text(
+                  country,
+                  style: AppTextStyles.bodySmall.copyWith(
+                    color: AppColors.textSecondary,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                if (rank == 1) ...[
+                  const SizedBox(height: 4),
+                  Text(
+                    'Current Leader',
+                    style: AppTextStyles.labelSmall.copyWith(
+                      color: AppColors.primary,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                ],
+              ],
+            ),
           ),
-        );
-      }
+          
+          // Amount
+          Flexible(
+            flex: 0,
+            child: Text(
+              '${bid.amount.toStringAsFixed(4)} ETH',
+              style: AppTextStyles.labelLarge.copyWith(
+                color: rank == 1 ? rankColor : AppColors.textPrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -2433,7 +2468,7 @@ class _AuctionPageState extends State<AuctionPage> {
         onBid: (amount) async {
           try {
             final bid = Bid(
-              bidId: _web3.currentAddress!.toLowerCase(),
+              bidId: '${_web3.currentAddress!.toLowerCase()}_${DateTime.now().millisecondsSinceEpoch}',
               bidderId: AuthService.instance.currentUser?.uid ?? '',
               bidderWallet: _web3.currentAddress!,
               amount: amount,
@@ -2451,7 +2486,7 @@ class _AuctionPageState extends State<AuctionPage> {
             NotificationManager.show(
               context: context,
               title: 'Success',
-              message: 'Bid placed successfully! ðŸŽ‰',
+              message: 'Bid placed successfully! 🎉',
               type: NotificationType.success,
             );
           } catch (e) {

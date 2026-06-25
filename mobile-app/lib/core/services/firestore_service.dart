@@ -122,25 +122,27 @@ class FirestoreService {
         // Atomic update for status, visibility, and auction state
         transaction.update(docRef, {
           'status': 'approved',
-          'nftVisible': true,
           'auctionStatus': 'ACTIVE',
-          'isInAuction': true,
           'isAuctionActive': true,
-          'auctionCreated': true,
+          'isInAuction': true,
           'isActive': true,
+          'auctionCreated': true,
+          'nftVisible': true,
           'startTime': FieldValue.serverTimestamp(),
           'endTime': Timestamp.fromDate(endTime),
+          'creatorWallet': data['creatorWallet'] ?? data['creator'] ?? '',
+          'currentOwner': data['ownerWallet'] ?? '',
           'approvedBy': adminId,
           'approvedAt': FieldValue.serverTimestamp(),
           'copyrightVerifiedAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         });
 
-        // Create active auction document
+        // Create active auction document immediately
         final auctionData = {
-          'auctionId': tokenId, // Save real on-chain ID, typically tokenId
+          'auctionId': tokenId,
           'tokenId': tokenId,
-          'sellerId': data['ownerId'] as String? ?? '',
+          'status': 'active',
           'sellerWallet': data['ownerWallet'] as String? ?? '',
           'startingPrice': (data['price'] as num?)?.toDouble() ?? 0.0,
           'highestBid': (data['highestBid'] as num?)?.toDouble() ?? 0.0,
@@ -148,13 +150,15 @@ class FirestoreService {
           'highestBidderWallet': data['highestBidderWallet'] as String? ?? '',
           'startTime': FieldValue.serverTimestamp(),
           'endTime': Timestamp.fromDate(endTime),
-          'status': 'active',
           'totalBids': data['totalBids'] as int? ?? 0,
           'createdAt': FieldValue.serverTimestamp(),
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
         transaction.set(auctionRef, auctionData);
+        if (kDebugMode) {
+          debugPrint('APPROVE NFT:\nNFT=$tokenId\nStatus=approved\nVisible=true\nAuction=ACTIVE');
+        }
       });
 
       // Send notification
@@ -821,9 +825,82 @@ class FirestoreService {
     return _nftsCollection
         .snapshots()
         .map((snapshot) {
-      if (kDebugMode) { debugPrint("FIRESTORE DOCS = ${snapshot.docs.length}"); }
-      final list = snapshot.docs.map((doc) => LogoNFT.fromFirestore(doc.data())).toList();
-      if (kDebugMode) { debugPrint("PARSED NFT = ${list.length}"); }
+      if (kDebugMode) { debugPrint("STREAM SNAPSHOT: ${snapshot.docs.length} docs received"); }
+      final list = snapshot.docs.map((doc) {
+        final data = doc.data();
+        LogoNFT nft = LogoNFT.fromFirestore(data);
+
+        // ==========================================
+        // LEGACY NFT REPAIR (AUTO-CONVERT TO ACTIVE)
+        // ==========================================
+        if (nft.status == ValidationStatus.approved && 
+            (nft.auctionStatus == null || nft.auctionStatus == 'NONE' || nft.auctionStatus == '')) {
+            
+            final now = DateTime.now();
+            final defaultEndTime = now.add(const Duration(seconds: 86400));
+            
+            // 1. Background fix NFT document
+            _db.collection('nfts').doc(nft.tokenId.toString()).update({
+              'auctionStatus': 'ACTIVE',
+              'isAuctionActive': true,
+              'isInAuction': true,
+              'auctionCreated': true,
+              'nftVisible': true,
+              'startTime': FieldValue.serverTimestamp(),
+              'endTime': Timestamp.fromDate(defaultEndTime),
+            }).catchError((_) {});
+
+            // 2. Background create Auction document
+            _db.collection('auctions').doc(nft.tokenId.toString()).set({
+              'auctionId': nft.tokenId,
+              'tokenId': nft.tokenId,
+              'status': 'active',
+              'sellerWallet': nft.ownerWallet,
+              'startingPrice': nft.price,
+              'highestBid': nft.highestBid,
+              'highestBidderWallet': nft.highestBidderWallet,
+              'startTime': FieldValue.serverTimestamp(),
+              'endTime': Timestamp.fromDate(defaultEndTime),
+              'createdAt': FieldValue.serverTimestamp(),
+              'updatedAt': FieldValue.serverTimestamp(),
+            }, SetOptions(merge: true)).catchError((_) {});
+
+            // 3. Patch in memory so it appears immediately
+            nft = nft.copyWith(
+              auctionStatus: 'ACTIVE',
+              isAuctionActive: true,
+              isInAuction: true,
+              auctionCreated: true,
+              nftVisible: true,
+              endTime: defaultEndTime,
+            );
+            if (kDebugMode) { debugPrint('🔧 REPAIRED LEGACY NFT #${nft.tokenId} in stream'); }
+        }
+
+        // ==========================================
+        // DATA CONSISTENCY REPAIR (auctionStatus ACTIVE tapi isAuctionActive false)
+        // ==========================================
+        if (nft.auctionStatus?.toUpperCase() == 'ACTIVE' && 
+            nft.isAuctionActive != true &&
+            nft.endTime != null &&
+            DateTime.now().isBefore(nft.endTime!)) {
+          
+          nft = nft.copyWith(isAuctionActive: true);
+          
+          // Juga update ke Firestore agar konsisten untuk pembacaan selanjutnya
+          _nftsCollection.doc(nft.tokenId.toString()).update({
+            'isAuctionActive': true,
+          }).catchError((e) {
+            if (kDebugMode) { debugPrint('⚠️ Failed to repair isAuctionActive for tokenId ${nft.tokenId}: $e'); }
+          });
+        }
+
+        if (kDebugMode) {
+          debugPrint("PARSED NFT:\nID=${nft.tokenId}\nStatus=${nft.status}\nVisible=${nft.nftVisible}\nAuctionActive=${nft.isAuctionActive}\nEndTime=${nft.endTime}");
+        }
+        return nft;
+      }).toList();
+      if (kDebugMode) { debugPrint("PARSED DOCS=${list.length}"); }
       
       // Client-side filtering to avoid composite index requirement
       final allowedStatuses = [
@@ -835,8 +912,26 @@ class FirestoreService {
       ];
       
       final filteredList = list.where((nft) => allowedStatuses.contains(nft.status) && nft.nftVisible).toList();
-      if (kDebugMode) { debugPrint("FILTERED NFT = ${filteredList.length}"); }
+      if (kDebugMode) { debugPrint("FILTERED DOCS=${filteredList.length}"); }
       filteredList.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+      int visibleCount = 0;
+      int approvedCount = 0;
+      int auctionCount = 0;
+
+      for (var nft in list) {
+        if (nft.nftVisible) visibleCount++;
+        if (nft.status == ValidationStatus.approved) approvedCount++;
+        if (nft.isAuctionActive || (nft.auctionStatus ?? '').toUpperCase() == 'ACTIVE') {
+          auctionCount++;
+        }
+      }
+
+      if (kDebugMode) {
+        debugPrint('NFT COUNT: ${snapshot.docs.length}');
+        debugPrint('VISIBLE NFT COUNT: $visibleCount');
+        debugPrint('APPROVED NFT COUNT: $approvedCount');
+        debugPrint('ACTIVE AUCTION COUNT: $auctionCount');
+      }
       
       return filteredList;
     });
@@ -1081,26 +1176,29 @@ class FirestoreService {
       final nftRef = _nftsCollection.doc(tokenId.toString());
       
       // Anti-spam check: 1 wallet can only bid every 3 seconds
-      final existingBidDoc = await nftRef.collection('bids').doc(bid.bidderWallet).get();
-      bool isNewBidder = true;
-      
-      if (existingBidDoc.exists) {
-         isNewBidder = false;
-         final lastBidData = existingBidDoc.data()!;
-         DateTime? lastTime;
-         if (lastBidData['firstBidTimestamp'] is int) {
-           lastTime = DateTime.fromMillisecondsSinceEpoch(lastBidData['firstBidTimestamp'] as int);
-         } else if (lastBidData['firstBidTimestamp'] != null) {
-           try {
-             lastTime = (lastBidData['firstBidTimestamp'] as dynamic).toDate();
-           } catch (_) {}
-         }
-         if (lastTime != null && DateTime.now().difference(lastTime).inSeconds < 3) {
-           throw Exception('Please wait before placing another bid');
-         }
+      final existingBidsQuery = await nftRef.collection('bids')
+        .where('bidderWallet', isEqualTo: bid.bidderWallet.toLowerCase())
+        .orderBy('firstBidTimestamp', descending: true)
+        .limit(1)
+        .get();
+
+      bool isNewBidder = existingBidsQuery.docs.isEmpty;
+
+      if (!isNewBidder) {
+        final lastBidData = existingBidsQuery.docs.first.data();
+        DateTime? lastTime;
+        final firstBidTs = lastBidData['firstBidTimestamp'];
+        if (firstBidTs is int) {
+          lastTime = DateTime.fromMillisecondsSinceEpoch(firstBidTs);
+        } else if (firstBidTs is Timestamp) {
+          lastTime = firstBidTs.toDate();
+        }
+        if (lastTime != null && DateTime.now().difference(lastTime).inSeconds < 3) {
+          throw Exception('Please wait before placing another bid');
+        }
       }
 
-      final bidsRef = nftRef.collection('bids').doc(bid.bidderWallet);
+      final bidsRef = nftRef.collection('bids').doc(bid.bidId);
 
       String previousHighestBidder = '';
       String ownerWallet = '';
@@ -1129,8 +1227,6 @@ class FirestoreService {
         final isAuctionActive = data['isAuctionActive'] as bool? ?? false;
         final isFrozen = data['isFrozen'] as bool? ?? false;
 
-        final creatorId = data['creatorId'] as String? ?? '';
-        final creatorWallet = data['creatorWallet'] as String? ?? '';
 
         // ══════ STRICT ENFORCEMENT ══════
         if (bid.bidderWallet.toLowerCase() == ownerWallet) {
@@ -1144,12 +1240,20 @@ class FirestoreService {
           throw Exception('Auction is not active');
         }
 
-        final endTimeMs = data['endTime'] as int? ?? 0;
-        if (endTimeMs > 0) {
-          final endTime = DateTime.fromMillisecondsSinceEpoch(endTimeMs);
-          if (DateTime.now().isAfter(endTime)) {
-            throw Exception('Auction has ended');
+        DateTime? endTime;
+        final endTimeRaw = data['endTime'];
+        if (endTimeRaw is int && endTimeRaw > 0) {
+          // Guard: detect seconds vs milliseconds (same fix as models/auction.dart)
+          if (endTimeRaw < 10000000000) { // likely seconds (up to year 2286)
+            endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw * 1000);
+          } else {
+            endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw);
           }
+        } else if (endTimeRaw is Timestamp) {
+          endTime = endTimeRaw.toDate();
+        }
+        if (endTime != null && DateTime.now().isAfter(endTime)) {
+          throw Exception('Auction has ended');
         }
 
         // Validate bid amount (Minimum Increment Rule)
@@ -1486,13 +1590,34 @@ class FirestoreService {
             id: winnerNotifId,
             title: 'You Won the Auction! 🏆',
             message: 'Complete payment of ${highestBid.toStringAsFixed(4)} ETH for NFT #$tokenId within 24 hours to claim ownership.',
-            type: NotificationType.success,
+            type: NotificationType.auctionWon,
             category: 'auction',
             createdAt: DateTime.now(),
             isRead: false,
             actionRoute: '/auction/$tokenId',
           );
           await saveNotification(highestBidderWallet, winnerNotif);
+
+          // Get all bidders to send auctionLost
+          final bidsSnapshot = await nftRef.collection('bids').get();
+          final allBidderWallets = bidsSnapshot.docs.map((d) => d.data()['bidderWallet'] as String).toSet();
+          
+          for (final wallet in allBidderWallets) {
+            if (wallet.isNotEmpty && wallet != highestBidderWallet) {
+              final lostNotifId = _userNotificationsCollection(wallet).doc().id;
+              final lostNotif = AppNotification(
+                id: lostNotifId,
+                title: 'Auction Ended',
+                message: 'You did not win the auction for NFT #$tokenId. Better luck next time!',
+                type: NotificationType.auctionLost,
+                category: 'auction',
+                createdAt: DateTime.now(),
+                isRead: false,
+                actionRoute: '/auction/$tokenId',
+              );
+              await saveNotification(wallet, lostNotif);
+            }
+          }
 
           // Send notification to creator
           final creatorWallet = data['ownerWallet'] as String?;
@@ -1543,6 +1668,18 @@ class FirestoreService {
               title: 'Auction Ended (Unsold) 📉',
               message: 'Your auction for $nftName ended with no bids. You can relist it anytime.',
               type: NotificationType.unsoldAuction,
+              category: 'auction',
+              createdAt: DateTime.now(),
+              isRead: false,
+              actionRoute: '/nft/$tokenId',
+            ));
+
+            final relistNotifId = _userNotificationsCollection(creatorWallet).doc().id;
+            saveNotification(creatorWallet, AppNotification(
+              id: relistNotifId,
+              title: 'Relist Available',
+              message: 'Your NFT $nftName is now available to be relisted for auction.',
+              type: NotificationType.relistAvailable,
               category: 'auction',
               createdAt: DateTime.now(),
               isRead: false,
@@ -1871,8 +2008,8 @@ class FirestoreService {
       final winnerNotif = AppNotification(
         id: winnerNotifId,
         title: 'Payment Successful! 🎉',
-        message: 'Your payment for NFT #$tokenId has been verified on-chain. The NFT is now yours!',
-        type: NotificationType.success,
+        message: 'Payment successful! Ownership transferred. Tx: ${txHash.length >= 10 ? txHash.substring(0, 10) : txHash}...',
+        type: NotificationType.paymentSuccess,
         category: 'auction',
         createdAt: DateTime.now(),
         isRead: false,
@@ -2079,6 +2216,12 @@ class FirestoreService {
     try {
       final now = DateTime.now().millisecondsSinceEpoch;
       
+      int parseDeadline(dynamic raw) {
+        if (raw is int) return raw;
+        if (raw is Timestamp) return raw.toDate().millisecondsSinceEpoch;
+        return 0;
+      }
+
       // We look at NFTs that are PAYMENT_PENDING
       final querySnapshot = await _nftsCollection
           .where('auctionStatus', isEqualTo: 'PAYMENT_PENDING')
@@ -2087,7 +2230,7 @@ class FirestoreService {
 
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
-        final deadline = data['paymentDeadline'] as int? ?? 0;
+        final deadline = parseDeadline(data['paymentDeadline']);
         
         if (deadline > 0 && deadline < now) {
           final tokenId = int.parse(doc.id);
@@ -2103,7 +2246,7 @@ class FirestoreService {
             // Re-verify in transaction
             final nftData = nftDoc.data()!;
             if (nftData['auctionStatus'] != 'PAYMENT_PENDING') return;
-            final currentDeadline = nftData['paymentDeadline'] as int? ?? 0;
+            final currentDeadline = parseDeadline(nftData['paymentDeadline']);
             if (currentDeadline == 0 || currentDeadline >= now) return;
 
             final highestBidderWallet = nftData['highestBidderWallet'] as String?;
@@ -2510,7 +2653,7 @@ class FirestoreService {
 
     int closedCount = 0;
     try {
-      final now = DateTime.now().millisecondsSinceEpoch;
+      final now = DateTime.now();
 
       final snapshot = await _auctionsCollection
           .where('status', isEqualTo: 'active')
@@ -2518,8 +2661,22 @@ class FirestoreService {
 
       for (final doc in snapshot.docs) {
         final data = doc.data();
-        final endTime = data['endTime'] as int? ?? 0;
-        if (endTime > 0 && endTime < now) {
+        DateTime? endTime;
+        final endTimeRaw = data['endTime'];
+        if (endTimeRaw is int && endTimeRaw > 0) {
+          // Guard: detect seconds vs milliseconds (same fix as models/auction.dart)
+          if (endTimeRaw < 10000000000) { // likely seconds (up to year 2286)
+            endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw * 1000);
+          } else {
+            endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw);
+          }
+        } else if (endTimeRaw is Timestamp) {
+          endTime = endTimeRaw.toDate();
+        }
+
+        if (endTime == null) continue;
+
+        if (now.isAfter(endTime)) {
           final auctionId = data['auctionId'] as int? ?? 0;
           final tokenId = data['tokenId'] as int? ?? 0;
 
@@ -2536,10 +2693,24 @@ class FirestoreService {
 
       for (final doc in nftSnapshot.docs) {
         final data = doc.data();
-        final endTime = data['endTime'] as int? ?? 0;
+        DateTime? endTime;
+        final endTimeRaw = data['endTime'];
+        if (endTimeRaw is int && endTimeRaw > 0) {
+          // Guard: detect seconds vs milliseconds (same fix as models/auction.dart)
+          if (endTimeRaw < 10000000000) { // likely seconds (up to year 2286)
+            endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw * 1000);
+          } else {
+            endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw);
+          }
+        } else if (endTimeRaw is Timestamp) {
+          endTime = endTimeRaw.toDate();
+        }
+
+        if (endTime == null) continue;
+
         final tokenId = data['tokenId'] as int? ?? 0;
         
-        if (endTime > 0 && endTime < now) {
+        if (now.isAfter(endTime)) {
           await endOffChainAuction(tokenId);
           closedCount++;
           if (kDebugMode) { debugPrint('⏰ Auto-closed expired NFT auction #$tokenId'); }
@@ -2646,8 +2817,8 @@ class FirestoreService {
           'status': 'auction',
           'price': newStartingPrice,
           'auctionDuration': newDuration,
-          'startTime': now.millisecondsSinceEpoch,
-          'endTime': endTime.millisecondsSinceEpoch,
+          'startTime': Timestamp.fromDate(now),
+          'endTime': Timestamp.fromDate(endTime),
           'highestBid': 0.0,
           'highestBidderWallet': '',
           'highestBidderId': '',
@@ -2722,8 +2893,8 @@ class FirestoreService {
           'isActive': true,
           'price': newStartingPrice,
           'auctionDuration': newDuration,
-          'startTime': now.millisecondsSinceEpoch,
-          'endTime': endTime.millisecondsSinceEpoch,
+          'startTime': Timestamp.fromDate(now),
+          'endTime': Timestamp.fromDate(endTime),
           'reAuctionDuration': FieldValue.delete(),
           'reAuctionStartingPrice': FieldValue.delete(),
           'reAuctionNotes': FieldValue.delete(),
@@ -3108,9 +3279,22 @@ class FirestoreService {
         // Calculate frozen remaining seconds if auction was active
         int? frozenRemainingSeconds;
         if (isAuctionActive && data['endTime'] != null) {
-          DateTime endTime = DateTime.fromMillisecondsSinceEpoch(data['endTime'] as int);
-          frozenRemainingSeconds = endTime.difference(DateTime.now()).inSeconds;
-          if (frozenRemainingSeconds < 0) frozenRemainingSeconds = 0;
+          final endTimeRaw = data['endTime'];
+          DateTime? endTime;
+          if (endTimeRaw is int && endTimeRaw > 0) {
+            // Guard: detect seconds vs milliseconds (same fix as models/auction.dart)
+            if (endTimeRaw < 10000000000) { // likely seconds (up to year 2286)
+              endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw * 1000);
+            } else {
+              endTime = DateTime.fromMillisecondsSinceEpoch(endTimeRaw);
+            }
+          } else if (endTimeRaw is Timestamp) {
+            endTime = endTimeRaw.toDate();
+          }
+          if (endTime != null) {
+            frozenRemainingSeconds = endTime.difference(DateTime.now()).inSeconds;
+            if (frozenRemainingSeconds < 0) frozenRemainingSeconds = 0;
+          }
         }
 
         // Create new Appeal Case

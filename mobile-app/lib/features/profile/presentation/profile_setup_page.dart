@@ -170,7 +170,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
       // Navigate to HomePage, clearing entire back-stack so user cannot go back.
       Navigator.of(context).pushAndRemoveUntil(
         PageRouteBuilder(
-          pageBuilder: (_, __, ___) => const HomePage(),
+          pageBuilder: (_, __, ___) => HomePage(),
           transitionsBuilder: (_, animation, __, child) =>
               FadeTransition(opacity: animation, child: child),
           transitionDuration: const Duration(milliseconds: 500),

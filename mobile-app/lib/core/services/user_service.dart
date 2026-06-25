@@ -5,11 +5,23 @@ import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 
 class UserService {
   static Future<void> saveProfile(UserModel user) async {
-    final uid = AuthService.instance.currentUser?.uid ?? user.uid;
-    if (uid.isEmpty) return;
+    String uid = AuthService.instance.currentUser?.uid ?? '';
+    
+    if (uid.isEmpty) {
+      if (user.uid.isNotEmpty) {
+        uid = user.uid;
+      } else if (user.walletAddress != null && user.walletAddress!.isNotEmpty) {
+        uid = user.walletAddress!.toLowerCase();
+      }
+    }
+
+    if (uid.isEmpty) {
+      throw Exception('Cannot save profile: No valid user ID or wallet address found.');
+    }
 
     // 1. Save user profile
     await FirebaseFirestore.instance.collection('users').doc(uid).set({
+      'uid': uid,
       'fullName': user.fullName,
       'username': user.username,
       'title': user.title,

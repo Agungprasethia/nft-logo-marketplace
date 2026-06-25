@@ -39,6 +39,8 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
   final List<Map<String, dynamic>> _durations = [
     {'label': '30 Seconds', 'value': 30},
     {'label': '1 Minute', 'value': 60},
+    {'label': '25 Minutes', 'value': 1500},
+    {'label': '30 Minutes', 'value': 1800},
     {'label': '1 Hour', 'value': 3600},
     {'label': '6 Hours', 'value': 21600},
     {'label': '12 Hours', 'value': 43200},

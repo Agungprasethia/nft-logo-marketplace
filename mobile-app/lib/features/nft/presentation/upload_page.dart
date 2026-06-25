@@ -158,8 +158,8 @@ class _UploadPageState extends State<UploadPage> {
       NotificationManager.show(
         context: context,
         title: 'Wrong Network',
-        message: 'Please switch to Sepolia Testnet (chainId: 11155111) in MetaMask',
-        type: NotificationType.warning,
+        message: 'Please switch your wallet to Sepolia Testnet',
+        type: NotificationType.error,
       );
       return;
     }
@@ -280,13 +280,23 @@ class _UploadPageState extends State<UploadPage> {
 
       if (!mounted) return;
       if (kDebugMode) { debugPrint('[MINT COMPLETE] âœ… NFT minted with REAL tokenId: ${mintedNFT.tokenId}'); }
+      if (kDebugMode) { debugPrint('[MINT COMPLETE] ✅ NFT minted with REAL tokenId: ${mintedNFT.tokenId}'); }
 
       setState(() {
         _statusMessage = 'Finalizing... 4/4';
       });
 
-      // â•â•â• STEP 4: SUCCESS â€” Reload data & show UI â•â•â•
+      // ═══ STEP 4: SUCCESS — Reload data & show UI ═══
       _web3.loadFromChain();
+
+      if (mintedNFT.txHash != null && mintedNFT.txHash!.isNotEmpty) {
+        NotificationManager.show(
+          context: context,
+          title: 'Transaction Confirmed',
+          message: 'Mint transaction confirmed on blockchain. Hash: ${mintedNFT.txHash!.length >= 10 ? mintedNFT.txHash!.substring(0, 10) : mintedNFT.txHash}...',
+          type: NotificationType.web3,
+        );
+      }
 
       // Show success dialog with IPFS info
       _showSuccessDialog(
@@ -299,7 +309,7 @@ class _UploadPageState extends State<UploadPage> {
       try {
         await NotificationService().showNotification(
           id: mintedNFT.tokenId % 100000,
-          title: 'NFT Submitted for Review! ðŸ“‹',
+          title: 'NFT Submitted for Review! 📋',
           body: 'Artwork "${mintedNFT.name}" is pending admin approval.\nToken ID: ${mintedNFT.tokenId}'
         );
       } catch (e) {
@@ -325,7 +335,7 @@ class _UploadPageState extends State<UploadPage> {
       String errorMessage = e.toString().replaceFirst("Exception: ", "");
       
       if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
-        errorMessage = 'Transaction cancelled';
+        errorMessage = 'User rejected the transaction';
       } else if (e.toString().contains('insufficient funds') || e.toString().contains('gas')) {
         errorMessage = 'Blockchain transaction failed';
       } else if (e.toString().contains('network') || e.toString().contains('Sepolia')) {
@@ -386,7 +396,7 @@ class _UploadPageState extends State<UploadPage> {
               ),
               const SizedBox(height: AppSpacing.lg),
               const Text(
-                'Submitted for Review! Ã°Å¸â€œâ€¹',
+                'Submitted for Review! 📋',
                 style: AppTextStyles.h2,
                 textAlign: TextAlign.center,
               ),
@@ -568,7 +578,7 @@ class _UploadPageState extends State<UploadPage> {
                                   ),
                                   const SizedBox(height: AppSpacing.sm),
                                   Text(
-                                    'PNG, JPG, GIF Ã¢â‚¬Â¢ Max 10MB',
+                                    'PNG, JPG, GIF • Max 10MB',
                                     style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary),
                                   ),
                                 ],
@@ -733,6 +743,26 @@ class _UploadPageState extends State<UploadPage> {
                                   Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
                                   SizedBox(width: AppSpacing.md),
                                   Text('10 Minutes'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 25,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
+                                  SizedBox(width: AppSpacing.md),
+                                  Text('25 Minutes'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 30,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
+                                  SizedBox(width: AppSpacing.md),
+                                  Text('30 Minutes'),
                                 ],
                               ),
                             ),

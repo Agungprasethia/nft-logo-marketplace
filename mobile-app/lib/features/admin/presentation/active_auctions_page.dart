@@ -477,7 +477,7 @@ class ActiveAuctionsPage extends StatelessWidget {
                                       ),
                                     ),
                                     if (isFirst)
-                                      Text('ðŸ‘‘ Highest Bidder', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
+                                      Text('👑 Highest Bidder', style: AppTextStyles.bodySmall.copyWith(color: AppColors.primary, fontWeight: FontWeight.w600)),
                                   ],
                                 ),
                               ),

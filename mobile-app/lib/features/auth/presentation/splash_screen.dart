@@ -100,8 +100,14 @@ class _SplashScreenState extends State<SplashScreen>
       final hasSession = await SessionService.instance.hasValidSession();
       
       if (hasSession) {
-        _splashState.value = SplashState.authenticated;
-        _performBackgroundValidation();
+        // Await the background validation (it has an 8-second internal timeout)
+        final restored = await _performBackgroundValidation();
+        
+        if (restored) {
+          _splashState.value = SplashState.authenticated;
+        } else {
+          _splashState.value = SplashState.unauthenticated;
+        }
 
         // ── Profile completion check ──────────────────────────────────────
         // Load the Firestore user document and verify all required fields are
@@ -125,20 +131,20 @@ class _SplashScreenState extends State<SplashScreen>
         }
         // ─────────────────────────────────────────────────────────────────
 
-        _navigateTo(const HomePage());
+        _navigateTo(HomePage());
       } else {
         _splashState.value = SplashState.unauthenticated;
-        _navigateTo(const HomePage());
+        _navigateTo(HomePage());
       }
 
     } catch (e) {
       if (kDebugMode) { debugPrint('Boot error: $e'); }
       _splashState.value = SplashState.error;
-      _navigateTo(const HomePage());
+      _navigateTo(HomePage());
     }
   }
 
-  void _performBackgroundValidation() async {
+  Future<bool> _performBackgroundValidation() async {
     try {
       final session = await SessionService.instance.getSession();
       final success = await Future.any([
@@ -154,7 +160,7 @@ class _SplashScreenState extends State<SplashScreen>
         
         // Check for wrong network after successful connection
         if (Web3Service.instance.chainId != 11155111) {
-          if (!mounted) return;
+          if (!mounted) return false;
           NotificationManager.show(
             context: context,
             type: NotificationType.warning,
@@ -162,7 +168,7 @@ class _SplashScreenState extends State<SplashScreen>
             message: 'Wrong blockchain network detected.',
           );
         } else {
-          if (!mounted) return;
+          if (!mounted) return false;
           NotificationManager.show(
             context: context,
             type: NotificationType.success,
@@ -170,18 +176,21 @@ class _SplashScreenState extends State<SplashScreen>
             message: 'Wallet session restored successfully.',
           );
         }
+        return true;
       } else {
         // Silent restore failed
-        if (!mounted) return;
+        if (!mounted) return false;
         NotificationManager.show(
           context: context,
           type: NotificationType.error,
           title: 'Validation Failed',
           message: 'Session validation failed. Please reconnect.',
         );
+        return false;
       }
     } catch (e) {
       if (kDebugMode) { debugPrint('Background validation error: $e'); }
+      return false;
     }
   }
 
@@ -201,7 +210,7 @@ class _SplashScreenState extends State<SplashScreen>
   String _getStatusText(SplashState state) {
     switch (state) {
       case SplashState.initializing: return 'Initializing...';
-      case SplashState.restoringSession: return 'Restoring Secure Wallet Session...';
+      case SplashState.restoringSession: return 'Restoring wallet...';
       case SplashState.validatingWallet: return 'Validating Wallet...';
       case SplashState.wrongNetwork: return 'Wrong Network Detected';
       case SplashState.authenticated: return 'Welcome back!';

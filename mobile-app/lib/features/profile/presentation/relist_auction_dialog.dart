@@ -32,6 +32,8 @@ class _RelistAuctionDialogState extends State<RelistAuctionDialog> {
   bool _isLoading = false;
 
   final List<Map<String, dynamic>> _durations = [
+    {'label': '25 Minutes', 'value': 1500},
+    {'label': '30 Minutes', 'value': 1800},
     {'label': '12 Hours', 'value': 43200},
     {'label': '24 Hours', 'value': 86400},
     {'label': '3 Days', 'value': 259200},

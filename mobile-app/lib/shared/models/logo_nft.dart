@@ -349,15 +349,35 @@ class LogoNFT {
 
   /// Parse DateTime from either int (milliseconds) or String (ISO8601)
   static DateTime _parseDateTimeFlex(dynamic value, {DateTime? fallback}) {
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        value < 10000000000 ? value * 1000 : value,
+      );
+    }
     if (value is String) return DateTime.parse(value);
+    if (value is Map) {
+      final seconds = value['_seconds'] as int?;
+      if (seconds != null) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
+    }
     return fallback ?? DateTime.now();
   }
 
   static DateTime? _parseDateTimeFlexNullable(dynamic value) {
     if (value == null) return null;
-    if (value is int) return DateTime.fromMillisecondsSinceEpoch(value);
+    if (value is int) {
+      return DateTime.fromMillisecondsSinceEpoch(
+        value < 10000000000 ? value * 1000 : value,
+      );
+    }
     if (value is String) return DateTime.parse(value);
+    if (value is Map) {
+      final seconds = value['_seconds'] as int?;
+      if (seconds != null) {
+        return DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
+    }
     return null;
   }
 
@@ -591,9 +611,15 @@ class LogoNFT {
 
     DateTime? parsedEndTime;
     if (data['endTime'] is int) {
-      parsedEndTime = DateTime.fromMillisecondsSinceEpoch(data['endTime'] as int);
+      final raw = data['endTime'] as int;
+      parsedEndTime = DateTime.fromMillisecondsSinceEpoch(raw < 10000000000 ? raw * 1000 : raw);
     } else if (data['endTime'] is Timestamp) {
       parsedEndTime = (data['endTime'] as Timestamp).toDate();
+    } else if (data['endTime'] is Map) {
+      final seconds = data['endTime']['_seconds'] as int?;
+      if (seconds != null) {
+        parsedEndTime = DateTime.fromMillisecondsSinceEpoch(seconds * 1000);
+      }
     }
 
     DateTime? parsedPaymentDeadline;
