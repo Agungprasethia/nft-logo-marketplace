@@ -77,7 +77,9 @@ class _PendingNftPageState extends State<PendingNftPage> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              GridView.builder(
+              RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: GridView.builder(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
@@ -91,6 +93,7 @@ class _PendingNftPageState extends State<PendingNftPage> {
                   return _buildPendingNFTCard(context, pendingList[index]);
                 },
               ),
+    ),
             ],
           ),
         );

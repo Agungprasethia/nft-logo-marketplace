@@ -1,8 +1,13 @@
 import 'package:flutter/material.dart';
 
-class LogoDetailPage extends StatelessWidget {
+class LogoDetailPage extends StatefulWidget {
   const LogoDetailPage({super.key});
 
+  @override
+  State<LogoDetailPage> createState() => _LogoDetailPageState();
+}
+
+class _LogoDetailPageState extends State<LogoDetailPage> {
   // Colors based on the specification
   static const Color primaryBlue = Color(0xFF2563EB);
   static const Color successGreen = Color(0xFF22C55E);
@@ -46,7 +51,9 @@ class LogoDetailPage extends StatelessWidget {
 
         ],
       ),
-      body: SingleChildScrollView(
+      body: RefreshIndicator(
+      onRefresh: () async { if (mounted) setState(() {}); },
+      child: SingleChildScrollView(
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(
@@ -91,6 +98,7 @@ class LogoDetailPage extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 

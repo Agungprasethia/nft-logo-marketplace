@@ -150,7 +150,9 @@ class _AppealCasePageState extends State<AppealCasePage> {
                         child: Text('No messages yet.', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
                       );
                     }
-                    return ListView.builder(
+                    return RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: ListView.builder(
                       reverse: true, // Newest at bottom visually
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                       itemCount: messages.length,
@@ -200,7 +202,8 @@ class _AppealCasePageState extends State<AppealCasePage> {
                           ),
                         );
                       },
-                    );
+                    ),
+    );
                   },
                 ),
               ),

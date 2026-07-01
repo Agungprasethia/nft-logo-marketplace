@@ -214,7 +214,9 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
 
                       // ── Form ─────────────────────────────────────────────
                       Expanded(
-                        child: SingleChildScrollView(
+                        child: RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: SingleChildScrollView(
                           padding: const EdgeInsets.fromLTRB(
                             AppSpacing.xl, AppSpacing.lg,
                             AppSpacing.xl, 40,
@@ -303,6 +305,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
                             ),
                           ),
                         ),
+    ),
                       ),
                     ],
                   ),

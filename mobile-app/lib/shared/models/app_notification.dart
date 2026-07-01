@@ -16,7 +16,10 @@ enum NotificationType {
   nftRejected,
   unsoldAuction,
   relistAvailable,
-  web3
+  web3,
+  reportSubmitted,
+  reportResolved,
+  nftFrozen
 }
 
 class AppNotification {
@@ -26,6 +29,7 @@ class AppNotification {
   final String message;
   final NotificationType type;
   final bool isRead;
+  final bool isPushSent;
   final DateTime createdAt;
   final String? relatedId;   // e.g., tokenId or auctionId
   final String? category;    // e.g., 'auction', 'system'
@@ -39,6 +43,7 @@ class AppNotification {
     required this.createdAt,
     String? userWallet,
     this.isRead = false,
+    this.isPushSent = false,
     this.relatedId,
     this.category,
     this.actionRoute,
@@ -52,6 +57,7 @@ class AppNotification {
       message: json['message'] ?? '',
       type: _parseNotificationType(json['type'] ?? 'info'),
       isRead: json['isRead'] ?? false,
+      isPushSent: json['isPushSent'] ?? false,
       createdAt: (json['createdAt'] as Timestamp?)?.toDate() ?? DateTime.now(),
       relatedId: json['relatedId'],
       category: json['category'],
@@ -66,6 +72,7 @@ class AppNotification {
       'message': message,
       'type': type.name,
       'isRead': isRead,
+      'isPushSent': isPushSent,
       'createdAt': Timestamp.fromDate(createdAt),
       if (relatedId != null) 'relatedId': relatedId,
       if (category != null) 'category': category,
@@ -83,6 +90,7 @@ class AppNotification {
     String? message,
     NotificationType? type,
     bool? isRead,
+    bool? isPushSent,
     DateTime? createdAt,
     String? relatedId,
     String? category,
@@ -95,6 +103,7 @@ class AppNotification {
       message: message ?? this.message,
       type: type ?? this.type,
       isRead: isRead ?? this.isRead,
+      isPushSent: isPushSent ?? this.isPushSent,
       createdAt: createdAt ?? this.createdAt,
       relatedId: relatedId ?? this.relatedId,
       category: category ?? this.category,

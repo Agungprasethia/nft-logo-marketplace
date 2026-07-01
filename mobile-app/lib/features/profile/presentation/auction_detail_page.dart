@@ -296,7 +296,9 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
                 );
               }
               
-              return ListView.separated(
+              return RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: bids.length,
@@ -337,7 +339,8 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
                     trailing: Text('${bid.amount} ETH', style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary)),
                   );
                 },
-              );
+              ),
+    );
             },
           ),
         ),

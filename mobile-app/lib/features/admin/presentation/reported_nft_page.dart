@@ -69,7 +69,9 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
           );
         }
 
-        return ListView.builder(
+        return RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: ListView.builder(
           padding: const EdgeInsets.all(AppSpacing.lg),
           itemCount: reportedList.length,
           itemBuilder: (context, index) {
@@ -78,7 +80,8 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
               child: _buildReportedNFTCard(context, reportedList[index]),
             );
           },
-        );
+        ),
+    );
       }
     );
   }

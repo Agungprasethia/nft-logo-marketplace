@@ -129,7 +129,9 @@ class _ReAuctionRequestsPageState extends State<ReAuctionRequestsPage> {
           );
         }
 
-        return ListView.builder(
+        return RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: ListView.builder(
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: requests.length,
           itemBuilder: (context, index) {
@@ -281,7 +283,8 @@ class _ReAuctionRequestsPageState extends State<ReAuctionRequestsPage> {
               ),
             );
           },
-        );
+        ),
+    );
       },
     );
   }

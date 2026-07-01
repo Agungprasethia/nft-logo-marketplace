@@ -129,7 +129,9 @@ class _LoginPageState extends State<LoginPage> {
     return Scaffold(
       backgroundColor: AppColors.background,
       body: Center(
-        child: SingleChildScrollView(
+        child: RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: SingleChildScrollView(
           padding: const EdgeInsets.all(AppSpacing.xxxl),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 1000),
@@ -274,6 +276,7 @@ class _LoginPageState extends State<LoginPage> {
           ),
         ),
       ),
+    ),
       ),
     );
   }

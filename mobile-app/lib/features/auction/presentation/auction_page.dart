@@ -448,7 +448,9 @@ class _AuctionPageState extends State<AuctionPage> {
             return Center(
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
-                child: SingleChildScrollView(
+                child: RefreshIndicator(
+      onRefresh: () async { _retryLoading(); },
+      child: SingleChildScrollView(
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.sectionPadding,
                     vertical: AppSpacing.lg,
@@ -482,6 +484,7 @@ class _AuctionPageState extends State<AuctionPage> {
                     ],
                   ),
                 ),
+    ),
               ),
             );
           } else {

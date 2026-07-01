@@ -14,10 +14,16 @@ class _NotificationColors {
   static const Color unreadBg = Color(0xFF0C4A6E);
 }
 
-class NotificationsPage extends StatelessWidget {
+class NotificationsPage extends StatefulWidget {
   final String userWallet;
 
   const NotificationsPage({super.key, required this.userWallet});
+
+  @override
+  State<NotificationsPage> createState() => _NotificationsPageState();
+}
+
+class _NotificationsPageState extends State<NotificationsPage> {
 
   IconData _getIconForType(NotificationType type) {
     switch (type) {
@@ -91,7 +97,7 @@ class NotificationsPage extends StatelessWidget {
             icon: const Icon(Icons.done_all),
             tooltip: 'Mark all as read',
             onPressed: () {
-              FirestoreService.instance.markAllNotificationsAsRead(userWallet);
+              FirestoreService.instance.markAllNotificationsAsRead(widget.userWallet);
               ScaffoldMessenger.of(context).showSnackBar(
                 const SnackBar(content: Text('All notifications marked as read')),
               );
@@ -114,7 +120,7 @@ class NotificationsPage extends StatelessWidget {
                     ),
                     TextButton(
                       onPressed: () {
-                        FirestoreService.instance.clearAllNotifications(userWallet);
+                        FirestoreService.instance.clearAllNotifications(widget.userWallet);
                         Navigator.pop(context);
                       },
                       child: Text('Clear', style: GoogleFonts.inter(color: Colors.redAccent)),
@@ -127,7 +133,7 @@ class NotificationsPage extends StatelessWidget {
         ],
       ),
       body: StreamBuilder<List<AppNotification>>(
-        stream: FirestoreService.instance.getNotificationsStream(userWallet),
+        stream: FirestoreService.instance.getNotificationsStream(widget.userWallet),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const Center(
@@ -170,7 +176,9 @@ class NotificationsPage extends StatelessWidget {
             );
           }
 
-          return ListView.separated(
+          return RefreshIndicator(
+      onRefresh: () async { if (mounted) setState(() {}); },
+      child: ListView.separated(
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: notifications.length,
             separatorBuilder: (context, index) => const Divider(
@@ -182,7 +190,7 @@ class NotificationsPage extends StatelessWidget {
               return InkWell(
                 onTap: () {
                   if (!notification.isRead) {
-                    FirestoreService.instance.markNotificationAsRead(userWallet, notification.id);
+                    FirestoreService.instance.markNotificationAsRead(widget.userWallet, notification.id);
                   }
                   // Optionally navigate to specific page based on notification type / relatedId
                 },
@@ -265,7 +273,8 @@ class NotificationsPage extends StatelessWidget {
                 ),
               );
             },
-          );
+          ),
+    );
         },
       ),
     );

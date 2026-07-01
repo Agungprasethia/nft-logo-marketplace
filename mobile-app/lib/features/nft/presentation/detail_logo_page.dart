@@ -166,7 +166,9 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           final auctionCreated = data['auctionCreated'] ?? false;
           final isActive = data['isActive'] ?? true;
 
-          return CustomScrollView(
+          return RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: CustomScrollView(
             slivers: [
               // ─────── App Bar ───────
               SliverAppBar(
@@ -236,7 +238,8 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
-          );
+          ),
+    );
         }
       ),
     );

@@ -199,20 +199,44 @@ class _WalletConnectModalState extends State<WalletConnectModal>
 
   // ── Finalise connection into Web3Service ──────────────────────────────────
 
-  /// Called when WalletConnectService has a session but Web3Service hasn't
-  /// picked it up yet (event-driven path failed on this device).
-  /// Delegates to connectWallet(restoreSession:false) which will see the
-  /// already-connected WalletConnectService and complete immediately.
   Future<void> _finaliseConnection() async {
     try {
-      // WalletConnectService already has the session; connectMobileWallet
-      // checks _walletConnect.isConnected and short-circuits to state update.
+      if (mounted && !_isClosing) setState(() => _state = _ConnState.checking);
+      
+      await Future.delayed(const Duration(milliseconds: 800));
+      if (WalletConnectService.instance.isConnected) { _safePop(true); return; }
+
       final ok = await Web3Service.instance
           .connectWallet(walletName: _selectedWallet, restoreSession: false)
-          .timeout(const Duration(seconds: 10));
-      if (ok && mounted && !_isClosing) _safePop(true);
-    } catch (_) {
-      // Silent — polling will retry
+          .timeout(const Duration(seconds: 15));
+          
+      if (ok && mounted && !_isClosing) {
+        _safePop(true);
+      } else {
+        if (mounted && !_isClosing) {
+          setState(() => _state = _ConnState.timeout);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Connection failed or timed out. Please try again.'),
+              backgroundColor: Colors.redAccent,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted && !_isClosing) {
+        setState(() => _state = _ConnState.timeout);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Connection error. Please make sure you approved in MetaMask.'),
+            backgroundColor: Colors.redAccent,
+          ),
+        );
+      }
+    } finally {
+      if (mounted && !_isClosing && _state == _ConnState.checking) {
+        setState(() => _state = _ConnState.timeout);
+      }
     }
   }
 
@@ -240,12 +264,14 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       final web3App = WalletConnectService.instance.web3App;
       if (web3App != null) {
         if (kDebugMode) debugPrint('[RELAY] RECONNECT_START');
-        await web3App.core.relayClient.connect();
+        await web3App.core.relayClient.connect().timeout(const Duration(seconds: 3), onTimeout: () {});
         if (kDebugMode) debugPrint('[RELAY] RECONNECT_SUCCESS');
       }
     } catch (_) {
       // Ignore if already connected or error
     }
+
+    if (mounted && !_isClosing && _state != _ConnState.idle) { _startPoller(maxSeconds: 30); }
 
     // Immediate synchronous check
     if (Web3Service.instance.isConnected) {

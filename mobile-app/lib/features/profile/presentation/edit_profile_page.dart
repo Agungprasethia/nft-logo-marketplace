@@ -453,7 +453,9 @@ class _EditProfilePageState extends State<EditProfilePage> {
           ],
         ),
         body: SafeArea(
-          child: CustomScrollView(
+          child: RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: CustomScrollView(
             slivers: [
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.lg),
@@ -757,6 +759,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
               ),
             ],
           ),
+    ),
         ),
       ),
     );

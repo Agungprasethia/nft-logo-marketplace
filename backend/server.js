@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const cronService = require('./src/cron/cronService');
+const fcmNotificationService = require('./src/fcmNotificationService');
 
 const { admin } = require('./src/config/firebase');
 
@@ -19,6 +20,9 @@ app.get('/', (req, res) => {
 
 // Start Cron Jobs
 cronService.startCronJobs();
+
+// Start FCM Notification Listener
+fcmNotificationService.startFCMNotificationListener();
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {

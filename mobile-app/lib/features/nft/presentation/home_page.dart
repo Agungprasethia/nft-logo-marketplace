@@ -420,13 +420,19 @@ class HomePageState extends State<HomePage> {
                                                   Container(
                                                     width: 6,
                                                     height: 6,
-                                                    decoration: const BoxDecoration(color: AppColors.success, shape: BoxShape.circle),
+                                                    decoration: BoxDecoration(
+                                                      color: !_web3.isConnected ? AppColors.textSecondary : (_web3.chainId != Web3ServiceBase.sepoliaChainId ? AppColors.danger : AppColors.success),
+                                                      shape: BoxShape.circle,
+                                                    ),
                                                   ),
                                                   const SizedBox(width: 4),
                                                   Flexible(
                                                     child: Text(
-                                                      'Sepolia Testnet',
-                                                      style: AppTextStyles.caption.copyWith(color: AppColors.success, fontSize: 10),
+                                                      !_web3.isConnected ? 'Not Connected' : (_web3.chainId != Web3ServiceBase.sepoliaChainId ? 'Wrong Network' : 'Sepolia Testnet'),
+                                                      style: AppTextStyles.caption.copyWith(
+                                                        color: !_web3.isConnected ? AppColors.textSecondary : (_web3.chainId != Web3ServiceBase.sepoliaChainId ? AppColors.danger : AppColors.success),
+                                                        fontSize: 10,
+                                                      ),
                                                       overflow: TextOverflow.ellipsis,
                                                     ),
                                                   ),

@@ -378,7 +378,9 @@ class _UploadPageState extends State<UploadPage> {
       builder: (_) => AlertDialog(
         backgroundColor: AppColors.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xxl)),
-        content: SingleChildScrollView(
+        content: RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -493,6 +495,7 @@ class _UploadPageState extends State<UploadPage> {
             ],
           ),
         ),
+    ),
       ),
     );
   }

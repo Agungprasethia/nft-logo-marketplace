@@ -10,10 +10,14 @@ import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
-class ActiveAuctionsPage extends StatelessWidget {
-
+class ActiveAuctionsPage extends StatefulWidget {
   const ActiveAuctionsPage({super.key});
 
+  @override
+  State<ActiveAuctionsPage> createState() => _ActiveAuctionsPageState();
+}
+
+class _ActiveAuctionsPageState extends State<ActiveAuctionsPage> {
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<List<Auction>>(
@@ -60,7 +64,9 @@ class ActiveAuctionsPage extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
+        return RefreshIndicator(
+      onRefresh: () async { if (mounted) setState(() {}); },
+      child: ListView.builder(
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: auctions.length,
           itemBuilder: (context, index) {
@@ -329,7 +335,8 @@ class ActiveAuctionsPage extends StatelessWidget {
               ),
             );
           },
-        );
+        ),
+    );
       },
     );
   }

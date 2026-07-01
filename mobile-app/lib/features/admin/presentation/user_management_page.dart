@@ -10,8 +10,14 @@ import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
-class UserManagementPage extends StatelessWidget {
+class UserManagementPage extends StatefulWidget {
   const UserManagementPage({super.key});
+
+  @override
+  State<UserManagementPage> createState() => _UserManagementPageState();
+}
+
+class _UserManagementPageState extends State<UserManagementPage> {
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +65,9 @@ class UserManagementPage extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
+        return RefreshIndicator(
+      onRefresh: () async { if (mounted) setState(() {}); },
+      child: ListView.builder(
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: users.length,
           itemBuilder: (context, index) {
@@ -198,7 +206,8 @@ class UserManagementPage extends StatelessWidget {
               ),
             );
           },
-        );
+        ),
+    );
       },
     );
   }

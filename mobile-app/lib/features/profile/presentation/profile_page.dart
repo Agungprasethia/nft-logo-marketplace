@@ -770,12 +770,28 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   Widget _buildCreationCard(LogoNFT logo) {
     Color badgeBg;
     Color badgeText;
+    String badgeLabel = logo.status.name.toUpperCase();
+    
     switch (logo.status) {
       case ValidationStatus.pending:
         badgeBg = _ProfileColors.warningBg;
         badgeText = _ProfileColors.warningText;
         break;
       case ValidationStatus.approved:
+      case ValidationStatus.available:
+        badgeBg = _ProfileColors.successBg;
+        badgeText = _ProfileColors.successText;
+        break;
+      case ValidationStatus.auction:
+        badgeBg = const Color(0xFF3B82F6).withValues(alpha: 0.15); // Blue
+        badgeText = const Color(0xFF3B82F6);
+        break;
+      case ValidationStatus.pendingPayment:
+        badgeBg = const Color(0xFF8B5CF6).withValues(alpha: 0.15); // Purple
+        badgeText = const Color(0xFF8B5CF6);
+        badgeLabel = 'PAYMENT PENDING';
+        break;
+      case ValidationStatus.sold:
         badgeBg = _ProfileColors.successBg;
         badgeText = _ProfileColors.successText;
         break;
@@ -783,12 +799,19 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         badgeBg = _ProfileColors.dangerBg;
         badgeText = _ProfileColors.dangerText;
         break;
+      case ValidationStatus.disabled:
+        badgeBg = _ProfileColors.headerBtnBg;
+        badgeText = _ProfileColors.textMuted;
+        break;
+      case ValidationStatus.frozenAuction:
+        badgeBg = _ProfileColors.dangerBg;
+        badgeText = _ProfileColors.dangerText;
+        badgeLabel = 'FROZEN';
+        break;
       default:
         badgeBg = _ProfileColors.headerBtnBg;
         badgeText = _ProfileColors.textMuted;
     }
-
-
 
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => DetailLogoPage(logo: logo))),
@@ -827,7 +850,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                         borderRadius: BorderRadius.circular(8),
                       ),
                       child: Text(
-                        logo.status.name.toUpperCase(),
+                        badgeLabel,
                         style: TextStyle(color: badgeText, fontSize: 8, fontWeight: FontWeight.bold),
                       ),
                     ),

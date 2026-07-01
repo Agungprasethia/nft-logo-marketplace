@@ -8,8 +8,14 @@ import 'package:nft_logo_marketplace/core/theme/app_spacing.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
 import 'package:nft_logo_marketplace/core/theme/app_radius.dart';
 
-class ApprovedNftPage extends StatelessWidget {
+class ApprovedNftPage extends StatefulWidget {
   const ApprovedNftPage({super.key});
+
+  @override
+  State<ApprovedNftPage> createState() => _ApprovedNftPageState();
+}
+
+class _ApprovedNftPageState extends State<ApprovedNftPage> {
 
   @override
   Widget build(BuildContext context) {
@@ -57,7 +63,9 @@ class ApprovedNftPage extends StatelessWidget {
           );
         }
 
-        return ListView.builder(
+        return RefreshIndicator(
+      onRefresh: () async { if (mounted) setState(() {}); },
+      child: ListView.builder(
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: nfts.length,
           itemBuilder: (context, index) {
@@ -167,7 +175,8 @@ class ApprovedNftPage extends StatelessWidget {
               ),
             );
           },
-        );
+        ),
+    );
       },
     );
   }

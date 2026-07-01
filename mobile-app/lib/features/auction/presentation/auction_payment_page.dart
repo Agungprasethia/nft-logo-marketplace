@@ -310,7 +310,9 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
 
               return Stack(
                 children: [
-                  SingleChildScrollView(
+                  RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: SingleChildScrollView(
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -365,6 +367,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
                       ],
                     ),
                   ),
+    ),
                   _buildStickyBottomButton(logo, auction),
                 ],
               );

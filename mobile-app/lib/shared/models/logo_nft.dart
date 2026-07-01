@@ -502,7 +502,7 @@ class LogoNFT {
       case ValidationStatus.disabled: return 'disabled';
       case ValidationStatus.auction: return 'auction';
       case ValidationStatus.available: return 'available';
-      case ValidationStatus.pendingPayment: return 'pending_payment';
+      case ValidationStatus.pendingPayment: return 'payment_pending';
       case ValidationStatus.sold: return 'sold';
       case ValidationStatus.underReview: return 'under_review';
       case ValidationStatus.frozenAuction: return 'frozen_auction';
@@ -519,6 +519,7 @@ class LogoNFT {
       case 'disabled': return ValidationStatus.disabled;
       case 'auction': return ValidationStatus.auction;
       case 'available': return ValidationStatus.available;
+      case 'payment_pending': return ValidationStatus.pendingPayment;
       case 'pending_payment': return ValidationStatus.pendingPayment;
       case 'sold': return ValidationStatus.sold;
       case 'under_review': return ValidationStatus.underReview;

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 
 // Background message handler
@@ -41,6 +42,12 @@ class FCMService {
       if (kDebugMode) {
         debugPrint('User granted permission: ${settings.authorizationStatus}');
       }
+
+      // Request Android 13+ explicit notification permissions
+      await _localNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
 
       // 2. Initialize local notifications for foreground display
       const AndroidInitializationSettings initializationSettingsAndroid =
@@ -98,11 +105,16 @@ class FCMService {
       }
 
       // 6. Listen for token refreshes
-      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
+      FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
         _fcmToken = newToken;
-        // The token needs to be saved to Firestore if user is connected
         if (kDebugMode) {
           debugPrint('FCM Token Refreshed: $_fcmToken');
+        }
+        
+        // Auto update if user is logged in
+        final currentUser = FirebaseAuth.instance.currentUser;
+        if (currentUser != null) {
+          await saveTokenToUser(currentUser.uid);
         }
       });
 
@@ -113,10 +125,14 @@ class FCMService {
     }
   }
 
-  /// Optional: Method to save token to user profile
+  /// Save token to user profile
   Future<void> saveTokenToUser(String walletAddress) async {
     if (_fcmToken != null) {
-      await FirestoreService.instance.updateUserFCMToken(walletAddress, _fcmToken!);
+      String? docId = walletAddress.isNotEmpty ? walletAddress : FirebaseAuth.instance.currentUser?.uid;
+      
+      if (docId != null && docId.isNotEmpty) {
+        await FirestoreService.instance.updateUserFCMToken(docId.toLowerCase(), _fcmToken!);
+      }
     }
   }
 }

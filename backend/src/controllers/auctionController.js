@@ -15,6 +15,12 @@ exports.placeBid = async (req, res) => {
         }
 
         const nftRef = db.collection('nfts').doc(tokenId.toString());
+        
+        const nftDoc = await nftRef.get();
+        if (nftDoc.exists && nftDoc.data().isFrozen === true) {
+            return res.status(403).json({ success: false, message: 'Bidding is temporarily disabled. This NFT is under investigation.' });
+        }
+
         const auctionRef = db.collection('auctions').doc(tokenId.toString());
         const bidsRef = nftRef.collection('bids').doc(bid.bidderWallet);
 
