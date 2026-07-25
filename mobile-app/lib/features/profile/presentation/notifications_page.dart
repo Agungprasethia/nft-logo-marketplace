@@ -153,22 +153,33 @@ class _NotificationsPageState extends State<NotificationsPage> {
           final notifications = snapshot.data ?? [];
 
           if (notifications.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+            return RefreshIndicator(
+              onRefresh: () async { if (mounted) setState(() {}); },
+              child: ListView(
+                physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  Icon(
-                    Icons.notifications_off_outlined,
-                    size: 64,
-                    color: _NotificationColors.textMuted.withValues(alpha: 0.5),
-                  ),
-                  const SizedBox(height: 16),
-                  Text(
-                    'No notifications yet',
-                    style: GoogleFonts.outfit(
-                      color: _NotificationColors.textMuted,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w500,
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height * 0.7,
+                    child: Center(
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.notifications_off_outlined,
+                            size: 64,
+                            color: _NotificationColors.textMuted.withValues(alpha: 0.5),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            'No notifications yet',
+                            style: GoogleFonts.outfit(
+                              color: _NotificationColors.textMuted,
+                              fontSize: 18,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
                 ],
@@ -179,6 +190,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
           return RefreshIndicator(
       onRefresh: () async { if (mounted) setState(() {}); },
       child: ListView.separated(
+            physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.symmetric(vertical: 8),
             itemCount: notifications.length,
             separatorBuilder: (context, index) => const Divider(

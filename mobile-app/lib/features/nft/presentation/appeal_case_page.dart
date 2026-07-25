@@ -153,6 +153,7 @@ class _AppealCasePageState extends State<AppealCasePage> {
                     return RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: ListView.builder(
+                      physics: const AlwaysScrollableScrollPhysics(),
                       reverse: true, // Newest at bottom visually
                       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.md),
                       itemCount: messages.length,

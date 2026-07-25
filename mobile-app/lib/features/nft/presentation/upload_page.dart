@@ -207,6 +207,30 @@ class _UploadPageState extends State<UploadPage> {
     }
     // ----------------------------
 
+    // ═══ STEP 0: PRE-FLIGHT DUPLICATE CHECK ═══
+    final copyrightHash = sha256.convert(_imageBytes!).toString();
+    
+    try {
+      final duplicateCheck = await FirebaseFirestore.instance
+          .collection('nfts')
+          .where('copyrightHash', isEqualTo: copyrightHash)
+          .limit(1)
+          .get();
+
+      if (duplicateCheck.docs.isNotEmpty) {
+        if (!mounted) return;
+        NotificationManager.show(
+          context: context,
+          title: 'Duplicate Artwork Detected',
+          message: 'This exact artwork has already been registered on the marketplace. Duplicate or plagiarized submissions are not allowed.',
+          type: NotificationType.error,
+        );
+        return;
+      }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('Error checking duplicate hash: $e'); }
+    }
+
     setState(() {
       _isLoading = true;
       _isMinting = true;
@@ -239,9 +263,9 @@ class _UploadPageState extends State<UploadPage> {
       );
       
       if (!mounted) return;
-      if (kDebugMode) { debugPrint('[IPFS METADATA SUCCESS] âœ… Metadata uploaded: $ipfsMetadataUrl'); }
+      if (kDebugMode) { debugPrint('[IPFS METADATA SUCCESS] ✅ Metadata uploaded: $ipfsMetadataUrl'); }
 
-      final copyrightHash = sha256.convert(_imageBytes!).toString();
+
 
       setState(() {
         _statusMessage = 'Minting on Blockchain... 3/4\nConfirm in MetaMask';
@@ -381,6 +405,7 @@ class _UploadPageState extends State<UploadPage> {
         content: RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -766,6 +791,16 @@ class _UploadPageState extends State<UploadPage> {
                                   Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
                                   SizedBox(width: AppSpacing.md),
                                   Text('30 Minutes'),
+                                ],
+                              ),
+                            ),
+                            DropdownMenuItem(
+                              value: 60,
+                              child: Row(
+                                children: [
+                                  Icon(Icons.timer_outlined, color: AppColors.primary, size: 20),
+                                  SizedBox(width: AppSpacing.md),
+                                  Text('1 Hour'),
                                 ],
                               ),
                             ),

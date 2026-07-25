@@ -84,8 +84,11 @@ class _AdminDashboardState extends State<AdminDashboard> {
   }
 
   Widget _buildDashboardOverview() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppSpacing.xl),
+    return RefreshIndicator(
+      onRefresh: () async { setState(() {}); },
+      child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        padding: const EdgeInsets.all(AppSpacing.xl),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -211,6 +214,7 @@ class _AdminDashboardState extends State<AdminDashboard> {
             child: const PendingNftPage(),
           ),
         ],
+      ),
       ),
     );
   }

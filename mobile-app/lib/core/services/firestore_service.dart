@@ -539,6 +539,49 @@ class FirestoreService {
       };
 
       await _reportsCollection.doc(reportId).set(reportData);
+
+      try {
+        final bool isSelfReport = reporterWallet.toLowerCase() == creatorWallet.toLowerCase();
+
+        // 1. Notifikasi untuk Reporter
+        if (reporterWallet.isNotEmpty) {
+          final reporterNotifId = _userNotificationsCollection(reporterWallet).doc().id;
+          await saveNotification(
+            reporterWallet,
+            AppNotification(
+              id: reporterNotifId,
+              title: 'Laporan Terkirim',
+              message: 'Laporan Anda untuk "$nftTitle" sedang diproses.',
+              type: NotificationType.reportSubmitted,
+              category: 'system',
+              createdAt: DateTime.now(),
+              isRead: false,
+            ),
+          );
+        }
+
+        // 2. Notifikasi untuk Creator (jangan kirim jika melaporkan NFT sendiri)
+        if (!isSelfReport && creatorWallet.isNotEmpty) {
+          final creatorNotifId = _userNotificationsCollection(creatorWallet).doc().id;
+          await saveNotification(
+            creatorWallet,
+            AppNotification(
+              id: creatorNotifId,
+              title: 'NFT Dilaporkan',
+              message: 'Karya Anda "$nftTitle" telah dilaporkan. Menunggu peninjauan admin.',
+              type: NotificationType.nftFrozen,
+              category: 'system',
+              createdAt: DateTime.now(),
+              isRead: false,
+            ),
+          );
+        }
+      } catch (notifError) {
+        if (kDebugMode) {
+          debugPrint('⚠️ Notifikasi report gagal terkirim (report tetap tersimpan): $notifError');
+        }
+      }
+
       if (kDebugMode) { debugPrint('🔥 Firestore: Report submitted for NFT #$tokenId'); }
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ submitNFTReport error: $e'); }

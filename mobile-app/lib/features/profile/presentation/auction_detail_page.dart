@@ -54,22 +54,26 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
         elevation: 0,
         iconTheme: const IconThemeData(color: AppColors.textPrimary),
       ),
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.md),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildNFTCard(),
-              const SizedBox(height: AppSpacing.lg),
-              _buildStatusSection(),
-              const SizedBox(height: AppSpacing.lg),
-              _buildStatsSection(),
-              const SizedBox(height: AppSpacing.lg),
-              if (widget.auction.status == AuctionStatus.paymentPending) _buildPaymentMonitoring(),
-              if (widget.auction.status == AuctionStatus.paymentPending) const SizedBox(height: AppSpacing.lg),
-              _buildLeaderboard(),
-            ],
+      body: RefreshIndicator(
+        onRefresh: () async { setState(() {}); },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.md),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _buildNFTCard(),
+                const SizedBox(height: AppSpacing.lg),
+                _buildStatusSection(),
+                const SizedBox(height: AppSpacing.lg),
+                _buildStatsSection(),
+                const SizedBox(height: AppSpacing.lg),
+                if (widget.auction.status == AuctionStatus.paymentPending) _buildPaymentMonitoring(),
+                if (widget.auction.status == AuctionStatus.paymentPending) const SizedBox(height: AppSpacing.lg),
+                _buildLeaderboard(),
+              ],
+            ),
           ),
         ),
       ),
@@ -296,9 +300,7 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
                 );
               }
               
-              return RefreshIndicator(
-      onRefresh: () async { setState(() {}); },
-      child: ListView.separated(
+              return ListView.separated(
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: bids.length,
@@ -339,8 +341,7 @@ class _AuctionDetailPageState extends State<AuctionDetailPage> {
                     trailing: Text('${bid.amount} ETH', style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary)),
                   );
                 },
-              ),
-    );
+              );
             },
           ),
         ),

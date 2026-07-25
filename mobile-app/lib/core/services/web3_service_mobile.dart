@@ -23,6 +23,9 @@ import 'package:nft_logo_marketplace/core/services/session_service.dart';
 import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/core/services/api_service.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
+
 
 class Web3Service extends Web3ServiceBase {
   static Web3Service? _instance;
@@ -649,6 +652,25 @@ class Web3Service extends Web3ServiceBase {
     // Disconnect WalletConnect session (this also clears WalletSessionManager)
     _walletConnect.disconnect();
     _disconnect();
+  }
+
+  @override
+  Future<TransactionStatusDetailed> getTransactionStatusDetailed(String txHash) async {
+    try {
+      final connectivityResult = await Connectivity().checkConnectivity();
+      if (connectivityResult.contains(ConnectivityResult.none)) {
+        return TransactionStatusDetailed.networkError;
+      }
+      
+      final receipt = await _client.getTransactionReceipt(txHash);
+      if (receipt != null) {
+        return receipt.status == true ? TransactionStatusDetailed.success : TransactionStatusDetailed.reverted;
+      }
+      return TransactionStatusDetailed.pending;
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[WEB3] Error getting tx receipt detailed: $e'); }
+      return TransactionStatusDetailed.networkError;
+    }
   }
 
   @override
@@ -1466,7 +1488,7 @@ class Web3Service extends Web3ServiceBase {
   }
 
   @override
-  Future<String> payAuctionWinner(String sellerWallet, double amountInEth) async {
+  Future<String> payAuctionWinner(String sellerWallet, double amountInEth, {Function(String)? onTxHashReady}) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
     if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
     
@@ -1507,6 +1529,10 @@ class Web3Service extends Web3ServiceBase {
         data: txData, // empty string ensures it's stripped by walletconnect_service
         value: weiAmountHex,
       );
+      
+      if (onTxHashReady != null) {
+        onTxHashReady(txHash);
+      }
       
       if (kDebugMode) { debugPrint('[PAYMENT] Validating blockchain transaction...'); }
       
@@ -1663,3 +1689,8 @@ class Web3Service extends Web3ServiceBase {
       throw Exception('Could not find Auction ID in transaction receipt');
   }
 }
+
+
+
+
+

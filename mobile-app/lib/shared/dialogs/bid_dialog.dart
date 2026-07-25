@@ -11,7 +11,7 @@ class BidDialog extends StatefulWidget {
   final double currentBid;
   final double startingPrice;
   final double userBalance;
-  final Function(double) onBid;
+  final Future<void> Function(double) onBid;
 
   const BidDialog({
     super.key,
@@ -29,6 +29,7 @@ class _BidDialogState extends State<BidDialog> {
   late TextEditingController _controller;
   String? _error;
   double? _parsedValue;
+  bool _isSubmitting = false;
 
   double get minBid =>
       widget.currentBid > 0 ? widget.currentBid + Auction.getMinimumIncrement(widget.currentBid) : widget.startingPrice;
@@ -75,8 +76,10 @@ class _BidDialogState extends State<BidDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return Dialog(
-      backgroundColor: Colors.transparent,
+    return PopScope(
+      canPop: !_isSubmitting,
+      child: Dialog(
+        backgroundColor: Colors.transparent,
       child: Container(
         constraints: const BoxConstraints(maxWidth: 400),
         decoration: BoxDecoration(
@@ -128,8 +131,8 @@ class _BidDialogState extends State<BidDialog> {
                     ),
                   ),
                   IconButton(
-                    onPressed: () => Navigator.pop(context),
-                    icon: const Icon(Icons.close, color: AppColors.textSecondary),
+                    onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                    icon: Icon(Icons.close, color: _isSubmitting ? AppColors.textSecondary.withValues(alpha: 0.5) : AppColors.textSecondary),
                   ),
                 ],
               ),
@@ -168,7 +171,14 @@ class _BidDialogState extends State<BidDialog> {
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
                         Text('Minimum Next Bid', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textPrimary)),
-                        Text('${minBid.toStringAsFixed(2)} ETH', style: AppTextStyles.h3.copyWith(color: AppColors.frozenBlue)),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerRight,
+                            child: Text('${minBid.toStringAsFixed(2)} ETH', style: AppTextStyles.h3.copyWith(color: AppColors.frozenBlue)),
+                          ),
+                        ),
                       ],
                     ),
                   ],
@@ -179,6 +189,7 @@ class _BidDialogState extends State<BidDialog> {
               // Input
               TextField(
                 controller: _controller,
+                enabled: !_isSubmitting,
                 keyboardType: const TextInputType.numberWithOptions(decimal: true),
                 inputFormatters: [
                   FilteringTextInputFormatter.allow(RegExp(r'^\d*\.?\d{0,2}')),
@@ -271,7 +282,7 @@ class _BidDialogState extends State<BidDialog> {
                 children: [
                   Expanded(
                     child: TextButton(
-                      onPressed: () => Navigator.pop(context),
+                      onPressed: _isSubmitting ? null : () => Navigator.pop(context),
                       style: TextButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 16),
                         shape: RoundedRectangleBorder(
@@ -289,10 +300,21 @@ class _BidDialogState extends State<BidDialog> {
                   Expanded(
                     flex: 2,
                     child: ElevatedButton(
-                      onPressed: (_error == null && _parsedValue != null)
-                          ? () {
-                              widget.onBid(_parsedValue!);
-                              Navigator.pop(context);
+                      onPressed: (_error == null && _parsedValue != null && !_isSubmitting)
+                          ? () async {
+                              setState(() => _isSubmitting = true);
+                              try {
+                                await widget.onBid(_parsedValue!);
+                                if (!context.mounted) return;
+                                Navigator.pop(context);
+                              } catch (e) {
+                                if (mounted) {
+                                  setState(() {
+                                    _isSubmitting = false;
+                                    _error = e.toString().replaceFirst("Exception: ", "");
+                                  });
+                                }
+                              }
                             }
                           : null,
                       style: ElevatedButton.styleFrom(
@@ -304,17 +326,26 @@ class _BidDialogState extends State<BidDialog> {
                           borderRadius: BorderRadius.circular(AppRadius.lg),
                         ),
                       ),
-                      child: const Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(Icons.gavel),
-                          SizedBox(width: AppSpacing.sm),
-                          Text(
-                            'Bid Now',
-                            style: AppTextStyles.labelLarge,
-                          ),
-                        ],
-                      ),
+                      child: _isSubmitting
+                          ? const SizedBox(
+                              height: 20,
+                              width: 20,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                valueColor: AlwaysStoppedAnimation<Color>(AppColors.textPrimary),
+                              ),
+                            )
+                          : const Row(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(Icons.gavel),
+                                SizedBox(width: AppSpacing.sm),
+                                Text(
+                                  'Bid Now',
+                                  style: AppTextStyles.labelLarge,
+                                ),
+                              ],
+                            ),
                     ),
                   ),
                 ],
@@ -325,7 +356,8 @@ class _BidDialogState extends State<BidDialog> {
           ),
         ),
       ),
-    );
+    ),
+  );
   }
 
   Widget _buildIncrementButton(String label, double amount) {

@@ -54,6 +54,7 @@ class _LogoDetailPageState extends State<LogoDetailPage> {
       body: RefreshIndicator(
       onRefresh: () async { if (mounted) setState(() {}); },
       child: SingleChildScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
         child: Padding(
           padding: const EdgeInsets.all(16.0),
           child: Column(

@@ -47,23 +47,34 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
         final reportedList = snapshot.data ?? [];
 
         if (reportedList.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border),
+          return RefreshIndicator(
+            onRefresh: () async { setState(() {}); },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(Icons.shield_outlined, size: 48, color: AppColors.success),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text('No pending reports', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text('All clear! The marketplace is safe.', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.shield_outlined, size: 48, color: AppColors.success),
                 ),
-                const SizedBox(height: AppSpacing.lg),
-                Text('No pending reports', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
-                const SizedBox(height: AppSpacing.sm),
-                Text('All clear! The marketplace is safe.', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
               ],
             ),
           );
@@ -72,6 +83,7 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
         return RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.lg),
           itemCount: reportedList.length,
           itemBuilder: (context, index) {

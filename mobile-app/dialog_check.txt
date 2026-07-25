@@ -1,0 +1,1434 @@
+
+=== FILE: lib/features/admin/presentation/active_auctions_page.dart ===
+--- Match around line 187 ---
+ 180                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.md)),
+ 181                             onSelected: (value) async {
+ 182                               if (value == 'leaderboard') {
+ 183                                 _showLeaderboardDialog(context, auction);
+ 184                               } else if (value == 'freeze') {
+ 185                                 await FirestoreService.instance.freezeNFT(auction.tokenId);
+ 186                                 if (context.mounted) {
+ 187 >>                                NotificationManager.show(context: context, title: 'Frozen', message: 'Auction Frozen (Bidding Disabled)', type: NotificationType.warning);
+ 188                                 }
+ 189                               } else if (value == 'unfreeze') {
+ 190                                 await FirestoreService.instance.unfreezeNFT(auction.tokenId);
+ 191                                 if (context.mounted) {
+ 192                                   NotificationManager.show(context: context, title: 'Unfrozen', message: 'Auction Unfrozen (Bidding Enabled)', type: NotificationType.success);
+ 193                                 }
+--- Match around line 192 ---
+ 185                                 await FirestoreService.instance.freezeNFT(auction.tokenId);
+ 186                                 if (context.mounted) {
+ 187                                   NotificationManager.show(context: context, title: 'Frozen', message: 'Auction Frozen (Bidding Disabled)', type: NotificationType.warning);
+ 188                                 }
+ 189                               } else if (value == 'unfreeze') {
+ 190                                 await FirestoreService.instance.unfreezeNFT(auction.tokenId);
+ 191                                 if (context.mounted) {
+ 192 >>                                NotificationManager.show(context: context, title: 'Unfrozen', message: 'Auction Unfrozen (Bidding Enabled)', type: NotificationType.success);
+ 193                                 }
+ 194                               }
+ 195                             },
+ 196                             itemBuilder: (context) => [
+ 197                               PopupMenuItem(
+ 198                                 value: 'leaderboard',
+--- Match around line 346 ---
+ 339             ),
+ 340         );
+ 341           },
+ 342         );
+ 343       }
+ 344     
+ 345       void _showLeaderboardDialog(BuildContext context, Auction auction) {
+ 346 >>      showDialog(
+ 347           context: context,
+ 348           builder: (context) => Dialog(
+ 349             backgroundColor: AppColors.background,
+ 350             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xxl)),
+ 351             child: ConstrainedBox(
+ 352               constraints: const BoxConstraints(maxWidth: 500, maxHeight: 600),
+
+=== FILE: lib/features/admin/presentation/pending_nft_page.dart ===
+--- Match around line 273 ---
+ 266                                   onPressed: _processingTokens.contains(logo.tokenId) ? null : () async {
+ 267                                     final confirm = await _showConfirmDialog(context, 'Approve NFT', 'Are you sure you want to approve this NFT?');
+ 268                                     if (confirm != true) return;
+ 269                                     setState(() => _processingTokens.add(logo.tokenId));
+ 270                                     try {
+ 271                                       await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
+ 272                                       if (!context.mounted) return;
+ 273 >>                                    NotificationManager.show(
+ 274                                         context: context,
+ 275                                         title: 'Success',
+ 276                                         message: 'NFT Approved!',
+ 277                                         type: NotificationType.success,
+ 278                                       );
+ 279                                     } catch (e) {
+--- Match around line 281 ---
+ 274                                         context: context,
+ 275                                         title: 'Success',
+ 276                                         message: 'NFT Approved!',
+ 277                                         type: NotificationType.success,
+ 278                                       );
+ 279                                     } catch (e) {
+ 280                                       if (!context.mounted) return;
+ 281 >>                                    NotificationManager.show(
+ 282                                         context: context,
+ 283                                         title: 'Error',
+ 284                                         message: e.toString().replaceFirst("Exception: ", ""),
+ 285                                         type: NotificationType.error,
+ 286                                       );
+ 287                                     } finally {
+--- Match around line 314 ---
+ 307                                   onPressed: _processingTokens.contains(logo.tokenId) ? null : () async {
+ 308                                     final confirm = await _showConfirmDialog(context, 'Reject NFT', 'Are you sure you want to reject this NFT?');
+ 309                                     if (confirm != true) return;
+ 310                                     setState(() => _processingTokens.add(logo.tokenId));
+ 311                                     try {
+ 312                                       await FirestoreService.instance.rejectNFT(logo.tokenId);
+ 313                                       if (!context.mounted) return;
+ 314 >>                                    NotificationManager.show(
+ 315                                         context: context,
+ 316                                         title: 'Rejected',
+ 317                                         message: 'NFT Rejected!',
+ 318                                         type: NotificationType.info,
+ 319                                       );
+ 320                                     } catch (e) {
+--- Match around line 322 ---
+ 315                                         context: context,
+ 316                                         title: 'Rejected',
+ 317                                         message: 'NFT Rejected!',
+ 318                                         type: NotificationType.info,
+ 319                                       );
+ 320                                     } catch (e) {
+ 321                                       if (!context.mounted) return;
+ 322 >>                                    NotificationManager.show(
+ 323                                         context: context,
+ 324                                         title: 'Error',
+ 325                                         message: e.toString().replaceFirst("Exception: ", ""),
+ 326                                         type: NotificationType.error,
+ 327                                       );
+ 328                                     } finally {
+--- Match around line 359 ---
+ 352               ),
+ 353             ),
+ 354           ),
+ 355         );
+ 356       }
+ 357     
+ 358       void _showNFTDetailsModal(BuildContext context, LogoNFT logo) {
+ 359 >>      showDialog(
+ 360           context: context,
+ 361           builder: (BuildContext context) {
+ 362             return Dialog(
+ 363               backgroundColor: AppColors.surface,
+ 364               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xxl)),
+ 365               child: ConstrainedBox(
+--- Match around line 473 ---
+ 466                                     onPressed: () async {
+ 467                                       final confirm = await _showConfirmDialog(context, 'Approve NFT', 'Are you sure you want to approve this NFT?');
+ 468                                       if (confirm != true) return;
+ 469                                       try {
+ 470                                         await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
+ 471                                         if (!context.mounted) return;
+ 472                                         Navigator.pop(context);
+ 473 >>                                      NotificationManager.show(context: context, title: 'Success', message: 'NFT Approved!', type: NotificationType.success);
+ 474                                       } catch (e) {
+ 475                                         if (!context.mounted) return;
+ 476                                         NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 477                                       }
+ 478                                     },
+ 479                                   ),
+--- Match around line 476 ---
+ 469                                       try {
+ 470                                         await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
+ 471                                         if (!context.mounted) return;
+ 472                                         Navigator.pop(context);
+ 473                                         NotificationManager.show(context: context, title: 'Success', message: 'NFT Approved!', type: NotificationType.success);
+ 474                                       } catch (e) {
+ 475                                         if (!context.mounted) return;
+ 476 >>                                      NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 477                                       }
+ 478                                     },
+ 479                                   ),
+ 480                                 ),
+ 481                                 const SizedBox(width: AppSpacing.md),
+ 482                                 Expanded(
+--- Match around line 491 ---
+ 484                                     onPressed: () async {
+ 485                                       final confirm = await _showConfirmDialog(context, 'Reject NFT', 'Are you sure you want to reject this NFT?');
+ 486                                       if (confirm != true) return;
+ 487                                       try {
+ 488                                         await FirestoreService.instance.rejectNFT(logo.tokenId);
+ 489                                         if (!context.mounted) return;
+ 490                                         Navigator.pop(context);
+ 491 >>                                      NotificationManager.show(context: context, title: 'Rejected', message: 'NFT Rejected!', type: NotificationType.info);
+ 492                                       } catch (e) {
+ 493                                         if (!context.mounted) return;
+ 494                                         NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 495                                       }
+ 496                                     },
+ 497                                     style: OutlinedButton.styleFrom(
+--- Match around line 494 ---
+ 487                                       try {
+ 488                                         await FirestoreService.instance.rejectNFT(logo.tokenId);
+ 489                                         if (!context.mounted) return;
+ 490                                         Navigator.pop(context);
+ 491                                         NotificationManager.show(context: context, title: 'Rejected', message: 'NFT Rejected!', type: NotificationType.info);
+ 492                                       } catch (e) {
+ 493                                         if (!context.mounted) return;
+ 494 >>                                      NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 495                                       }
+ 496                                     },
+ 497                                     style: OutlinedButton.styleFrom(
+ 498                                       side: const BorderSide(color: AppColors.danger, width: 1.5),
+ 499                                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.lg)),
+ 500                                       padding: const EdgeInsets.symmetric(vertical: 16),
+--- Match around line 549 ---
+ 542         String hh = h.toString().padLeft(2, '0');
+ 543         String mm = m.toString().padLeft(2, '0');
+ 544         String ss = s.toString().padLeft(2, '0');
+ 545         return '$hh.$mm,$ss';
+ 546       }
+ 547     
+ 548       Future<bool?> _showConfirmDialog(BuildContext context, String title, String content) {
+ 549 >>      return showDialog<bool>(
+ 550           context: context,
+ 551           builder: (context) => AlertDialog(
+ 552             backgroundColor: AppColors.surface,
+ 553             title: Text(title, style: AppTextStyles.h3),
+ 554             content: Text(content, style: AppTextStyles.bodyMedium),
+ 555             actions: [
+
+=== FILE: lib/features/admin/presentation/reported_nft_page.dart ===
+--- Match around line 358 ---
+ 351                             color: AppColors.surfaceLight,
+ 352                             textColor: AppColors.textPrimary,
+ 353                             onPressed: () {
+ 354                               final logo = Web3Service.instance.allLogos.cast<LogoNFT?>().firstWhere((l) => l?.tokenId == tokenId, orElse: () => null);
+ 355                               if (logo != null) {
+ 356                                 Navigator.push(context, MaterialPageRoute(builder: (_) => AuctionPage(logo: logo)));
+ 357                               } else {
+ 358 >>                              NotificationManager.show(context: context, title: 'Error', message: 'NFT data not found', type: NotificationType.error);
+ 359                               }
+ 360                             },
+ 361                           ),
+ 362                         ),
+ 363                         const SizedBox(width: AppSpacing.sm),
+ 364                         Expanded(
+--- Match around line 522 ---
+ 515           AppColors.danger,
+ 516         );
+ 517         if (!confirmed) return;
+ 518     
+ 519         try {
+ 520           await FirestoreService.instance.freezeReportedAuction(tokenId, currentAdminId, reportId);
+ 521           if (!mounted) return;
+ 522 >>        NotificationManager.show(context: context, title: 'Success', message: 'Auction Frozen!', type: NotificationType.success);
+ 523         } catch (e) {
+ 524           if (!mounted) return;
+ 525           NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 526         }
+ 527       }
+ 528     
+--- Match around line 525 ---
+ 518     
+ 519         try {
+ 520           await FirestoreService.instance.freezeReportedAuction(tokenId, currentAdminId, reportId);
+ 521           if (!mounted) return;
+ 522           NotificationManager.show(context: context, title: 'Success', message: 'Auction Frozen!', type: NotificationType.success);
+ 523         } catch (e) {
+ 524           if (!mounted) return;
+ 525 >>        NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 526         }
+ 527       }
+ 528     
+ 529       Future<void> _handleDismissAction(String reportId) async {
+ 530         final confirmed = await _showConfirmDialog(
+ 531           'Dismiss Report', 
+--- Match around line 540 ---
+ 533           AppColors.textSecondary,
+ 534         );
+ 535         if (!confirmed) return;
+ 536     
+ 537         try {
+ 538           await FirestoreService.instance.dismissReport(reportId, currentAdminId);
+ 539           if (!mounted) return;
+ 540 >>        NotificationManager.show(context: context, title: 'Success', message: 'Report Dismissed!', type: NotificationType.success);
+ 541         } catch (e) {
+ 542           if (!mounted) return;
+ 543           NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 544         }
+ 545       }
+ 546     
+--- Match around line 543 ---
+ 536     
+ 537         try {
+ 538           await FirestoreService.instance.dismissReport(reportId, currentAdminId);
+ 539           if (!mounted) return;
+ 540           NotificationManager.show(context: context, title: 'Success', message: 'Report Dismissed!', type: NotificationType.success);
+ 541         } catch (e) {
+ 542           if (!mounted) return;
+ 543 >>        NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 544         }
+ 545       }
+ 546     
+ 547       Future<void> _handleReopenAction(int tokenId, String reportId) async {
+ 548         final confirmed = await _showConfirmDialog(
+ 549           'Reopen Auction', 
+--- Match around line 558 ---
+ 551           AppColors.success,
+ 552         );
+ 553         if (!confirmed) return;
+ 554     
+ 555         try {
+ 556           await FirestoreService.instance.reopenAuction(tokenId, currentAdminId, reportId);
+ 557           if (!mounted) return;
+ 558 >>        NotificationManager.show(context: context, title: 'Success', message: 'Auction Reopened!', type: NotificationType.success);
+ 559         } catch (e) {
+ 560           if (!mounted) return;
+ 561           NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 562         }
+ 563       }
+ 564     
+--- Match around line 561 ---
+ 554     
+ 555         try {
+ 556           await FirestoreService.instance.reopenAuction(tokenId, currentAdminId, reportId);
+ 557           if (!mounted) return;
+ 558           NotificationManager.show(context: context, title: 'Success', message: 'Auction Reopened!', type: NotificationType.success);
+ 559         } catch (e) {
+ 560           if (!mounted) return;
+ 561 >>        NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 562         }
+ 563       }
+ 564     
+ 565       Future<void> _handleRejectAction(int tokenId, String reportId) async {
+ 566         final confirmed = await _showConfirmDialog(
+ 567           'Reject & Lock NFT', 
+--- Match around line 576 ---
+ 569           AppColors.danger,
+ 570         );
+ 571         if (!confirmed) return;
+ 572     
+ 573         try {
+ 574           await FirestoreService.instance.rejectAuction(tokenId, currentAdminId, reportId);
+ 575           if (!mounted) return;
+ 576 >>        NotificationManager.show(context: context, title: 'Success', message: 'NFT Permanently Rejected!', type: NotificationType.error);
+ 577         } catch (e) {
+ 578           if (!mounted) return;
+ 579           NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 580         }
+ 581       }
+ 582     
+--- Match around line 579 ---
+ 572     
+ 573         try {
+ 574           await FirestoreService.instance.rejectAuction(tokenId, currentAdminId, reportId);
+ 575           if (!mounted) return;
+ 576           NotificationManager.show(context: context, title: 'Success', message: 'NFT Permanently Rejected!', type: NotificationType.error);
+ 577         } catch (e) {
+ 578           if (!mounted) return;
+ 579 >>        NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 580         }
+ 581       }
+ 582     
+ 583       Future<bool> _showConfirmDialog(String title, String content, Color confirmColor) async {
+ 584         return await showDialog<bool>(
+ 585           context: context,
+--- Match around line 584 ---
+ 577         } catch (e) {
+ 578           if (!mounted) return;
+ 579           NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+ 580         }
+ 581       }
+ 582     
+ 583       Future<bool> _showConfirmDialog(String title, String content, Color confirmColor) async {
+ 584 >>      return await showDialog<bool>(
+ 585           context: context,
+ 586           builder: (context) => AlertDialog(
+ 587             backgroundColor: AppColors.surface,
+ 588             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+ 589             title: Text(title, style: AppTextStyles.h3),
+ 590             content: Text(content, style: AppTextStyles.bodyMedium.copyWith(height: 1.5)),
+
+=== FILE: lib/features/auction/presentation/auction_page.dart ===
+--- Match around line 1895 ---
+1888                   backgroundColor: AppColors.primary,
+1889                   onPressed: () async {
+1890                     try {
+1891                       await FirestoreService.instance.requestReAuction(
+1892                         auction.tokenId,
+1893                       );
+1894                       if (mounted) {
+1895 >>                      NotificationManager.show(
+1896                           context: context,
+1897                           title: 'Request Submitted',
+1898                           message: 'Re-auction request submitted. Awaiting admin approval.',
+1899                           type: NotificationType.success,
+1900                         );
+1901                         Navigator.pop(context);
+--- Match around line 1905 ---
+1898                           message: 'Re-auction request submitted. Awaiting admin approval.',
+1899                           type: NotificationType.success,
+1900                         );
+1901                         Navigator.pop(context);
+1902                       }
+1903                     } catch (e) {
+1904                       if (mounted) {
+1905 >>                      NotificationManager.show(
+1906                           context: context,
+1907                           title: 'Error',
+1908                           message: e.toString().replaceFirst("Exception: ", ""),
+1909                           type: NotificationType.error,
+1910                         );
+1911                       }
+--- Match around line 1931 ---
+1924                   children: [
+1925                     PrimaryButton(
+1926                       text: 'Bid Now',
+1927                       icon: Icons.rocket_launch,
+1928                       backgroundColor: AppColors.accentOrange,
+1929                       onPressed: () {
+1930                         if (logo.isFrozen || auction.status == AuctionStatus.frozen) {
+1931 >>                        NotificationManager.show(
+1932                             context: context,
+1933                             title: 'Action Denied',
+1934                             message: 'Auction is frozen by Admin.',
+1935                             type: NotificationType.error,
+1936                           );
+1937                           return;
+--- Match around line 1951 ---
+1944                             message: 'Please connect your wallet to place a bid.',
+1945                           ).then((connected) {
+1946                              if (connected && mounted) setState(() {});
+1947                           });
+1948                           return;
+1949                         }
+1950                         if (isOwner) {
+1951 >>                        NotificationManager.show(
+1952                             context: context,
+1953                             title: 'Invalid Bid',
+1954                             message: 'Owners cannot bid on their own NFT',
+1955                             type: NotificationType.warning,
+1956                           );
+1957                           return;
+--- Match around line 1960 ---
+1953                             title: 'Invalid Bid',
+1954                             message: 'Owners cannot bid on their own NFT',
+1955                             type: NotificationType.warning,
+1956                           );
+1957                           return;
+1958                         }
+1959                         if (!isLive) {
+1960 >>                        NotificationManager.show(
+1961                             context: context,
+1962                             title: 'Auction Not Live',
+1963                             message: 'Auction is not live right now',
+1964                             type: NotificationType.warning,
+1965                           );
+1966                           return;
+--- Match around line 2049 ---
+2042                         message: 'Please connect your wallet to complete payment.',
+2043                       ).then((connected) {
+2044                          if (connected && mounted) setState(() {});
+2045                       });
+2046                       return;
+2047                     }
+2048                     if (logo.isPaymentProcessing) {
+2049 >>                    NotificationManager.show(
+2050                         context: context,
+2051                         title: 'Payment in Progress',
+2052                         message: 'A payment is currently being processed for this NFT.',
+2053                         type: NotificationType.warning,
+2054                       );
+2055                       return;
+--- Match around line 2079 ---
+2072                         await FirestoreService.instance.endOffChainAuction(
+2073                           widget.logo.tokenId,
+2074                         );
+2075                         if (!mounted) return;
+2076                         Navigator.pop(context);
+2077                       } catch (e) {
+2078                         if (!mounted) return;
+2079 >>                      NotificationManager.show(
+2080                           context: context,
+2081                           title: 'Error',
+2082                           message: e.toString().replaceFirst("Exception: ", ""),
+2083                           type: NotificationType.error,
+2084                         );
+2085                       }
+--- Match around line 2431 ---
+2424             ],
+2425           ),
+2426         );
+2427       }
+2428     
+2429       void _showBidDialog(Auction auction) {
+2430         if (!_web3.isConnected) {
+2431 >>        NotificationManager.show(
+2432             context: context,
+2433             title: 'Wallet Required',
+2434             message: 'Please connect wallet',
+2435             type: NotificationType.error,
+2436           );
+2437           return;
+--- Match around line 2442 ---
+2435             type: NotificationType.error,
+2436           );
+2437           return;
+2438         }
+2439     
+2440         if (_lastBidAttempt != null &&
+2441             DateTime.now().difference(_lastBidAttempt!).inSeconds < 3) {
+2442 >>        NotificationManager.show(
+2443             context: context,
+2444             title: 'Rate Limit',
+2445             message: 'Please wait 3 seconds before trying again.',
+2446             type: NotificationType.warning,
+2447           );
+2448           return;
+--- Match around line 2457 ---
+2450         _lastBidAttempt = DateTime.now();
+2451     
+2452         final currentWallet = _web3.currentAddress;
+2453         final logo = widget.logo;
+2454         if (currentWallet != null &&
+2455             currentWallet.toLowerCase().trim() ==
+2456                 logo.creatorWallet.toLowerCase().trim()) {
+2457 >>        NotificationManager.show(
+2458             context: context,
+2459             title: 'Invalid Bid',
+2460             message: 'Creators cannot bid on their own NFT',
+2461             type: NotificationType.warning,
+2462           );
+2463           return;
+--- Match around line 2466 ---
+2459             title: 'Invalid Bid',
+2460             message: 'Creators cannot bid on their own NFT',
+2461             type: NotificationType.warning,
+2462           );
+2463           return;
+2464         }
+2465     
+2466 >>      showDialog(
+2467           context: context,
+2468           builder: (_) => BidDialog(
+2469             currentBid: logo.highestBid,
+2470             startingPrice: logo.price,
+2471             userBalance: _web3.balance,
+2472             onBid: (amount) async {
+--- Match around line 2490 ---
+2483                 );
+2484                 await FirestoreService.instance.placeBid(
+2485                   widget.logo.tokenId,
+2486                   bid,
+2487                   userBalance: _web3.balance,
+2488                 );
+2489                 if (!mounted) return;
+2490 >>              NotificationManager.show(
+2491                   context: context,
+2492                   title: 'Success',
+2493                   message: 'Bid placed successfully! 🎉',
+2494                   type: NotificationType.success,
+2495                 );
+2496               } catch (e) {
+--- Match around line 2498 ---
+2491                   context: context,
+2492                   title: 'Success',
+2493                   message: 'Bid placed successfully! 🎉',
+2494                   type: NotificationType.success,
+2495                 );
+2496               } catch (e) {
+2497                 if (!mounted) return;
+2498 >>              NotificationManager.show(
+2499                   context: context,
+2500                   title: 'Error',
+2501                   message: e.toString().replaceFirst("Exception: ", ""),
+2502                   type: NotificationType.error,
+2503                 );
+2504               }
+
+=== FILE: lib/features/auction/presentation/auction_payment_page.dart ===
+--- Match around line 159 ---
+ 152                   _isProcessingPayment = false;
+ 153                   _paymentStartedAt = null;
+ 154                   _pendingTransactionHash = null;
+ 155                 });
+ 156                 
+ 157                 Navigator.of(context, rootNavigator: true).pop();
+ 158                 
+ 159 >>              NotificationManager.show(
+ 160                   context: context,
+ 161                   title: 'Payment Failed',
+ 162                   message: 'Blockchain transaction failed or not found.',
+ 163                   type: NotificationType.error,
+ 164                 );
+ 165               }
+--- Match around line 188 ---
+ 181                   _isProcessingPayment = false;
+ 182                   _paymentStartedAt = null;
+ 183                 });
+ 184                 
+ 185                 // Pop the processing dialog if it's showing
+ 186                 Navigator.of(context, rootNavigator: true).pop();
+ 187                 
+ 188 >>              NotificationManager.show(
+ 189                   context: context,
+ 190                   title: 'Payment Incomplete',
+ 191                   message: 'Previous payment attempt was not completed.',
+ 192                   type: NotificationType.warning,
+ 193                 );
+ 194               }
+--- Match around line 218 ---
+ 211         setState(() {
+ 212           _isProcessingPayment = false;
+ 213           _pendingTransactionHash = null;
+ 214         });
+ 215         // Fire-and-forget — don't await before using context
+ 216         FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
+ 217         // context is safe to use here: no awaits between mounted check and usage
+ 218 >>      await showDialog( // ignore: use_build_context_synchronously
+ 219           context: context,
+ 220           barrierDismissible: false,
+ 221           builder: (context) => AlertDialog(
+ 222             backgroundColor: AppColors.surface,
+ 223             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+ 224             insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+--- Match around line 667 ---
+ 660           ),
+ 661         );
+ 662       }
+ 663     
+ 664       Future<void> _processPayment(LogoNFT logo, Auction auction) async {
+ 665         if (_isLocallyLocked) {
+ 666           if (kDebugMode) { debugPrint('[PaymentFlow] Blocked by local mutex - already processing'); }
+ 667 >>        NotificationManager.show(
+ 668             context: context,
+ 669             title: 'Payment in Progress',
+ 670             message: 'A payment is already being processed. Please wait.',
+ 671             type: NotificationType.paymentPending,
+ 672           );
+ 673           return;
+--- Match around line 682 ---
+ 675         _isLocallyLocked = true;
+ 676         setState(() {}); // Disable UI button immediately
+ 677     
+ 678         try {
+ 679           if (kDebugMode) { debugPrint('[PaymentFlow] Pay Now pressed for NFT #${logo.tokenId}'); }
+ 680         
+ 681         if (_web3.chainId != Web3ServiceBase.sepoliaChainId) {
+ 682 >>        NotificationManager.show(
+ 683             context: context,
+ 684             title: 'Wrong Network',
+ 685             message: 'Please switch your wallet to Sepolia Testnet to complete the payment.',
+ 686             type: NotificationType.error,
+ 687           );
+ 688           return;
+--- Match around line 692 ---
+ 685             message: 'Please switch your wallet to Sepolia Testnet to complete the payment.',
+ 686             type: NotificationType.error,
+ 687           );
+ 688           return;
+ 689         }
+ 690         if (logo.isPaymentProcessing) {
+ 691           if (kDebugMode) { debugPrint('[PaymentFlow] Guard activated: Payment is already processing for this NFT.'); }
+ 692 >>        NotificationManager.show(
+ 693             context: context,
+ 694             title: 'Payment in Progress',
+ 695             message: 'A payment is already being processed for this NFT.',
+ 696             type: NotificationType.paymentPending,
+ 697           );
+ 698           return;
+--- Match around line 712 ---
+ 705         });
+ 706         await FirestoreService.instance.setPaymentProcessing(logo.tokenId, true);
+ 707     
+ 708         if (!mounted) return;
+ 709         
+ 710         if (kDebugMode) { debugPrint('[PaymentFlow] Waiting for blockchain confirmation started...'); }
+ 711         // Show Processing Dialog
+ 712 >>      showDialog(
+ 713           context: context,
+ 714           barrierDismissible: false,
+ 715           builder: (BuildContext dialogContext) {
+ 716             return PopScope(
+ 717               canPop: false,
+ 718               child: AlertDialog(
+--- Match around line 766 ---
+ 759     
+ 760           if (!mounted) return;
+ 761           Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+ 762           
+ 763           if (kDebugMode) { debugPrint('[PaymentFlow] Transaction success! txHash: $txHash'); }
+ 764     
+ 765           // Show Success Dialog
+ 766 >>        await showDialog(
+ 767             context: context,
+ 768             barrierDismissible: false,
+ 769             builder: (context) => AlertDialog(
+ 770               backgroundColor: AppColors.surface,
+ 771               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xl)),
+ 772               insetPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+--- Match around line 819 ---
+ 812             ),
+ 813           );
+ 814         } on InsufficientBalanceException catch (e) {
+ 815           if (!mounted) return;
+ 816           if (kDebugMode) { debugPrint('[PaymentFlow] Insufficient balance: $e'); }
+ 817           Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+ 818           
+ 819 >>        await showDialog(
+ 820             context: context,
+ 821             builder: (context) => InsufficientBalanceDialog(exception: e),
+ 822           );
+ 823         } catch (e) {
+ 824           if (!mounted) return;
+ 825           if (kDebugMode) { debugPrint('[PaymentFlow] Payment Failed or Rejected: $e'); }
+--- Match around line 830 ---
+ 823         } catch (e) {
+ 824           if (!mounted) return;
+ 825           if (kDebugMode) { debugPrint('[PaymentFlow] Payment Failed or Rejected: $e'); }
+ 826           Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+ 827           
+ 828           final errorText = e.toString().toLowerCase();
+ 829           final isRejected = errorText.contains('reject') || errorText.contains('denied');
+ 830 >>        NotificationManager.show(
+ 831             context: context,
+ 832             title: 'Payment Failed',
+ 833             message: isRejected ? 'User rejected the transaction' : e.toString().replaceAll('Exception: ', ''),
+ 834             type: NotificationType.error,
+ 835           );
+ 836         } finally {
+
+=== FILE: lib/features/nft/presentation/detail_logo_page.dart ===
+--- Match around line 87 ---
+  80     
+  81       void _refresh() {
+  82         if (mounted) setState(() {});
+  83       }
+  84     
+  85       Future<void> _mintPendingNFT(LogoNFT pendingLogo) async {
+  86         try {
+  87 >>        showDialog(
+  88             context: context,
+  89             barrierDismissible: false,
+  90             builder: (_) => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+  91           );
+  92     
+  93           final newLogo = await _web3.mintLogo(
+--- Match around line 107 ---
+ 100     
+ 101           // We should also delete the old pending document to avoid duplicates
+ 102           await FirebaseFirestore.instance.collection('nfts').doc(pendingLogo.tokenId.toString()).delete();
+ 103     
+ 104           if (!mounted) return;
+ 105           Navigator.pop(context); // close loading
+ 106           
+ 107 >>        NotificationManager.show(
+ 108             context: context,
+ 109             title: 'Mint Success',
+ 110             message: 'NFT successfully minted!',
+ 111             type: NotificationType.success,
+ 112           );
+ 113     
+--- Match around line 124 ---
+ 117             MaterialPageRoute(
+ 118               builder: (context) => DetailLogoPage(logo: newLogo),
+ 119             ),
+ 120           );
+ 121         } catch (e) {
+ 122           if (!mounted) return;
+ 123           Navigator.pop(context); // close loading
+ 124 >>        NotificationManager.show(
+ 125             context: context,
+ 126             title: 'Mint Failed',
+ 127             message: e.toString(),
+ 128             type: NotificationType.error,
+ 129           );
+ 130         }
+--- Match around line 1303 ---
+1296           ).then((connected) {
+1297              if (connected && mounted) setState(() {});
+1298           });
+1299           return;
+1300         }
+1301     
+1302         if (_lastBidAttempt != null && DateTime.now().difference(_lastBidAttempt!).inSeconds < 3) {
+1303 >>        NotificationManager.show(context: context, title: 'Rate Limit', message: 'Please wait 3 seconds before trying again.', type: NotificationType.warning);
+1304           return;
+1305         }
+1306         _lastBidAttempt = DateTime.now();
+1307     
+1308         final currentWallet = _web3.currentAddress;
+1309         final logo = widget.logo;
+--- Match around line 1311 ---
+1304           return;
+1305         }
+1306         _lastBidAttempt = DateTime.now();
+1307     
+1308         final currentWallet = _web3.currentAddress;
+1309         final logo = widget.logo;
+1310         if (currentWallet != null && currentWallet.toLowerCase().trim() == logo.ownerWallet.toLowerCase().trim()) {
+1311 >>        NotificationManager.show(context: context, title: 'Invalid Bid', message: 'Cannot bid on own auction', type: NotificationType.warning);
+1312           return;
+1313         }
+1314     
+1315         showDialog(
+1316           context: context,
+1317           builder: (_) => BidDialog(
+--- Match around line 1315 ---
+1308         final currentWallet = _web3.currentAddress;
+1309         final logo = widget.logo;
+1310         if (currentWallet != null && currentWallet.toLowerCase().trim() == logo.ownerWallet.toLowerCase().trim()) {
+1311           NotificationManager.show(context: context, title: 'Invalid Bid', message: 'Cannot bid on own auction', type: NotificationType.warning);
+1312           return;
+1313         }
+1314     
+1315 >>      showDialog(
+1316           context: context,
+1317           builder: (_) => BidDialog(
+1318             currentBid: logo.highestBid,
+1319             startingPrice: logo.price,
+1320             userBalance: _web3.balance,
+1321             onBid: (amount) async {
+--- Match around line 1334 ---
+1327                   amount: amount,
+1328                   firstBidTimestamp: DateTime.now(),
+1329                   lastBidTimestamp: DateTime.now(),
+1330                   transactionHash: 'offchain_${DateTime.now().millisecondsSinceEpoch}',
+1331                 );
+1332                 await FirestoreService.instance.placeBid(widget.logo.tokenId, bid, userBalance: _web3.balance);
+1333                 if (!mounted) return;
+1334 >>              NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
+1335               } catch (e) {
+1336                 if (!mounted) return;
+1337                 NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+1338               }
+1339             },
+1340           ),
+--- Match around line 1337 ---
+1330                   transactionHash: 'offchain_${DateTime.now().millisecondsSinceEpoch}',
+1331                 );
+1332                 await FirestoreService.instance.placeBid(widget.logo.tokenId, bid, userBalance: _web3.balance);
+1333                 if (!mounted) return;
+1334                 NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
+1335               } catch (e) {
+1336                 if (!mounted) return;
+1337 >>              NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+1338               }
+1339             },
+1340           ),
+1341         );
+1342       }
+1343     
+--- Match around line 1369 ---
+1362         try {
+1363           if (Platform.isAndroid || Platform.isIOS) {
+1364             final hasAccess = await Gal.hasAccess();
+1365             if (!hasAccess) {
+1366               final request = await Gal.requestAccess();
+1367               if (!request) {
+1368                 if (!mounted) return;
+1369 >>              NotificationManager.show(context: context, title: 'Permission Denied', message: 'Storage permission is required to save to gallery.', type: NotificationType.error);
+1370                 return;
+1371               }
+1372             }
+1373           }
+1374     
+1375           String? filePath;
+--- Match around line 1398 ---
+1391             final tempDir = await getTemporaryDirectory();
+1392             filePath = '${tempDir.path}/gallery_${DateTime.now().millisecondsSinceEpoch}.png';
+1393             await Dio().download(url, filePath);
+1394           }
+1395     
+1396           await Gal.putImage(filePath);
+1397           if (!mounted) return;
+1398 >>        NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
+1399         } catch (e) {
+1400           if (!mounted) return;
+1401           NotificationManager.show(context: context, title: 'Error', message: 'Failed to save to gallery.', type: NotificationType.error);
+1402         }
+1403       }
+1404     }
+--- Match around line 1401 ---
+1394           }
+1395     
+1396           await Gal.putImage(filePath);
+1397           if (!mounted) return;
+1398           NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
+1399         } catch (e) {
+1400           if (!mounted) return;
+1401 >>        NotificationManager.show(context: context, title: 'Error', message: 'Failed to save to gallery.', type: NotificationType.error);
+1402         }
+1403       }
+1404     }
+1405     
+1406     class _PremiumCopyrightCard extends StatefulWidget {
+1407       final LogoNFT logo;
+--- Match around line 1421 ---
+1414     
+1415     class _PremiumCopyrightCardState extends State<_PremiumCopyrightCard> {
+1416       bool _isExpanded = false;
+1417     
+1418       void _copyHash() {
+1419         final hashToCopy = widget.logo.copyrightHash ?? widget.logo.imageHash;
+1420         Clipboard.setData(ClipboardData(text: hashToCopy));
+1421 >>      NotificationManager.show(
+1422           context: context,
+1423           title: 'Copied',
+1424           message: 'Hash copied! \uD83D\uDCCB',
+1425           type: NotificationType.info,
+1426         );
+1427       }
+
+=== FILE: lib/features/nft/presentation/upload_page.dart ===
+--- Match around line 119 ---
+ 112     
+ 113           setState(() {
+ 114             _imageBytes = bytes;
+ 115             _imageBase64 = base64;
+ 116           });
+ 117         } catch (e) {
+ 118           if (!mounted) return;
+ 119 >>        NotificationManager.show(
+ 120             context: context,
+ 121             title: 'Error',
+ 122             message: 'Error picking image: $e',
+ 123             type: NotificationType.error,
+ 124           );
+ 125         }
+--- Match around line 134 ---
+ 127     
+ 128       bool _isMinting = false;
+ 129       bool _isProcessing = false;
+ 130     
+ 131       Future<void> _submitForReview() async {
+ 132         if (!_formKey.currentState!.validate()) return;
+ 133         if (_imageBase64 == null) {
+ 134 >>        NotificationManager.show(
+ 135             context: context,
+ 136             title: 'Validation Error',
+ 137             message: 'Please select an artwork image first',
+ 138             type: NotificationType.error,
+ 139           );
+ 140           return;
+--- Match around line 148 ---
+ 141         }
+ 142     
+ 143         // Show Digital Artwork Agreement popup FIRST â€” mint is locked until agreed
+ 144         final agreed = await AgreementDialog.show(context);
+ 145         if (!agreed || !mounted) return;
+ 146     
+ 147         if (!_web3.isConnected) {
+ 148 >>        NotificationManager.show(
+ 149             context: context,
+ 150             title: 'Wallet Required',
+ 151             message: 'Please connect your wallet first',
+ 152             type: NotificationType.warning,
+ 153           );
+ 154           return;
+--- Match around line 158 ---
+ 151             message: 'Please connect your wallet first',
+ 152             type: NotificationType.warning,
+ 153           );
+ 154           return;
+ 155         }
+ 156     
+ 157         if (!_web3.isOnSepolia) {
+ 158 >>        NotificationManager.show(
+ 159             context: context,
+ 160             title: 'Wrong Network',
+ 161             message: 'Please switch your wallet to Sepolia Testnet',
+ 162             type: NotificationType.error,
+ 163           );
+ 164           return;
+--- Match around line 173 ---
+ 166     
+ 167         // Ensure contract is initialized before minting
+ 168         if (!_isContractReady || _isInitializingContract) {
+ 169           setState(() => _isInitializingContract = true);
+ 170           await _ensureWeb3Ready();
+ 171           if (!_isContractReady) {
+ 172             if (!mounted) return;
+ 173 >>          NotificationManager.show(
+ 174               context: context,
+ 175               title: 'Contract Not Ready',
+ 176               message: 'Smart contract is still initializing. Please wait a moment and try again.',
+ 177               type: NotificationType.warning,
+ 178             );
+ 179             return;
+--- Match around line 194 ---
+ 187             final userDoc = await FirebaseFirestore.instance.collection('users').doc(user.uid).get();
+ 188             if (userDoc.exists) {
+ 189               final lastMint = userDoc.data()?['lastMintTime'] as Timestamp?;
+ 190               if (lastMint != null) {
+ 191                 final diff = DateTime.now().difference(lastMint.toDate());
+ 192                 if (diff.inSeconds < 30) {
+ 193                   if (!mounted) return;
+ 194 >>                NotificationManager.show(
+ 195                     context: context,
+ 196                     title: 'Rate Limit',
+ 197                     message: 'Please wait 30 seconds before minting again (Anti-spam protection)',
+ 198                     type: NotificationType.error,
+ 199                   );
+ 200                   return;
+--- Match around line 222 ---
+ 215               .collection('nfts')
+ 216               .where('copyrightHash', isEqualTo: copyrightHash)
+ 217               .limit(1)
+ 218               .get();
+ 219     
+ 220           if (duplicateCheck.docs.isNotEmpty) {
+ 221             if (!mounted) return;
+ 222 >>          NotificationManager.show(
+ 223               context: context,
+ 224               title: 'Duplicate Artwork Detected',
+ 225               message: 'This exact artwork has already been registered on the marketplace. Duplicate or plagiarized submissions are not allowed.',
+ 226               type: NotificationType.error,
+ 227             );
+ 228             return;
+--- Match around line 317 ---
+ 310             _statusMessage = 'Finalizing... 4/4';
+ 311           });
+ 312     
+ 313           // ═══ STEP 4: SUCCESS — Reload data & show UI ═══
+ 314           _web3.loadFromChain();
+ 315     
+ 316           if (mintedNFT.txHash != null && mintedNFT.txHash!.isNotEmpty) {
+ 317 >>          NotificationManager.show(
+ 318               context: context,
+ 319               title: 'Transaction Confirmed',
+ 320               message: 'Mint transaction confirmed on blockchain. Hash: ${mintedNFT.txHash!.length >= 10 ? mintedNFT.txHash!.substring(0, 10) : mintedNFT.txHash}...',
+ 321               type: NotificationType.web3,
+ 322             );
+ 323           }
+--- Match around line 377 ---
+ 370             errorMessage = 'Smart contract rejected the transaction. Please try again.';
+ 371           } else if (e.toString().contains('Firestore fail')) {
+ 372             errorMessage = 'Blockchain success but database update failed. Your NFT is safe and will sync later.';
+ 373           } else if (e.toString().contains('timed out')) {
+ 374             errorMessage = 'Transaction timed out. Check Etherscan for status.';
+ 375           }
+ 376     
+ 377 >>        NotificationManager.show(
+ 378             context: context,
+ 379             title: 'Mint Failed',
+ 380             message: errorMessage,
+ 381             type: NotificationType.error,
+ 382           );
+ 383           
+--- Match around line 399 ---
+ 392               _statusMessage = '';
+ 393             });
+ 394           }
+ 395         }
+ 396       }
+ 397     
+ 398       void _showSuccessDialog(String logoName, {String? ipfsImageUrl, String? ipfsMetadataUrl}) {
+ 399 >>      showDialog(
+ 400           context: context,
+ 401           barrierDismissible: false,
+ 402           builder: (_) => AlertDialog(
+ 403             backgroundColor: AppColors.surface,
+ 404             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(AppRadius.xxl)),
+ 405             content: RefreshIndicator(
+--- Match around line 477 ---
+ 470                                     style: AppTextStyles.mono.copyWith(color: AppColors.textPrimary, fontSize: 10),
+ 471                                     overflow: TextOverflow.ellipsis,
+ 472                                   ),
+ 473                                 ),
+ 474                                 GestureDetector(
+ 475                                   onTap: () {
+ 476                                     Clipboard.setData(ClipboardData(text: ipfsImageUrl));
+ 477 >>                                  NotificationManager.show(context: context, title: 'Copied', message: 'IPFS Image URL copied!', type: NotificationType.info);
+ 478                                   },
+ 479                                   child: const Icon(Icons.copy, size: 14, color: AppColors.frozenBlue),
+ 480                                 ),
+ 481                               ],
+ 482                             ),
+ 483                           ],
+--- Match around line 501 ---
+ 494                                     style: AppTextStyles.mono.copyWith(color: AppColors.textPrimary, fontSize: 10),
+ 495                                     overflow: TextOverflow.ellipsis,
+ 496                                   ),
+ 497                                 ),
+ 498                                 GestureDetector(
+ 499                                   onTap: () {
+ 500                                     Clipboard.setData(ClipboardData(text: ipfsMetadataUrl));
+ 501 >>                                  NotificationManager.show(context: context, title: 'Copied', message: 'IPFS Metadata URL copied!', type: NotificationType.info);
+ 502                                   },
+ 503                                   child: const Icon(Icons.copy, size: 14, color: AppColors.frozenBlue),
+ 504                                 ),
+ 505                               ],
+ 506                             ),
+ 507                           ],
+--- Match around line 534 ---
+ 527     
+ 528       @override
+ 529       Widget build(BuildContext context) {
+ 530         return PopScope(
+ 531           canPop: !_isMinting,
+ 532           onPopInvokedWithResult: (didPop, result) {
+ 533             if (!didPop) {
+ 534 >>            NotificationManager.show(
+ 535                 context: context,
+ 536                 title: 'Please Wait',
+ 537                 message: 'Cannot go back while minting is in progress',
+ 538                 type: NotificationType.warning,
+ 539               );
+ 540             }
+--- Match around line 958 ---
+ 951                   text: 'Connect Wallet',
+ 952                   icon: Icons.link,
+ 953                   onPressed: () async {
+ 954                     try {
+ 955                       await WalletUtils.showConnectDialog(context, _web3);
+ 956                     } catch (e) {
+ 957                       if (!mounted) return;
+ 958 >>                    NotificationManager.show(
+ 959                         context: context,
+ 960                         title: 'Error',
+ 961                         message: e.toString().replaceFirst("Exception: ", ""),
+ 962                         type: NotificationType.error,
+ 963                       );
+ 964                     }
+
+=== FILE: lib/features/nft/presentation/widgets/appeal_dialog.dart ===
+--- Match around line 31 ---
+  24       static Future<void> show(
+  25         BuildContext context, {
+  26         required int tokenId,
+  27         required String reportId,
+  28         required String creatorWallet,
+  29         String? creatorUsername,
+  30       }) {
+  31 >>      return showDialog(
+  32           context: context,
+  33           barrierDismissible: false,
+  34           builder: (_) => AppealDialog(
+  35             tokenId: tokenId,
+  36             reportId: reportId,
+  37             creatorWallet: creatorWallet,
+--- Match around line 60 ---
+  53         _messageController.dispose();
+  54         super.dispose();
+  55       }
+  56     
+  57       Future<void> _submitAppeal() async {
+  58         final message = _messageController.text.trim();
+  59         if (message.isEmpty) {
+  60 >>        NotificationManager.show(
+  61             context: context,
+  62             title: 'Validation Error',
+  63             message: 'Please enter an appeal message',
+  64             type: NotificationType.error,
+  65           );
+  66           return;
+--- Match around line 82 ---
+  75             widget.creatorUsername ?? '',
+  76             message,
+  77             widget.reportId,
+  78           );
+  79     
+  80           if (!mounted) return;
+  81           Navigator.pop(context);
+  82 >>        NotificationManager.show(
+  83             context: context,
+  84             title: 'Appeal Submitted',
+  85             message: 'Appeal submitted successfully. Awaiting moderator review.',
+  86             type: NotificationType.success,
+  87           );
+  88         } catch (e) {
+--- Match around line 90 ---
+  83             context: context,
+  84             title: 'Appeal Submitted',
+  85             message: 'Appeal submitted successfully. Awaiting moderator review.',
+  86             type: NotificationType.success,
+  87           );
+  88         } catch (e) {
+  89           if (!mounted) return;
+  90 >>        NotificationManager.show(
+  91             context: context,
+  92             title: 'Error',
+  93             message: e.toString().replaceFirst('Exception: ', ''),
+  94             type: NotificationType.error,
+  95           );
+  96         } finally {
+
+=== FILE: lib/features/profile/presentation/edit_profile_page.dart ===
+--- Match around line 157 ---
+ 150           _showErrorDialog('Failed to pick image');
+ 151         }
+ 152       }
+ 153     
+ 154       Future<bool> _onWillPop() async {
+ 155         if (!_hasChanges) return true;
+ 156         
+ 157 >>      final shouldPop = await showDialog<bool>(
+ 158           context: context,
+ 159           builder: (context) => Dialog(
+ 160             backgroundColor: Colors.transparent,
+ 161             child: Container(
+ 162               padding: const EdgeInsets.all(AppSpacing.xl),
+ 163               decoration: BoxDecoration(
+--- Match around line 223 ---
+ 216           ),
+ 217         );
+ 218         
+ 219         return shouldPop ?? false;
+ 220       }
+ 221     
+ 222       void _showErrorDialog(String message) {
+ 223 >>      showDialog(
+ 224           context: context,
+ 225           builder: (context) => Dialog(
+ 226             backgroundColor: Colors.transparent,
+ 227             child: Container(
+ 228               padding: const EdgeInsets.all(AppSpacing.xl),
+ 229               decoration: BoxDecoration(
+--- Match around line 259 ---
+ 252               ),
+ 253             ),
+ 254           ),
+ 255         );
+ 256       }
+ 257     
+ 258       Future<void> _showSuccessDialog() async {
+ 259 >>      await showDialog(
+ 260           context: context,
+ 261           barrierDismissible: false,
+ 262           builder: (context) => Dialog(
+ 263             backgroundColor: Colors.transparent,
+ 264             child: Container(
+ 265               padding: const EdgeInsets.all(AppSpacing.xl),
+--- Match around line 345 ---
+ 338             profileImage: _avatarUrl,
+ 339           );
+ 340     
+ 341           await UserService.saveProfile(updatedUser);
+ 342     
+ 343           if (!mounted) return;
+ 344           
+ 345 >>        NotificationManager.show(
+ 346             context: context,
+ 347             title: 'Success',
+ 348             message: 'Profile updated successfully',
+ 349             type: NotificationType.success,
+ 350           );
+ 351     
+--- Match around line 711 ---
+ 704                                     ),
+ 705                                   ),
+ 706                                   IconButton(
+ 707                                     icon: const Icon(Icons.copy, size: 20, color: AppColors.textSecondary),
+ 708                                     onPressed: () {
+ 709                                       if (widget.user.walletAddress != null) {
+ 710                                         Clipboard.setData(ClipboardData(text: widget.user.walletAddress!));
+ 711 >>                                      NotificationManager.show(
+ 712                                           context: context,
+ 713                                           title: 'Copied',
+ 714                                           message: 'Address copied to clipboard!',
+ 715                                           type: NotificationType.info,
+ 716                                         );
+ 717                                       }
+
+=== FILE: lib/features/profile/presentation/profile_page.dart ===
+--- Match around line 117 ---
+ 110       }
+ 111     
+ 112       Future<void> _initData() async {
+ 113         try {
+ 114           await Future.wait([_loadProfile(), _subscribeToCounts()]);
+ 115         } catch (e) {
+ 116           if (mounted) {
+ 117 >>          NotificationManager.show(context: context, title: 'Error', message: 'Failed to load profile data', type: NotificationType.error);
+ 118           }
+ 119         }
+ 120         if (mounted) setState(() {});
+ 121       }
+ 122     
+ 123       Future<void> _subscribeToCounts() async {
+--- Match around line 397 ---
+ 390                                       overflow: TextOverflow.ellipsis,
+ 391                                     ),
+ 392                                   ),
+ 393                                   const SizedBox(width: 4),
+ 394                                   GestureDetector(
+ 395                                     onTap: () {
+ 396                                       Clipboard.setData(ClipboardData(text: address));
+ 397 >>                                    NotificationManager.show(context: context, title: 'Copied', message: 'Address copied to clipboard', type: NotificationType.success);
+ 398                                     },
+ 399                                     child: const Icon(Icons.copy, size: 12, color: _ProfileColors.textMuted),
+ 400                                   ),
+ 401                                   const SizedBox(width: 8),
+ 402                                   Container(
+ 403                                     padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+--- Match around line 474 ---
+ 467             ),
+ 468             child: Icon(icon, size: 16, color: _ProfileColors.textWhite),
+ 469           ),
+ 470         );
+ 471       }
+ 472     
+ 473       void _showDisconnectConfirmation() {
+ 474 >>      showDialog(
+ 475           context: context,
+ 476           builder: (context) => AlertDialog(
+ 477             backgroundColor: _ProfileColors.surface,
+ 478             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+ 479             title: const Text('Disconnect Wallet', style: TextStyle(color: _ProfileColors.textWhite)),
+ 480             content: const Text('Are you sure you want to disconnect your wallet? You will need to reconnect to interact with the marketplace.', style: TextStyle(color: _ProfileColors.textMuted)),
+--- Match around line 1640 ---
+1633               const SizedBox(height: 24),
+1634               GestureDetector(
+1635                 onTap: () async {
+1636                   try {
+1637                     await WalletUtils.showConnectDialog(context, _web3);
+1638                   } catch (e) {
+1639                     if (!mounted) return;
+1640 >>                  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+1641                   }
+1642                 },
+1643                 child: Container(
+1644                   padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+1645                   decoration: BoxDecoration(color: _ProfileColors.accent, borderRadius: BorderRadius.circular(20)),
+1646                   child: const Text('Connect Wallet', style: TextStyle(color: _ProfileColors.textWhite, fontWeight: FontWeight.bold)),
+--- Match around line 1719 ---
+1712           } else if (imageUrl.startsWith('data:image')) {
+1713             bytes = base64Decode(imageUrl.split(',').last);
+1714           } else {
+1715             bytes = base64Decode(imageUrl);
+1716           }
+1717           await Gal.putImageBytes(bytes);
+1718           if (!mounted) return;
+1719 >>        NotificationManager.show(context: context, title: 'Success', message: 'Saved to gallery!', type: NotificationType.success);
+1720         } catch (e) {
+1721           if (!mounted) return;
+1722           NotificationManager.show(context: context, title: 'Failed', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+1723         } finally {
+1724           if (mounted) setState(() => _isDownloading = false);
+1725         }
+--- Match around line 1722 ---
+1715             bytes = base64Decode(imageUrl);
+1716           }
+1717           await Gal.putImageBytes(bytes);
+1718           if (!mounted) return;
+1719           NotificationManager.show(context: context, title: 'Success', message: 'Saved to gallery!', type: NotificationType.success);
+1720         } catch (e) {
+1721           if (!mounted) return;
+1722 >>        NotificationManager.show(context: context, title: 'Failed', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+1723         } finally {
+1724           if (mounted) setState(() => _isDownloading = false);
+1725         }
+1726       }
+1727     
+1728       void _showLongPressMenu(LogoNFT logo, {required bool isMyCreations}) {
+--- Match around line 1732 ---
+1725         }
+1726       }
+1727     
+1728       void _showLongPressMenu(LogoNFT logo, {required bool isMyCreations}) {
+1729         final currentWallet = _web3.currentAddress?.toLowerCase() ?? '';
+1730         final isOwner = logo.ownerWallet.toLowerCase() == currentWallet;
+1731     
+1732 >>      showModalBottomSheet(
+1733           context: context,
+1734           backgroundColor: _ProfileColors.surface,
+1735           shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+1736           builder: (BuildContext context) {
+1737             return Column(
+1738               mainAxisSize: MainAxisSize.min,
+
+=== FILE: lib/features/profile/presentation/relist_auction_dialog.dart ===
+--- Match around line 18 ---
+  11     
+  12     class RelistAuctionDialog extends StatefulWidget {
+  13       final LogoNFT logo;
+  14     
+  15       const RelistAuctionDialog({super.key, required this.logo});
+  16     
+  17       static Future<void> show(BuildContext context, LogoNFT logo) {
+  18 >>      return showDialog(
+  19           context: context,
+  20           builder: (_) => RelistAuctionDialog(logo: logo),
+  21         );
+  22       }
+  23     
+  24       @override
+--- Match around line 93 ---
+  86             newPrice: newPrice,
+  87             newDuration: _selectedDuration,
+  88             userWallet: currentWallet,
+  89           );
+  90     
+  91           if (mounted) {
+  92             Navigator.pop(context);
+  93 >>          NotificationManager.show(
+  94               context: context,
+  95               title: 'Relist Successful',
+  96               message: 'Your NFT has been relisted successfully.',
+  97               type: NotificationType.success,
+  98             );
+  99           }
+--- Match around line 102 ---
+  95               title: 'Relist Successful',
+  96               message: 'Your NFT has been relisted successfully.',
+  97               type: NotificationType.success,
+  98             );
+  99           }
+ 100         } catch (e) {
+ 101           if (mounted) {
+ 102 >>          NotificationManager.show(
+ 103               context: context,
+ 104               title: 'Error',
+ 105               message: e.toString().replaceFirst("Exception: ", ""),
+ 106               type: NotificationType.error,
+ 107             );
+ 108           }
+
+=== FILE: lib/shared/dialogs/re_auction_dialog.dart ===
+--- Match around line 23 ---
+  16     
+  17       const ReAuctionDialog({
+  18         super.key,
+  19         required this.logo,
+  20       });
+  21     
+  22       static Future<void> show(BuildContext context, LogoNFT logo) {
+  23 >>      return showDialog(
+  24           context: context,
+  25           builder: (context) => ReAuctionDialog(logo: logo),
+  26         );
+  27       }
+  28     
+  29       @override
+--- Match around line 79 ---
+  72             widget.logo.tokenId,
+  73             _selectedDuration,
+  74             newPrice,
+  75           );
+  76     
+  77           if (mounted) {
+  78             Navigator.pop(context);
+  79 >>          NotificationManager.show(
+  80               context: context,
+  81               title: 'Re-Auction Started',
+  82               message: 'Your NFT has been relisted successfully.',
+  83               type: NotificationType.success,
+  84             );
+  85           }
+--- Match around line 88 ---
+  81               title: 'Re-Auction Started',
+  82               message: 'Your NFT has been relisted successfully.',
+  83               type: NotificationType.success,
+  84             );
+  85           }
+  86         } catch (e) {
+  87           if (mounted) {
+  88 >>          NotificationManager.show(
+  89               context: context,
+  90               title: 'Error',
+  91               message: e.toString().replaceFirst("Exception: ", ""),
+  92               type: NotificationType.error,
+  93             );
+  94           }

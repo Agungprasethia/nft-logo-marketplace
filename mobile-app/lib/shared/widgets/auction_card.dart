@@ -173,35 +173,41 @@ class _AuctionCardState extends State<AuctionCard> {
                         child: Row(
                           mainAxisAlignment: MainAxisAlignment.spaceBetween,
                           children: [
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  auction.highestBid > 0 ? 'Highest Bid' : 'Starting Price',
-                                  style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary, fontSize: 10),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${(auction.highestBid > 0 ? auction.highestBid : auction.startingPrice).toStringAsFixed(2)} ETH',
-                                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.accent),
-                                ),
-                              ],
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    auction.highestBid > 0 ? 'Highest Bid' : 'Starting Price',
+                                    style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary, fontSize: 10),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${(auction.highestBid > 0 ? auction.highestBid : auction.startingPrice).toStringAsFixed(2)} ETH',
+                                    style: AppTextStyles.labelLarge.copyWith(color: AppColors.accent),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
-                            Column(
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Text(
-                                  'Bids',
-                                  style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary, fontSize: 10),
-                                ),
-                                const SizedBox(height: 2),
-                                Text(
-                                  '${auction.totalBids}',
-                                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.textPrimary),
-                                ),
-                              ],
+                            Flexible(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.end,
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Text(
+                                    'Bids',
+                                    style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary, fontSize: 10),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${auction.totalBids}',
+                                    style: AppTextStyles.labelLarge.copyWith(color: AppColors.textPrimary),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),

@@ -37,10 +37,21 @@ class AuthService {
 
   Future<UserModel?> getUserData(String uid) async {
     try {
+      // Coba lowercase dulu (format baru setelah patch saveProfile)
+      final lowerUid = uid.toLowerCase();
       DocumentSnapshot doc =
-          await _firestore.collection('users').doc(uid).get();
+          await _firestore.collection('users').doc(lowerUid).get();
       if (doc.exists) {
         return UserModel.fromFirestore(doc.data() as Map<String, dynamic>);
+      }
+      
+      // Fallback: coba original case (format lama sebelum patch, untuk backward compatibility)
+      if (lowerUid != uid) {
+        doc = await _firestore.collection('users').doc(uid).get();
+        if (doc.exists) {
+          if (kDebugMode) { debugPrint('[getUserData] Found with original case: $uid'); }
+          return UserModel.fromFirestore(doc.data() as Map<String, dynamic>);
+        }
       }
     } catch (e) {
       if (kDebugMode) { debugPrint('Error fetching user data: $e'); }

@@ -21,7 +21,6 @@ import 'package:nft_logo_marketplace/shared/widgets/empty_state_widget.dart';
 import 'package:nft_logo_marketplace/shared/widgets/loading_skeleton.dart';
 import 'package:nft_logo_marketplace/shared/widgets/custom_loading_indicator.dart';
 import 'package:nft_logo_marketplace/core/theme/app_shadows.dart';
-import 'package:nft_logo_marketplace/core/widgets/notification_bell.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
@@ -384,6 +383,7 @@ class HomePageState extends State<HomePage> {
           backgroundColor: AppColors.surface,
           child: CustomScrollView(
             controller: _scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // Hero Section
               SliverToBoxAdapter(
@@ -444,8 +444,6 @@ class HomePageState extends State<HomePage> {
                                       ],
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  const NotificationBell(iconColor: AppColors.textPrimary),
                                   const SizedBox(width: 8),
                                   // Connect Button
                                   GestureDetector(

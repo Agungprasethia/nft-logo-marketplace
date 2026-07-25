@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:gal/gal.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:shimmer/shimmer.dart';
@@ -49,6 +50,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
   final _web3 = Web3Service.instance;
   DateTime? _lastBidAttempt;
   final Map<String, UserModel> _userCache = {};
+  bool _isSavingGallery = false;
 
   Future<UserModel?> _getUserProfile(String walletAddress) async {
     final lowerWallet = walletAddress.toLowerCase();
@@ -102,14 +104,13 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
       await FirebaseFirestore.instance.collection('nfts').doc(pendingLogo.tokenId.toString()).delete();
 
       if (!mounted) return;
-      Navigator.pop(context); // close loading
-      
       NotificationManager.show(
         context: context,
         title: 'Mint Success',
         message: 'NFT successfully minted!',
         type: NotificationType.success,
       );
+      Navigator.pop(context); // close loading
 
       // Navigate to new detail page and pop the old one
       Navigator.pushReplacement(
@@ -120,13 +121,13 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.pop(context); // close loading
       NotificationManager.show(
         context: context,
         title: 'Mint Failed',
         message: e.toString(),
         type: NotificationType.error,
       );
+      Navigator.pop(context); // close loading
     }
   }
 
@@ -169,6 +170,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           return RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // ─────── App Bar ───────
               SliverAppBar(
@@ -558,9 +560,8 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 children: [
                   const Icon(Icons.category_outlined, color: AppColors.primary, size: 20),
                   const SizedBox(width: 12),
-                  Text('Category', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-                  const Spacer(),
-                  Text(logo.category, style: AppTextStyles.labelLarge),
+                  Expanded(child: Text('Category', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary))),
+                  Flexible(child: Text(logo.category, style: AppTextStyles.labelLarge, overflow: TextOverflow.ellipsis)),
                 ],
               ),
               const Divider(color: AppColors.border, height: 24),
@@ -569,9 +570,8 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   children: [
                     const Icon(Icons.local_offer_outlined, color: AppColors.accentOrange, size: 20),
                     const SizedBox(width: 12),
-                    Text('Final Bid Price', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-                    const Spacer(),
-                    Text(formattedPrice, style: AppTextStyles.labelLarge.copyWith(color: AppColors.accentOrange, fontWeight: FontWeight.bold)),
+                    Expanded(child: Text('Final Bid Price', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary))),
+                    Flexible(child: Text(formattedPrice, style: AppTextStyles.labelLarge.copyWith(color: AppColors.accentOrange, fontWeight: FontWeight.bold), overflow: TextOverflow.ellipsis)),
                   ],
                 ),
                 if (logo.highestBidderWallet != null && logo.highestBidderWallet!.isNotEmpty) ...[
@@ -580,13 +580,12 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                     children: [
                       const Icon(Icons.emoji_events_outlined, color: AppColors.accentOrange, size: 20),
                       const SizedBox(width: 12),
-                      Text('Highest Bidder', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-                      const Spacer(),
+                      Expanded(child: Text('Highest Bidder', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary))),
                       FutureBuilder<UserModel?>(
                         future: _getUserProfile(logo.highestBidderWallet!),
                         builder: (context, snapshot) {
                           final displayName = UserDisplayUtils.getDisplayName(snapshot.data, logo.highestBidderWallet!);
-                          return Text(displayName, style: AppTextStyles.labelLarge);
+                          return Flexible(child: Text(displayName, style: AppTextStyles.labelLarge, overflow: TextOverflow.ellipsis));
                         },
                       ),
                     ],
@@ -597,9 +596,8 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   children: [
                     const Icon(Icons.timer_outlined, color: AppColors.accentOrange, size: 20),
                     const SizedBox(width: 12),
-                    Text('Auction Duration', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
-                    const Spacer(),
-                    Text(_formatDuration(logo.auctionDuration ?? 86400), style: AppTextStyles.labelLarge),
+                    Expanded(child: Text('Auction Duration', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary))),
+                    Flexible(child: Text(_formatDuration(logo.auctionDuration ?? 86400), style: AppTextStyles.labelLarge, overflow: TextOverflow.ellipsis)),
                   ],
                 ),
               ],
@@ -676,23 +674,25 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 // Completed Actions (Download / Save to Gallery)
                 if (canDownload) ...[
                   ElevatedButton.icon(
-                    onPressed: () => _saveToGallery(logo.imageUrl),
-                    icon: const Icon(Icons.image),
-                    label: const Text('Save to Gallery', maxLines: 1, overflow: TextOverflow.ellipsis),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppColors.primary.withValues(alpha: 0.1),
-                      foregroundColor: AppColors.primary,
-                      elevation: 0,
-                      minimumSize: const Size(double.infinity, 0),
-                      padding: const EdgeInsets.symmetric(vertical: 16),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(AppRadius.lg),
-                        side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                      onPressed: _isSavingGallery ? null : () => _saveToGallery(logo.imageUrl),
+                      icon: _isSavingGallery 
+                          ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                          : const Icon(Icons.image),
+                      label: Text(_isSavingGallery ? 'Saving...' : 'Save to Gallery', maxLines: 1, overflow: TextOverflow.ellipsis),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppColors.primary.withValues(alpha: 0.1),
+                        foregroundColor: AppColors.primary,
+                        elevation: 0,
+                        minimumSize: const Size(double.infinity, 0),
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(AppRadius.lg),
+                          side: BorderSide(color: AppColors.primary.withValues(alpha: 0.3)),
+                        ),
                       ),
                     ),
-                  ),
-                const SizedBox(height: AppSpacing.md),
-              ],
+                  const SizedBox(height: AppSpacing.md),
+                ],
 
 
               // Mint Pending NFT Button
@@ -921,7 +921,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           ),
         ),
 
-        // â€”â€”â€” Leaderboard Section â€”â€”â€”
+        // ——— Leaderboard Section ———
         if (auctionCreated)
           _buildLeaderboardSection(auction),
       ],
@@ -1037,7 +1037,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                         Icon(Icons.gavel_outlined, size: 48, color: AppColors.textSecondary.withValues(alpha: 0.4)),
                         const SizedBox(height: AppSpacing.md),
                         Text(
-                          auction != null && auction.isOngoing ? 'No bids yet â€” be the first!' : 'No bids were placed',
+                          auction != null && auction.isOngoing ? 'No bids yet — be the first!' : 'No bids were placed',
                           style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
                         ),
                         if (auction != null && auction.isOngoing) ...[
@@ -1075,18 +1075,23 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Row(
-                          children: [
-                            const Icon(Icons.how_to_vote_outlined, color: AppColors.primary, size: 18),
-                            const SizedBox(width: 8),
-                            Text('${bids.length} ${bids.length == 1 ? 'bid' : 'bids'}', style: AppTextStyles.labelLarge),
-                          ],
+                        Flexible(
+                          child: Row(
+                            children: [
+                              const Icon(Icons.how_to_vote_outlined, color: AppColors.primary, size: 18),
+                              const SizedBox(width: 8),
+                              Flexible(child: Text('${bids.length} ${bids.length == 1 ? 'bid' : 'bids'}', style: AppTextStyles.labelLarge, overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
                         ),
-                        Row(
-                          children: [
-                            Text('Highest: ', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
-                            Text('${bids.first.amount.toStringAsFixed(4)} ETH', style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary)),
-                          ],
+                        Flexible(
+                          child: Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              Text('Highest: ', style: AppTextStyles.bodySmall.copyWith(color: AppColors.textSecondary)),
+                              Flexible(child: Text('${bids.first.amount.toStringAsFixed(4)} ETH', style: AppTextStyles.labelLarge.copyWith(color: AppColors.primary), overflow: TextOverflow.ellipsis)),
+                            ],
+                          ),
                         ),
                       ],
                     ),
@@ -1331,8 +1336,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
             if (!mounted) return;
             NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
           } catch (e) {
-            if (!mounted) return;
-            NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+            rethrow;
           }
         },
       ),
@@ -1357,14 +1361,40 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
 
   Future<void> _saveToGallery(String imageUrl) async {
+    setState(() => _isSavingGallery = true);
     try {
       if (Platform.isAndroid || Platform.isIOS) {
         final hasAccess = await Gal.hasAccess();
         if (!hasAccess) {
-          final request = await Gal.requestAccess();
+          bool request = false;
+          try {
+            request = await Gal.requestAccess();
+          } on GalException catch (e) {
+            if (e.type == GalExceptionType.accessDenied) {
+              request = false;
+            } else {
+              rethrow;
+            }
+          }
           if (!request) {
+            if (!mounted) {
+              setState(() => _isSavingGallery = false);
+              return;
+            }
+            bool isPermanentlyDenied = false;
+            if (Platform.isAndroid) {
+              isPermanentlyDenied = await Permission.storage.isPermanentlyDenied || await Permission.photos.isPermanentlyDenied;
+            } else if (Platform.isIOS) {
+              isPermanentlyDenied = await Permission.photos.isPermanentlyDenied;
+            }
+            
             if (!mounted) return;
-            NotificationManager.show(context: context, title: 'Permission Denied', message: 'Storage permission is required to save to gallery.', type: NotificationType.error);
+            String msg = 'Storage permission is required to save to gallery.';
+            if (isPermanentlyDenied) {
+              msg += '\n\nPlease enable storage permission in Settings.';
+            }
+            NotificationManager.show(context: context, title: 'Permission Denied', message: msg, type: NotificationType.error);
+            setState(() => _isSavingGallery = false);
             return;
           }
         }
@@ -1388,16 +1418,39 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
         final tempDir = await getTemporaryDirectory();
         filePath = '${tempDir.path}/gallery_${DateTime.now().millisecondsSinceEpoch}.png';
-        await Dio().download(url, filePath);
+        final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 15)));
+        await dio.download(
+          url, 
+          filePath,
+          options: Options(
+            receiveTimeout: const Duration(seconds: 15),
+            sendTimeout: const Duration(seconds: 15),
+          ),
+        );
       }
 
       await Gal.putImage(filePath);
-      if (!mounted) return;
+      if (!mounted) {
+        setState(() => _isSavingGallery = false);
+        return;
+      }
       NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
     } catch (e) {
-      if (!mounted) return;
-      NotificationManager.show(context: context, title: 'Error', message: 'Failed to save to gallery.', type: NotificationType.error);
+      if (!mounted) {
+        setState(() => _isSavingGallery = false);
+        return;
+      }
+      String errorMsg = 'Failed to save to gallery.';
+      if (e is DioException) {
+        if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
+          errorMsg = 'Failed to save to gallery. Connection timeout.';
+        }
+      } else if (e is GalException && e.type == GalExceptionType.accessDenied) {
+        errorMsg = 'Permission Denied. Storage permission is required to save to gallery.';
+      }
+      NotificationManager.show(context: context, title: 'Error', message: errorMsg, type: NotificationType.error);
     }
+    if (mounted) setState(() => _isSavingGallery = false);
   }
 }
 
@@ -1572,3 +1625,5 @@ class _PremiumCopyrightCardState extends State<_PremiumCopyrightCard> {
     );
   }
 }
+
+

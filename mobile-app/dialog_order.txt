@@ -1,0 +1,183 @@
+
+=== lib/features/admin/presentation/active_auctions_page.dart ===
+187 | >>  NotificationManager.show(context: context, title: 'Frozen', message: 'Auction Frozen (Bidding Disabled)', type: NotificationType.warning);
+---
+192 | >>  NotificationManager.show(context: context, title: 'Unfrozen', message: 'Auction Unfrozen (Bidding Enabled)', type: NotificationType.success);
+---
+
+=== lib/features/admin/presentation/pending_nft_page.dart ===
+273 | >>  NotificationManager.show(
+---
+281 | >>  NotificationManager.show(
+---
+314 | >>  NotificationManager.show(
+---
+322 | >>  NotificationManager.show(
+---
+472 | POP Navigator.pop(context);
+473 | >>  NotificationManager.show(context: context, title: 'Success', message: 'NFT Approved!', type: NotificationType.success);
+---
+472 | POP Navigator.pop(context);
+476 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+490 | POP Navigator.pop(context);
+491 | >>  NotificationManager.show(context: context, title: 'Rejected', message: 'NFT Rejected!', type: NotificationType.info);
+---
+490 | POP Navigator.pop(context);
+494 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+
+=== lib/features/admin/presentation/reported_nft_page.dart ===
+358 | >>  NotificationManager.show(context: context, title: 'Error', message: 'NFT data not found', type: NotificationType.error);
+---
+522 | >>  NotificationManager.show(context: context, title: 'Success', message: 'Auction Frozen!', type: NotificationType.success);
+---
+525 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+540 | >>  NotificationManager.show(context: context, title: 'Success', message: 'Report Dismissed!', type: NotificationType.success);
+---
+543 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+558 | >>  NotificationManager.show(context: context, title: 'Success', message: 'Auction Reopened!', type: NotificationType.success);
+---
+561 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+576 | >>  NotificationManager.show(context: context, title: 'Success', message: 'NFT Permanently Rejected!', type: NotificationType.error);
+---
+579 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+
+=== lib/features/auction/presentation/auction_page.dart ===
+1895 | >>  NotificationManager.show(
+---
+1901 | POP Navigator.pop(context);
+1905 | >>  NotificationManager.show(
+---
+1931 | >>  NotificationManager.show(
+---
+1951 | >>  NotificationManager.show(
+---
+1960 | >>  NotificationManager.show(
+---
+2049 | >>  NotificationManager.show(
+---
+2076 | POP Navigator.pop(context);
+2079 | >>  NotificationManager.show(
+---
+2431 | >>  NotificationManager.show(
+---
+2442 | >>  NotificationManager.show(
+---
+2457 | >>  NotificationManager.show(
+---
+2490 | >>  NotificationManager.show(
+---
+2498 | >>  NotificationManager.show(
+---
+
+=== lib/features/auction/presentation/auction_payment_page.dart ===
+159 | >>  NotificationManager.show(
+---
+188 | >>  NotificationManager.show(
+---
+667 | >>  NotificationManager.show(
+---
+682 | >>  NotificationManager.show(
+---
+692 | >>  NotificationManager.show(
+---
+830 | >>  NotificationManager.show(
+---
+
+=== lib/features/nft/presentation/detail_logo_page.dart ===
+105 | POP Navigator.pop(context); // close loading
+107 | >>  NotificationManager.show(
+---
+123 | POP Navigator.pop(context); // close loading
+124 | >>  NotificationManager.show(
+---
+1303 | >>  NotificationManager.show(context: context, title: 'Rate Limit', message: 'Please wait 3 seconds before trying again.', type: NotificationType.warning);
+---
+1311 | >>  NotificationManager.show(context: context, title: 'Invalid Bid', message: 'Cannot bid on own auction', type: NotificationType.warning);
+---
+1334 | >>  NotificationManager.show(context: context, title: 'Success', message: 'Bid placed successfully! 🎉', type: NotificationType.success);
+---
+1337 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+1369 | >>  NotificationManager.show(context: context, title: 'Permission Denied', message: 'Storage permission is required to save to gallery.', type: NotificationType.error);
+---
+1398 | >>  NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
+---
+1401 | >>  NotificationManager.show(context: context, title: 'Error', message: 'Failed to save to gallery.', type: NotificationType.error);
+---
+1421 | >>  NotificationManager.show(
+---
+
+=== lib/features/nft/presentation/upload_page.dart ===
+119 | >>  NotificationManager.show(
+---
+134 | >>  NotificationManager.show(
+---
+148 | >>  NotificationManager.show(
+---
+158 | >>  NotificationManager.show(
+---
+173 | >>  NotificationManager.show(
+---
+194 | >>  NotificationManager.show(
+---
+222 | >>  NotificationManager.show(
+---
+317 | >>  NotificationManager.show(
+---
+377 | >>  NotificationManager.show(
+---
+477 | >>  NotificationManager.show(context: context, title: 'Copied', message: 'IPFS Image URL copied!', type: NotificationType.info);
+---
+501 | >>  NotificationManager.show(context: context, title: 'Copied', message: 'IPFS Metadata URL copied!', type: NotificationType.info);
+---
+534 | >>  NotificationManager.show(
+---
+958 | >>  NotificationManager.show(
+---
+
+=== lib/features/nft/presentation/widgets/appeal_dialog.dart ===
+60 | >>  NotificationManager.show(
+---
+81 | POP Navigator.pop(context);
+82 | >>  NotificationManager.show(
+---
+90 | >>  NotificationManager.show(
+---
+
+=== lib/features/profile/presentation/edit_profile_page.dart ===
+345 | >>  NotificationManager.show(
+---
+711 | >>  NotificationManager.show(
+---
+
+=== lib/features/profile/presentation/profile_page.dart ===
+117 | >>  NotificationManager.show(context: context, title: 'Error', message: 'Failed to load profile data', type: NotificationType.error);
+---
+397 | >>  NotificationManager.show(context: context, title: 'Copied', message: 'Address copied to clipboard', type: NotificationType.success);
+---
+1640 | >>  NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+1719 | >>  NotificationManager.show(context: context, title: 'Success', message: 'Saved to gallery!', type: NotificationType.success);
+---
+1722 | >>  NotificationManager.show(context: context, title: 'Failed', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+---
+
+=== lib/features/profile/presentation/relist_auction_dialog.dart ===
+92 | POP Navigator.pop(context);
+93 | >>  NotificationManager.show(
+---
+102 | >>  NotificationManager.show(
+---
+
+=== lib/shared/dialogs/re_auction_dialog.dart ===
+78 | POP Navigator.pop(context);
+79 | >>  NotificationManager.show(
+---
+88 | >>  NotificationManager.show(
+---

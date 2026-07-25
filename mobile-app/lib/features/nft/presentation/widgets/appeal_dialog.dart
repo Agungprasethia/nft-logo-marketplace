@@ -78,13 +78,13 @@ class _AppealDialogState extends State<AppealDialog> {
       );
 
       if (!mounted) return;
-      Navigator.pop(context);
       NotificationManager.show(
         context: context,
         title: 'Appeal Submitted',
         message: 'Appeal submitted successfully. Awaiting moderator review.',
         type: NotificationType.success,
       );
+      Navigator.pop(context);
     } catch (e) {
       if (!mounted) return;
       NotificationManager.show(

@@ -78,7 +78,7 @@ class NotificationManager {
 
     _isShowing = true;
 
-    final overlay = Overlay.of(context);
+    final overlay = Overlay.of(context, rootOverlay: true);
     
     _currentOverlay = OverlayEntry(
       builder: (context) {

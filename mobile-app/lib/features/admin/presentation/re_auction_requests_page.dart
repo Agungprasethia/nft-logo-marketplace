@@ -115,15 +115,26 @@ class _ReAuctionRequestsPageState extends State<ReAuctionRequestsPage> {
         final requests = snapshot.data ?? [];
 
         if (requests.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.check_circle_outline, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
-                const SizedBox(height: AppSpacing.md),
-                Text('No Re-Auction Requests', style: AppTextStyles.h3.copyWith(color: AppColors.textSecondary)),
-                const SizedBox(height: AppSpacing.sm),
-                Text('All requests have been handled.', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+          return RefreshIndicator(
+            onRefresh: () async { setState(() {}); },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(Icons.check_circle_outline, size: 64, color: AppColors.textSecondary.withValues(alpha: 0.5)),
+                        const SizedBox(height: AppSpacing.md),
+                        Text('No Re-Auction Requests', style: AppTextStyles.h3.copyWith(color: AppColors.textSecondary)),
+                        const SizedBox(height: AppSpacing.sm),
+                        Text('All requests have been handled.', style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary)),
+                      ],
+                    ),
+                  ),
+                ),
               ],
             ),
           );
@@ -132,6 +143,7 @@ class _ReAuctionRequestsPageState extends State<ReAuctionRequestsPage> {
         return RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: requests.length,
           itemBuilder: (context, index) {

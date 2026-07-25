@@ -18,6 +18,8 @@ import 'package:nft_logo_marketplace/shared/widgets/auction_step_indicator.dart'
 import 'package:nft_logo_marketplace/core/exceptions/insufficient_balance_exception.dart';
 import 'package:nft_logo_marketplace/shared/dialogs/insufficient_balance_dialog.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/home_page.dart';
+import 'package:connectivity_plus/connectivity_plus.dart';
+
 
 class AuctionPaymentPage extends StatefulWidget {
   final int tokenId;
@@ -33,6 +35,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
   bool _isProcessingPayment = false;
   DateTime? _paymentStartedAt;
   String? _pendingTransactionHash;
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
   // localStorage key for persisting txHash across reloads (Web)
   String get _txHashStorageKey => 'orphan_tx_${widget.tokenId}';
@@ -43,11 +46,19 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
     WidgetsBinding.instance.addObserver(this);
     // Check for orphaned payment on every page open
     WidgetsBinding.instance.addPostFrameCallback((_) => _checkForOrphanedPayment());
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((List<ConnectivityResult> results) {
+      if (!results.contains(ConnectivityResult.none) && _pendingTransactionHash != null) {
+        if (kDebugMode) { debugPrint('[NETWORK RESTORED] Triggering _checkPaymentRecovery'); }
+        _checkPaymentRecovery();
+      }
+    });
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _connectivitySubscription?.cancel();
     super.dispose();
   }
 
@@ -126,11 +137,10 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
       if (kDebugMode) { debugPrint('[PAYMENT RESUME] Hash exists, checking chain status...'); }
       // CASE A: Check blockchain status
       try {
-        final status = await _web3.getTransactionStatus(_pendingTransactionHash!);
-        if (status == true) {
+        final status = await _web3.getTransactionStatusDetailed(_pendingTransactionHash!);
+        
+        if (status == TransactionStatusDetailed.success) {
           if (kDebugMode) { debugPrint('[PAYMENT RESUME] Transaction SUCCESS on chain. Triggering recovery.'); }
-          // Transaction is confirmed on-chain — attempt to complete the Firestore transfer
-          // in case the earlier completePayment() call failed due to the status bug.
           final wallet = _web3.currentAddress;
           if (wallet != null && mounted) {
             final recovered = await FirestoreService.instance.recoverOrphanedPayment(
@@ -141,9 +151,8 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
               await _handleSuccessfulPayment(_pendingTransactionHash!);
             }
           }
-        } else {
-          if (kDebugMode) { debugPrint('[PAYMENT RESET] Transaction FAILED or NOT FOUND on chain.'); }
-          
+        } else if (status == TransactionStatusDetailed.reverted) {
+          if (kDebugMode) { debugPrint('[PAYMENT RESET] Transaction REVERTED on chain.'); }
           await FirestoreService.instance.setPaymentProcessing(widget.tokenId, false);
           
           if (mounted) {
@@ -152,14 +161,40 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
               _paymentStartedAt = null;
               _pendingTransactionHash = null;
             });
+            try {
+              final prefs = await SharedPreferences.getInstance();
+              await prefs.remove(_txHashStorageKey);
+            } catch (_) {}
             
+            if (!mounted) return;
             Navigator.of(context, rootNavigator: true).pop();
-            
             NotificationManager.show(
               context: context,
               title: 'Payment Failed',
-              message: 'Blockchain transaction failed or not found.',
+              message: 'Transaction reverted on blockchain. You can safely try paying again.',
               type: NotificationType.error,
+            );
+          }
+        } else if (status == TransactionStatusDetailed.pending) {
+          if (kDebugMode) { debugPrint('[PAYMENT PENDING] Transaction still pending.'); }
+          if (mounted) {
+            Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog, keep state
+            NotificationManager.show(
+              context: context,
+              title: 'Transaction Pending',
+              message: 'Transaction is still pending on the blockchain. Please wait.',
+              type: NotificationType.warning,
+            );
+          }
+        } else if (status == TransactionStatusDetailed.networkError) {
+          if (kDebugMode) { debugPrint('[PAYMENT PENDING] Network error while checking.'); }
+          if (mounted) {
+            Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog, keep state
+            NotificationManager.show(
+              context: context,
+              title: 'Cannot Check Status',
+              message: 'Cannot check transaction status. Please check your internet connection.',
+              type: NotificationType.warning,
             );
           }
         }
@@ -311,8 +346,9 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
               return Stack(
                 children: [
                   RefreshIndicator(
-      onRefresh: () async { setState(() {}); },
-      child: SingleChildScrollView(
+                    onRefresh: () async { setState(() {}); },
+                    child: SingleChildScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
                     padding: const EdgeInsets.all(AppSpacing.lg),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -656,6 +692,29 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
   }
 
   Future<void> _processPayment(LogoNFT logo, Auction auction) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final existingTxHash = prefs.getString(_txHashStorageKey);
+      if (existingTxHash != null && existingTxHash.isNotEmpty) {
+        if (kDebugMode) { debugPrint('[PaymentFlow] Guard active: Pending transaction found.'); }
+        if (!mounted) return;
+        NotificationManager.show(
+          context: context,
+          title: 'Transaction Pending',
+          message: 'You have a pending transaction. We are checking its status.',
+          type: NotificationType.warning,
+        );
+        setState(() {
+          _isProcessingPayment = true;
+          _pendingTransactionHash = existingTxHash;
+        });
+        await _checkPaymentRecovery();
+        return;
+      }
+    } catch (_) {}
+
+    if (!mounted) return;
+
     if (_web3.chainId != Web3ServiceBase.sepoliaChainId) {
       NotificationManager.show(
         context: context,
@@ -716,15 +775,19 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
     );
 
     try {
-      final txHash = await _web3.payAuctionWinner(logo.creatorWallet, auction.highestBid);
-      if (mounted) {
-        setState(() => _pendingTransactionHash = txHash);
-      }
-      
-      try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_txHashStorageKey, txHash);
-      } catch (_) {}
+      final txHash = await _web3.payAuctionWinner(
+        logo.creatorWallet, 
+        auction.highestBid,
+        onTxHashReady: (hash) async {
+          if (mounted) {
+            setState(() => _pendingTransactionHash = hash);
+          }
+          try {
+            final prefs = await SharedPreferences.getInstance();
+            await prefs.setString(_txHashStorageKey, hash);
+          } catch (_) {}
+        },
+      );
 
       await FirestoreService.instance.completePayment(
         logo.tokenId,
@@ -795,9 +858,23 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
       );
     } catch (e) {
       if (!mounted) return;
-      Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
       
       final errorText = e.toString().toLowerCase();
+      
+      if (errorText.contains('network_loss')) {
+        Navigator.of(context, rootNavigator: true).pop(); // Close dialog
+        NotificationManager.show(
+          context: context,
+          title: 'Cannot Check Status',
+          message: 'Cannot check transaction status. Please check your internet connection.',
+          type: NotificationType.warning,
+        );
+        // Do NOT clear _isProcessingPayment or _pendingTransactionHash so UI stays locked
+        return;
+      }
+      
+      Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
+      
       final isRejected = errorText.contains('reject') || errorText.contains('denied');
       NotificationManager.show(
         context: context,
@@ -960,3 +1037,4 @@ class _AuctionPaymentCountdownState extends State<AuctionPaymentCountdown> with 
     );
   }
 }
+

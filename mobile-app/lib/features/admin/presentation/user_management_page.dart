@@ -42,23 +42,34 @@ class _UserManagementPageState extends State<UserManagementPage> {
         final users = snapshot.data ?? [];
 
         if (users.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border),
+          return RefreshIndicator(
+            onRefresh: () async { if (mounted) setState(() {}); },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(Icons.people_outline, size: 48, color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'No users found',
+                          style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.people_outline, size: 48, color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'No users found',
-                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -68,6 +79,7 @@ class _UserManagementPageState extends State<UserManagementPage> {
         return RefreshIndicator(
       onRefresh: () async { if (mounted) setState(() {}); },
       child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: users.length,
           itemBuilder: (context, index) {

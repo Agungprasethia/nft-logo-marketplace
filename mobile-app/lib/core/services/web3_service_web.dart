@@ -819,7 +819,7 @@ class Web3Service extends Web3ServiceBase {
     notifyListeners();
   }
   @override
-  Future<String> payAuctionWinner(String sellerWallet, double amountInEth) async {
+  Future<String> payAuctionWinner(String sellerWallet, double amountInEth, {Function(String)? onTxHashReady}) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
     if (_chainId != Web3ServiceBase.sepoliaChainId) {
       throw Exception('Please switch to Sepolia Testnet');
@@ -1102,3 +1102,5 @@ class Web3Service extends Web3ServiceBase {
     return '0x$selector$tokenIdArg$creatorArg$startPriceArg$reservePriceArg$durationArg';
   }
 }
+
+

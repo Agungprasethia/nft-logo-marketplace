@@ -456,6 +456,7 @@ class _EditProfilePageState extends State<EditProfilePage> {
           child: RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.lg),

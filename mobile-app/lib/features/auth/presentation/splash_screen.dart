@@ -6,7 +6,6 @@ import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/features/nft/presentation/home_page.dart';
-import 'package:nft_logo_marketplace/features/auth/presentation/login_page.dart';
 import 'package:nft_logo_marketplace/features/admin/presentation/admin_dashboard.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/profile_setup_page.dart';
 import 'package:nft_logo_marketplace/core/utils/route_utils.dart';
@@ -86,12 +85,8 @@ class _SplashScreenState extends State<SplashScreen>
 
       // 3. Handle Admin Mode Routing
       if (isAdminMode) {
-        final user = AuthService.instance.currentUser;
-        if (user != null) {
-          _navigateTo(const AdminDashboard());
-        } else {
-          _navigateTo(const LoginPage());
-        }
+        // TEMPORARY: Skip login, go directly to AdminDashboard
+        _navigateTo(const AdminDashboard());
         return;
       }
 
@@ -116,7 +111,7 @@ class _SplashScreenState extends State<SplashScreen>
         final uid = AuthService.instance.currentUser?.uid;
         if (uid != null) {
           try {
-            final userData = await AuthService.instance.getUserData(uid);
+            final userData = await AuthService.instance.getUserData(uid.toLowerCase());
             final isComplete = userData?.isProfileComplete ?? false;
             
             if (!isComplete) {
@@ -152,7 +147,7 @@ class _SplashScreenState extends State<SplashScreen>
           walletName: session?.walletProvider ?? 'metamask',
           restoreSession: true,
         ),
-        Future.delayed(const Duration(seconds: 8), () => false),
+        Future.delayed(const Duration(seconds: 3), () => false),
       ]);
       
       if (success) {
@@ -210,7 +205,7 @@ class _SplashScreenState extends State<SplashScreen>
   String _getStatusText(SplashState state) {
     switch (state) {
       case SplashState.initializing: return 'Initializing...';
-      case SplashState.restoringSession: return 'Restoring wallet...';
+      case SplashState.restoringSession: return 'Restoring Secure Wallet Session';
       case SplashState.validatingWallet: return 'Validating Wallet...';
       case SplashState.wrongNetwork: return 'Wrong Network Detected';
       case SplashState.authenticated: return 'Welcome back!';

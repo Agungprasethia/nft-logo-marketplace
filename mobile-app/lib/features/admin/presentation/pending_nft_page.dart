@@ -49,52 +49,64 @@ class _PendingNftPageState extends State<PendingNftPage> {
         final pendingList = snapshot.data ?? [];
 
         if (pendingList.isEmpty) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(AppSpacing.xxl),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(AppSpacing.xl),
-                    decoration: BoxDecoration(
-                      color: AppColors.surface,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.border),
+          return RefreshIndicator(
+            onRefresh: () async { setState(() {}); },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppSpacing.xxl),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            padding: const EdgeInsets.all(AppSpacing.xl),
+                            decoration: BoxDecoration(
+                              color: AppColors.surface,
+                              shape: BoxShape.circle,
+                              border: Border.all(color: AppColors.border),
+                            ),
+                            child: const Icon(Icons.check_circle_outline, size: 48, color: AppColors.textSecondary),
+                          ),
+                          const SizedBox(height: AppSpacing.lg),
+                          Text('No pending NFTs', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
+                        ],
+                      ),
                     ),
-                    child: const Icon(Icons.check_circle_outline, size: 48, color: AppColors.textSecondary),
                   ),
-                  const SizedBox(height: AppSpacing.lg),
-                  Text('No pending NFTs', style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary)),
-                ],
-              ),
+                ),
+              ],
             ),
           );
         }
 
-        return SingleChildScrollView(
-          padding: const EdgeInsets.all(AppSpacing.xl),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              RefreshIndicator(
-      onRefresh: () async { setState(() {}); },
-      child: GridView.builder(
-                shrinkWrap: true,
-                physics: const NeverScrollableScrollPhysics(),
-                gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-                  maxCrossAxisExtent: 320,
-                  mainAxisExtent: 420,
-                  crossAxisSpacing: AppSpacing.lg,
-                  mainAxisSpacing: AppSpacing.lg,
+        return RefreshIndicator(
+          onRefresh: () async { setState(() {}); },
+          child: SingleChildScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: const EdgeInsets.all(AppSpacing.xl),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                GridView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                    maxCrossAxisExtent: 320,
+                    mainAxisExtent: 420,
+                    crossAxisSpacing: AppSpacing.lg,
+                    mainAxisSpacing: AppSpacing.lg,
+                  ),
+                  itemCount: pendingList.length,
+                  itemBuilder: (context, index) {
+                    return _buildPendingNFTCard(context, pendingList[index]);
+                  },
                 ),
-                itemCount: pendingList.length,
-                itemBuilder: (context, index) {
-                  return _buildPendingNFTCard(context, pendingList[index]);
-                },
-              ),
-    ),
-            ],
+              ],
+            ),
           ),
         );
       },
@@ -365,6 +377,7 @@ class _PendingNftPageState extends State<PendingNftPage> {
           child: ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 500),
             child: SingleChildScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -468,8 +481,8 @@ class _PendingNftPageState extends State<PendingNftPage> {
                                   try {
                                     await FirestoreService.instance.approveNFT(logo.tokenId, 'admin');
                                     if (!context.mounted) return;
-                                    Navigator.pop(context);
                                     NotificationManager.show(context: context, title: 'Success', message: 'NFT Approved!', type: NotificationType.success);
+                                    Navigator.pop(context);
                                   } catch (e) {
                                     if (!context.mounted) return;
                                     NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
@@ -486,8 +499,8 @@ class _PendingNftPageState extends State<PendingNftPage> {
                                   try {
                                     await FirestoreService.instance.rejectNFT(logo.tokenId);
                                     if (!context.mounted) return;
-                                    Navigator.pop(context);
                                     NotificationManager.show(context: context, title: 'Rejected', message: 'NFT Rejected!', type: NotificationType.info);
+                                    Navigator.pop(context);
                                   } catch (e) {
                                     if (!context.mounted) return;
                                     NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);

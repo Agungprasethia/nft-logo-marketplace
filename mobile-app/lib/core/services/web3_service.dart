@@ -8,6 +8,8 @@ export 'web3_service_stub.dart'
     if (dart.library.html) 'web3_service_web.dart'
     if (dart.library.io) 'web3_service_mobile.dart';
 
+enum TransactionStatusDetailed { success, reverted, pending, networkError }
+
 /// Base abstract class for Web3 Service
 /// Implemented differently for Web and Mobile
 abstract class Web3ServiceBase extends ChangeNotifier {
@@ -72,7 +74,7 @@ abstract class Web3ServiceBase extends ChangeNotifier {
 
   // Auction Operations have been migrated to FirestoreService
   // No longer implemented on-chain, except for final payment transfer
-  Future<String> payAuctionWinner(String sellerWallet, double amountInEth);
+  Future<String> payAuctionWinner(String sellerWallet, double amountInEth, {Function(String)? onTxHashReady});
   
   // Re-adding on-chain auction creation as per the reference flow
   Future<String> createAuctionOnChain({
@@ -84,6 +86,7 @@ abstract class Web3ServiceBase extends ChangeNotifier {
 
   // Transaction Status
   Future<bool?> getTransactionStatus(String txHash);
+  Future<TransactionStatusDetailed> getTransactionStatusDetailed(String txHash) async { return TransactionStatusDetailed.pending; }
 
   // Query methods
   List<LogoNFT> getMyLogos();
@@ -177,3 +180,10 @@ class SaleRecord {
     required this.timestamp,
   });
 }
+
+
+
+
+
+
+

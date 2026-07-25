@@ -40,23 +40,34 @@ class _ApprovedNftPageState extends State<ApprovedNftPage> {
         final nfts = snapshot.data ?? [];
 
         if (nfts.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border),
+          return RefreshIndicator(
+            onRefresh: () async { if (mounted) setState(() {}); },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(Icons.check_circle_outline, size: 48, color: AppColors.success),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'No approved NFTs yet',
+                          style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.check_circle_outline, size: 48, color: AppColors.success),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'No approved NFTs yet',
-                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -66,6 +77,7 @@ class _ApprovedNftPageState extends State<ApprovedNftPage> {
         return RefreshIndicator(
       onRefresh: () async { if (mounted) setState(() {}); },
       child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: nfts.length,
           itemBuilder: (context, index) {

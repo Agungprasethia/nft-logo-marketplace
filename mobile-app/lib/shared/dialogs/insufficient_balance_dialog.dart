@@ -143,10 +143,14 @@ class InsufficientBalanceDialog extends StatelessWidget {
           label,
           style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
         ),
-        Text(
-          value,
-          style: (isBold ? AppTextStyles.subtitle1 : AppTextStyles.bodyMedium).copyWith(
-            color: color ?? AppColors.textPrimary,
+        Flexible(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: (isBold ? AppTextStyles.subtitle1 : AppTextStyles.bodyMedium).copyWith(
+              color: color ?? AppColors.textPrimary,
+            ),
+            overflow: TextOverflow.ellipsis,
           ),
         ),
       ],

@@ -204,10 +204,23 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       if (mounted && !_isClosing) setState(() => _state = _ConnState.checking);
       
       await Future.delayed(const Duration(milliseconds: 800));
-      if (WalletConnectService.instance.isConnected) { _safePop(true); return; }
+      
+      // If Web3Service already has the connection, we're done
+      if (Web3Service.instance.isConnected) { _safePop(true); return; }
+
+      // WalletConnect has a session — use restoreSession: true so that
+      // connectMobileWallet picks up the EXISTING session instead of
+      // generating a new URI and re-opening MetaMask (which causes the loop).
+      final bool wcHasSession = WalletConnectService.instance.isConnected;
+      if (kDebugMode) {
+        debugPrint('[LOGIN] _finaliseConnection: wcHasSession=$wcHasSession');
+      }
 
       final ok = await Web3Service.instance
-          .connectWallet(walletName: _selectedWallet, restoreSession: false)
+          .connectWallet(
+            walletName: _selectedWallet,
+            restoreSession: wcHasSession, // true → picks up existing session
+          )
           .timeout(const Duration(seconds: 15));
           
       if (ok && mounted && !_isClosing) {
@@ -264,11 +277,48 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       final web3App = WalletConnectService.instance.web3App;
       if (web3App != null) {
         if (kDebugMode) debugPrint('[RELAY] RECONNECT_START');
-        await web3App.core.relayClient.connect().timeout(const Duration(seconds: 3), onTimeout: () {});
+        await web3App.core.relayClient.connect().timeout(const Duration(seconds: 5), onTimeout: () {});
+        // Wait until relay is actually connected, max 5s
+        int waitMs = 0;
+        while (waitMs < 5000) {
+          if (web3App.core.relayClient.isConnected) break;
+          await Future.delayed(const Duration(milliseconds: 300));
+          waitMs += 300;
+        }
+        if (kDebugMode) debugPrint('[RELAY] isConnected=${web3App.core.relayClient.isConnected} after ${waitMs}ms');
         if (kDebugMode) debugPrint('[RELAY] RECONNECT_SUCCESS');
       }
     } catch (_) {
       // Ignore if already connected or error
+    }
+
+    await Future.delayed(const Duration(seconds: 2));
+
+    // Force propagate session from WalletConnect into Web3Service
+    try {
+      final wcs = WalletConnectService.instance;
+      if (wcs.web3App != null) {
+        final liveSessions = wcs.web3App!.sessions.getAll();
+        if (liveSessions.isNotEmpty) {
+          await wcs.forceApplySession(liveSessions.last, walletName: _selectedWallet);
+          await Future.delayed(const Duration(seconds: 1));
+          
+          // WalletConnect now has the session — immediately propagate to Web3Service
+          // so that Web3Service.isConnected becomes true before any further checks
+          if (wcs.isConnected && !Web3Service.instance.isConnected) {
+            if (kDebugMode) debugPrint('[LOGIN] WC has session but Web3Service does not — propagating via connectWallet(restoreSession: true)');
+            final ok = await Web3Service.instance
+                .connectWallet(walletName: _selectedWallet, restoreSession: true)
+                .timeout(const Duration(seconds: 10), onTimeout: () => false);
+            if (ok && mounted && !_isClosing) {
+              _safePop(true);
+              return;
+            }
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('[LOGIN] forceApplySession error on resume: $e');
     }
 
     if (mounted && !_isClosing && _state != _ConnState.idle) { _startPoller(maxSeconds: 30); }
@@ -641,13 +691,13 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       case _ConnState.timeout:
         return [
           _SecondaryButton(
-            label: 'Coba Lagi',
+            label: 'Try Again',
             icon: Icons.refresh,
             isLoading: false,
             onPressed: _tryAgain,
           ),
           const SizedBox(height: 10),
-          _CancelButton(label: 'Batal', onPressed: () => _safePop(false)),
+          _CancelButton(label: 'Cancel', onPressed: () => _safePop(false)),
         ];
 
       // ── Checking: show spinner ─────────────────────────────────────────
@@ -658,6 +708,13 @@ class _WalletConnectModalState extends State<WalletConnectModal>
             icon: Icons.check_circle_outline,
             isLoading: true,
             onPressed: null,
+          ),
+          const SizedBox(height: 10),
+          _SecondaryButton(
+            label: 'Try Again',
+            icon: Icons.refresh,
+            isLoading: false,
+            onPressed: _tryAgain,
           ),
           const SizedBox(height: 10),
           _CancelButton(onPressed: () => _safePop(false)),

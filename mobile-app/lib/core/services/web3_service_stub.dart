@@ -55,7 +55,7 @@ class Web3Service extends Web3ServiceBase {
   @override Future<void> rejectNFT(int tokenId) async {}
   @override Future<void> disableNFT(int tokenId) async {}
 
-  @override Future<String> payAuctionWinner(String sellerWallet, double amountInEth) async => throw UnimplementedError();
+  @override Future<String> payAuctionWinner(String sellerWallet, double amountInEth, {Function(String)? onTxHashReady}) async => throw UnimplementedError();
   @override Future<String> createAuctionOnChain({required int tokenId, required String creatorAddress, required double startingPrice, required int durationSeconds}) async => throw UnimplementedError();
 
   @override
@@ -69,3 +69,5 @@ class Web3Service extends Web3ServiceBase {
   @override Map<String, dynamic> verifyCopyright(int tokenId) => {};
   @override Future<void> addBalance(double amount) async {}
 }
+
+

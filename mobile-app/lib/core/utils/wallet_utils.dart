@@ -28,7 +28,7 @@ class WalletUtils {
         final uid = AuthService.instance.currentUser?.uid ?? address;
         
         if (uid != null) {
-          final userData = await AuthService.instance.getUserData(uid);
+          final userData = await AuthService.instance.getUserData(uid.toLowerCase());
           
           final isComplete = userData?.isProfileComplete ?? false;
           if (!isComplete && context.mounted) {

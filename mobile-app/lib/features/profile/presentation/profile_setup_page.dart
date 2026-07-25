@@ -217,6 +217,7 @@ class _ProfileSetupPageState extends State<ProfileSetupPage>
                         child: RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: SingleChildScrollView(
+                          physics: const AlwaysScrollableScrollPhysics(),
                           padding: const EdgeInsets.fromLTRB(
                             AppSpacing.xl, AppSpacing.lg,
                             AppSpacing.xl, 40,

@@ -132,6 +132,7 @@ class _LoginPageState extends State<LoginPage> {
         child: RefreshIndicator(
       onRefresh: () async { setState(() {}); },
       child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.xxxl),
           child: Container(
             constraints: const BoxConstraints(maxWidth: 1000),

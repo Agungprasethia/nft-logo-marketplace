@@ -76,6 +76,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
             _chainId = null;
           } else {
             if (kDebugMode) debugPrint('✅ WalletConnect session restored on correct network');
+            notifyListeners(); // ADDED: Trigger UI update for successful initialization
           }
         } catch (_) {
           if (kDebugMode) debugPrint('⚠️ Stored session topic not found. Clearing...');
@@ -295,6 +296,10 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
     // Already connected — nothing to do
     if (isConnected) return true;
 
+    // Wait for relay if not connected yet
+    if (!(_web3App!.core.relayClient.isConnected)) {
+      await Future.delayed(const Duration(milliseconds: 1500));
+    }
     final liveSessions = _web3App!.sessions.getAll();
     if (liveSessions.isEmpty) {
       // Also check _session in case the event fired but getAll() is stale

@@ -41,23 +41,34 @@ class _ActiveAuctionsPageState extends State<ActiveAuctionsPage> {
         final auctions = snapshot.data ?? [];
 
         if (auctions.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Container(
-                  padding: const EdgeInsets.all(AppSpacing.xl),
-                  decoration: BoxDecoration(
-                    color: AppColors.surface,
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.border),
+          return RefreshIndicator(
+            onRefresh: () async { if (mounted) setState(() {}); },
+            child: CustomScrollView(
+              physics: const AlwaysScrollableScrollPhysics(),
+              slivers: [
+                SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: Center(
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(AppSpacing.xl),
+                          decoration: BoxDecoration(
+                            color: AppColors.surface,
+                            shape: BoxShape.circle,
+                            border: Border.all(color: AppColors.border),
+                          ),
+                          child: const Icon(Icons.gavel_outlined, size: 48, color: AppColors.textSecondary),
+                        ),
+                        const SizedBox(height: AppSpacing.lg),
+                        Text(
+                          'No auctions found',
+                          style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
+                        ),
+                      ],
+                    ),
                   ),
-                  child: const Icon(Icons.gavel_outlined, size: 48, color: AppColors.textSecondary),
-                ),
-                const SizedBox(height: AppSpacing.lg),
-                Text(
-                  'No auctions found',
-                  style: AppTextStyles.labelLarge.copyWith(color: AppColors.textSecondary),
                 ),
               ],
             ),
@@ -67,6 +78,7 @@ class _ActiveAuctionsPageState extends State<ActiveAuctionsPage> {
         return RefreshIndicator(
       onRefresh: () async { if (mounted) setState(() {}); },
       child: ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.xl),
           itemCount: auctions.length,
           itemBuilder: (context, index) {

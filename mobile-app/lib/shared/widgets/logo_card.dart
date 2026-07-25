@@ -136,7 +136,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                 children: [
                   // ═══ IMAGE SECTION with badges ═══
                   Expanded(
-                    flex: 6,
+                    flex: 55,
                     child: Stack(
                       fit: StackFit.expand,
                       children: [
@@ -191,9 +191,9 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
 
                   // ═══ INFO SECTION ═══
                   Expanded(
-                    flex: 4,
+                    flex: 45,
                     child: Padding(
-                      padding: const EdgeInsets.fromLTRB(8, 6, 8, 4),
+                      padding: const EdgeInsets.fromLTRB(8, 4, 8, 2),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -216,7 +216,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                               Icon(Icons.more_horiz, size: 16, color: AppColors.textSecondary),
                             ],
                           ),
-                          const SizedBox(height: 6),
+                          const SizedBox(height: 3),
 
                           // ── NFT Name ──
                           Text(
@@ -227,7 +227,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
                           ),
 
                           // ── Creator address ──
-                          const SizedBox(height: 2),
+                          const SizedBox(height: 1),
                           Row(
                             children: [
                               Expanded(

@@ -75,13 +75,13 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
       );
 
       if (mounted) {
-        Navigator.pop(context);
         NotificationManager.show(
           context: context,
           title: 'Re-Auction Started',
           message: 'Your NFT has been relisted successfully.',
           type: NotificationType.success,
         );
+        Navigator.pop(context);
       }
     } catch (e) {
       if (mounted) {
@@ -181,9 +181,12 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
                 children: [
                   const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
                   const SizedBox(width: 4),
-                  Text(
-                    'Wallet Balance: ${Web3Service.instance.balance.toStringAsFixed(4)} ETH',
-                    style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                  Flexible(
+                    child: Text(
+                      'Wallet Balance: ${Web3Service.instance.balance.toStringAsFixed(4)} ETH',
+                      style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ],
               ),

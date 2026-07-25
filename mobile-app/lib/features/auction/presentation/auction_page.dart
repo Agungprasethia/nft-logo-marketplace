@@ -449,8 +449,9 @@ class _AuctionPageState extends State<AuctionPage> {
               child: ConstrainedBox(
                 constraints: const BoxConstraints(maxWidth: 1200),
                 child: RefreshIndicator(
-      onRefresh: () async { _retryLoading(); },
-      child: SingleChildScrollView(
+                  onRefresh: () async { _retryLoading(); },
+                  child: SingleChildScrollView(
+                    physics: const AlwaysScrollableScrollPhysics(),
                   padding: const EdgeInsets.symmetric(
                     horizontal: AppSpacing.sectionPadding,
                     vertical: AppSpacing.lg,
@@ -488,7 +489,10 @@ class _AuctionPageState extends State<AuctionPage> {
               ),
             );
           } else {
-            return SingleChildScrollView(
+            return RefreshIndicator(
+              onRefresh: () async { _retryLoading(); },
+              child: SingleChildScrollView(
+                physics: const AlwaysScrollableScrollPhysics(),
               padding: const EdgeInsets.only(
                 left: AppSpacing.screenPadding,
                 right: AppSpacing.screenPadding,
@@ -505,7 +509,7 @@ class _AuctionPageState extends State<AuctionPage> {
                   _buildLeaderboardAndActions(logo, isLive, isOwner, auction),
                 ],
               ),
-            );
+            ));
           }
         },
       ),
@@ -2559,3 +2563,4 @@ class _AuctionPageState extends State<AuctionPage> {
     return '$seconds Seconds';
   }
 }
+

@@ -18,6 +18,8 @@ import 'package:nft_logo_marketplace/features/auction/presentation/auction_payme
 import 'package:nft_logo_marketplace/features/profile/presentation/edit_profile_page.dart';
 import 'package:nft_logo_marketplace/core/utils/wallet_utils.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter/foundation.dart';
 
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
@@ -112,12 +114,56 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   Future<void> _initData() async {
     try {
       await Future.wait([_loadProfile(), _subscribeToCounts()]);
+      _checkGlobalOrphanedPayments(); // Check for pending transactions across all NFTs
     } catch (e) {
       if (mounted) {
         NotificationManager.show(context: context, title: 'Error', message: 'Failed to load profile data', type: NotificationType.error);
       }
     }
     if (mounted) setState(() {});
+  }
+
+  /// Iterates through SharedPreferences keys looking for orphaned transactions and attempts recovery
+  Future<void> _checkGlobalOrphanedPayments() async {
+    if (!mounted) return;
+    final wallet = _web3.currentAddress?.toLowerCase();
+    if (wallet == null || wallet.isEmpty) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final keys = prefs.getKeys().where((k) => k.startsWith('orphan_tx_')).toList();
+      
+      for (final key in keys) {
+        final txHash = prefs.getString(key);
+        if (txHash == null || txHash.isEmpty) continue;
+        
+        final tokenIdStr = key.replaceFirst('orphan_tx_', '');
+        final tokenId = int.tryParse(tokenIdStr);
+        if (tokenId == null) continue;
+
+        if (kDebugMode) { debugPrint('[PROFILE ORPHAN] Checking NFT #$tokenId with hash $txHash'); }
+
+        // We use the basic getTransactionStatus here since we just want to know if it succeeded on-chain.
+        final status = await _web3.getTransactionStatus(txHash);
+        
+        if (status == true) {
+          if (kDebugMode) { debugPrint('[PROFILE ORPHAN] Hash $txHash for #$tokenId confirmed. Recovering...'); }
+          final recovered = await FirestoreService.instance.recoverOrphanedPayment(tokenId, wallet, txHash);
+          if (recovered) {
+            await prefs.remove(key); // clear the key since it's recovered
+            if (kDebugMode) { debugPrint('[PROFILE ORPHAN] Successfully recovered #$tokenId'); }
+          }
+        } else if (status == false) {
+          // Explicitly failed on-chain (reverted)
+          if (kDebugMode) { debugPrint('[PROFILE ORPHAN] Hash $txHash for #$tokenId reverted. Clearing storage.'); }
+          await FirestoreService.instance.setPaymentProcessing(tokenId, false);
+          await prefs.remove(key);
+        }
+        // If status == null, it's either network error or pending in mempool, we leave it alone.
+      }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('[PROFILE ORPHAN] Error checking global orphans: $e'); }
+    }
   }
 
   Future<void> _subscribeToCounts() async {
@@ -235,6 +281,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final myAuctions = _web3.allAuctions.where((a) => a.sellerWallet.toLowerCase() == currentWallet).toList();
 
     return NestedScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       headerSliverBuilder: (context, innerBoxIsScrolled) {
         return [
           SliverToBoxAdapter(
@@ -1051,6 +1098,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final sortedEntries = bidsMap.entries.toList()..sort((a, b) => (b.value['timestamp'] ?? 0).compareTo(a.value['timestamp'] ?? 0));
 
     return CustomScrollView(
+      physics: const AlwaysScrollableScrollPhysics(),
       slivers: [
             SliverPadding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),

@@ -132,9 +132,9 @@ class _ReportDialogState extends State<ReportDialog>
       );
 
       if (!mounted) return;
-      Navigator.of(context).pop(true);
-
       _showSnackBar('Report submitted successfully. Thank you!', AppColors.success);
+
+      Navigator.of(context).pop(true);
     } catch (e) {
       if (!mounted) return;
       _showSnackBar(e.toString().replaceFirst('Exception: ', ''), AppColors.accentOrange);
@@ -158,6 +158,7 @@ class _ReportDialogState extends State<ReportDialog>
       title: 'Report Update',
       message: message,
       type: type,
+      saveToHistory: false, // Prevents duplicate history entries
     );
   }
 
