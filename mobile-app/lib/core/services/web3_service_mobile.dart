@@ -535,10 +535,82 @@ class Web3Service extends Web3ServiceBase {
         debugPrint('[LOGIN] Step 3 Address: $connectedAddress | Chain: ${_walletConnect.chainId}');
       }
 
+      final int chain = _walletConnect.chainId ?? Web3ServiceBase.sepoliaChainId;
+      
+      // ── Validasi Jaringan Sepolia ──────────────────────────────────────────
+      if (chain != Web3ServiceBase.sepoliaChainId) {
+        if (kDebugMode) { debugPrint('[LOGIN] WRONG_NETWORK — disconnecting'); }
+        
+        _walletConnect.disconnect();
+        _disconnect();
+
+        final ctx = navigatorKey.currentContext;
+        if (ctx != null) {
+          showDialog(
+            context: ctx,
+            barrierDismissible: false,
+            builder: (dialogCtx) => AlertDialog(
+              backgroundColor: const Color(0xFF1D1735),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(20),
+                side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.5)),
+              ),
+              icon: Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.redAccent.withValues(alpha: 0.15),
+                ),
+                child: const Icon(Icons.wifi_off_rounded, color: Colors.redAccent, size: 40),
+              ),
+              title: const Text(
+                'Jaringan Tidak Sesuai',
+                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                textAlign: TextAlign.center,
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Aplikasi ini hanya mendukung jaringan Sepolia Testnet.',
+                    style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 14, height: 1.5),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  const Text(
+                    'Silakan buka MetaMask, ganti jaringan Anda ke Sepolia Testnet, lalu coba hubungkan kembali.',
+                    style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 12, height: 1.4),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
+              ),
+              actions: [
+                SizedBox(
+                  width: double.infinity,
+                  child: ElevatedButton(
+                    onPressed: () => Navigator.of(dialogCtx).pop(),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(vertical: 14),
+                    ),
+                    child: const Text('Mengerti', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                  ),
+                ),
+              ],
+              actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+            ),
+          );
+        }
+        
+        throw Exception('WRONG_NETWORK');
+      }
+
       _currentAddress = connectedAddress;
       _isConnected = true;
       _connectionType = 'walletconnect';
-      _chainId = _walletConnect.chainId ?? Web3ServiceBase.sepoliaChainId;
+      _chainId = chain;
 
       if (kDebugMode) { debugPrint('[LOGIN] Step 4 notifyListeners — unblocking UI'); }
       notifyListeners(); // Unblocks UI (modal closes, homepage opens)
@@ -562,17 +634,107 @@ class Web3Service extends Web3ServiceBase {
                     connectedAddress.toLowerCase()) {
                   if (kDebugMode) { debugPrint('[LOGIN] WALLET_MISMATCH — disconnecting'); }
                   
-                  // Tampilkan Snackbar notifikasi kepada user
-                  scaffoldMessengerKey.currentState?.showSnackBar(
-                    const SnackBar(
-                      content: Text('Wallet address tidak sesuai dengan akun ini. Silakan gunakan wallet address yang terdaftar.'),
-                      backgroundColor: Colors.redAccent,
-                      duration: Duration(seconds: 4),
-                    ),
-                  );
-
                   _walletConnect.disconnect();
                   _disconnect();
+
+                  // Tampilkan Dialog notifikasi kepada user (lebih jelas dari SnackBar)
+                  final ctx = navigatorKey.currentContext;
+                  if (ctx != null) {
+                    String shortAddr(String addr) =>
+                        '${addr.substring(0, 6)}...${addr.substring(addr.length - 4)}';
+
+                    showDialog(
+                      context: ctx,
+                      barrierDismissible: false,
+                      builder: (dialogCtx) => AlertDialog(
+                        backgroundColor: const Color(0xFF1D1735),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(20),
+                          side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.5)),
+                        ),
+                        icon: Container(
+                          padding: const EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.redAccent.withValues(alpha: 0.15),
+                          ),
+                          child: const Icon(Icons.warning_amber_rounded, color: Colors.redAccent, size: 40),
+                        ),
+                        title: const Text(
+                          'Wallet Tidak Sesuai',
+                          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                          textAlign: TextAlign.center,
+                        ),
+                        content: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Text(
+                              'Wallet yang kamu hubungkan berbeda dengan wallet yang terdaftar di akun ini.',
+                              style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 14, height: 1.5),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 16),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: Colors.redAccent.withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: Colors.redAccent.withValues(alpha: 0.3)),
+                              ),
+                              child: Row(children: [
+                                const Icon(Icons.close, color: Colors.redAccent, size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  const Text('Terhubung:', style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 11)),
+                                  Text(shortAddr(connectedAddress), style: const TextStyle(color: Colors.redAccent, fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600)),
+                                ])),
+                              ]),
+                            ),
+                            const SizedBox(height: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                              decoration: BoxDecoration(
+                                color: const Color(0xFF22C55E).withValues(alpha: 0.1),
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(color: const Color(0xFF22C55E).withValues(alpha: 0.3)),
+                              ),
+                              child: Row(children: [
+                                const Icon(Icons.check, color: Color(0xFF22C55E), size: 18),
+                                const SizedBox(width: 8),
+                                Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                                  const Text('Terdaftar:', style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 11)),
+                                  Text(shortAddr(storedWallet), style: const TextStyle(color: Color(0xFF22C55E), fontFamily: 'monospace', fontSize: 13, fontWeight: FontWeight.w600)),
+                                ])),
+                              ]),
+                            ),
+                            const SizedBox(height: 16),
+                            const Text(
+                              'Silakan ganti wallet di MetaMask ke address yang terdaftar, lalu coba hubungkan kembali.',
+                              style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 12, height: 1.4),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                        actions: [
+                          SizedBox(
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: () => Navigator.of(dialogCtx).pop(),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.redAccent,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              child: const Text('Mengerti', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                            ),
+                          ),
+                        ],
+                        actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+                      ),
+                    );
+                  }
+
                   return;
                 }
               } else {
@@ -628,6 +790,7 @@ class Web3Service extends Web3ServiceBase {
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ connectMobileWallet error: $e'); }
       if (e.toString().contains('WALLET_MISMATCH') ||
+          e.toString().contains('WRONG_NETWORK') ||
           e.toString().contains('retrieve')) {
         rethrow;
       }

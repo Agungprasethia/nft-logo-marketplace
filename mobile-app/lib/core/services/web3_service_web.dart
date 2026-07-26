@@ -13,6 +13,8 @@ import 'package:nft_logo_marketplace/config/contract_config.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
+import 'package:flutter/material.dart';
+import 'package:nft_logo_marketplace/main.dart';
 
 class Web3Service extends Web3ServiceBase {
   static Web3Service? _instance;
@@ -225,6 +227,75 @@ class Web3Service extends Web3ServiceBase {
         _isConnected = true;
         _connectionType = 'browser';
         await _getChainId();
+
+        // ── Validasi Jaringan Sepolia ──────────────────────────────────────────
+        if (_chainId != Web3ServiceBase.sepoliaChainId) {
+          if (kDebugMode) { debugPrint('[LOGIN] WRONG_NETWORK — disconnecting'); }
+          
+          _disconnect();
+
+          final ctx = navigatorKey.currentContext;
+          if (ctx != null) {
+            showDialog(
+              context: ctx,
+              barrierDismissible: false,
+              builder: (dialogCtx) => AlertDialog(
+                backgroundColor: const Color(0xFF1D1735),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                  side: BorderSide(color: Colors.redAccent.withValues(alpha: 0.5)),
+                ),
+                icon: Container(
+                  padding: const EdgeInsets.all(12),
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.redAccent.withValues(alpha: 0.15),
+                  ),
+                  child: const Icon(Icons.wifi_off_rounded, color: Colors.redAccent, size: 40),
+                ),
+                title: const Text(
+                  'Jaringan Tidak Sesuai',
+                  style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
+                  textAlign: TextAlign.center,
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Text(
+                      'Aplikasi ini hanya mendukung jaringan Sepolia Testnet.',
+                      style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 14, height: 1.5),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'Silakan buka MetaMask, ganti jaringan Anda ke Sepolia Testnet, lalu coba hubungkan kembali.',
+                      style: TextStyle(color: Color(0xFFB8B8C5), fontSize: 12, height: 1.4),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+                actions: [
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: () => Navigator.of(dialogCtx).pop(),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.redAccent,
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      child: const Text('Mengerti', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+                    ),
+                  ),
+                ],
+                actionsPadding: const EdgeInsets.fromLTRB(24, 0, 24, 20),
+              ),
+            );
+          }
+          
+          throw Exception('WRONG_NETWORK');
+        }
         await _updateBalance();
         _registerAsSeller(_currentAddress!);
         // Persist session for page refresh
@@ -241,7 +312,8 @@ class Web3Service extends Web3ServiceBase {
       }
     } catch (e) {
       if (kDebugMode) { debugPrint('Error connecting browser wallet: $e'); }
-      if (e.toString().contains('WALLET_MISMATCH')) {
+      if (e.toString().contains('WALLET_MISMATCH') ||
+          e.toString().contains('WRONG_NETWORK')) {
         rethrow;
       }
       throw Exception('Failed to connect wallet: $e');
