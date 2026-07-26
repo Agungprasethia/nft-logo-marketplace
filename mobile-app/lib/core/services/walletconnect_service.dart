@@ -207,7 +207,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
     final connectResponse = await _web3App!.connect(
       optionalNamespaces: {
         'eip155': RequiredNamespace(
-          chains: ['eip155:${ContractConfig.chainId}'],
+          chains: ['eip155:1', 'eip155:${ContractConfig.chainId}'],
           methods: [
             'eth_sendTransaction',
             'eth_signTransaction',
