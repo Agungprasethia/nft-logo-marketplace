@@ -235,7 +235,7 @@ class Web3Service extends Web3ServiceBase {
           _disconnect();
 
           final ctx = navigatorKey.currentContext;
-          if (ctx != null) {
+          if (ctx != null && ctx.mounted) {
             showDialog(
               context: ctx,
               barrierDismissible: false,
