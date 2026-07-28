@@ -4,7 +4,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
-import 'package:walletconnect_flutter_v2/walletconnect_flutter_v2.dart';
+import 'package:reown_appkit/reown_appkit.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:nft_logo_marketplace/config/contract_config.dart';
@@ -16,7 +16,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
   WalletConnectService._();
 
-  Web3App? _web3App;
+  ReownAppKit? _web3App;
   SessionData? _session;
   String? _connectedAddress;
   int? _chainId;
@@ -29,7 +29,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   int? get chainId => _chainId;
   bool get isOnSepolia => _chainId == ContractConfig.chainId;
   bool get isInitialized => _web3App != null;
-  Web3App? get web3App => _web3App;
+  ReownAppKit? get web3App => _web3App;
 
   // ── Initialization ──────────────────────────────────────────────────────
 
@@ -38,7 +38,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
 
-    _web3App = await Web3App.createInstance(
+    _web3App = await ReownAppKit.createInstance(
       projectId: ContractConfig.walletConnectProjectId,
       metadata: const PairingMetadata(
         name: 'L E O',
@@ -90,7 +90,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
           try {
             await _web3App!.disconnectSession(
               topic: s.topic,
-              reason: const WalletConnectError(code: 0, message: 'User disconnected'),
+              reason: const ReownSignError(code: 0, message: 'User disconnected'),
             );
           } catch (_) {}
         }
@@ -426,7 +426,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
       try {
         await _web3App!.disconnectSession(
           topic: _session!.topic,
-          reason: const WalletConnectError(code: 0, message: 'User disconnected'),
+          reason: const ReownSignError(code: 0, message: 'User disconnected'),
         );
       } catch (e) {
         if (kDebugMode) debugPrint('Error disconnecting WalletConnect session: $e');
