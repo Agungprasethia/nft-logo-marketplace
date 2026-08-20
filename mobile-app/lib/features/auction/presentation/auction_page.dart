@@ -228,6 +228,7 @@ class _AuctionPageState extends State<AuctionPage> {
           logo.isAuctionActive &&
           !logo.isFrozen &&
           logo.status != ValidationStatus.rejected &&
+          logo.status != ValidationStatus.copyrightViolation &&
           logo.endTime != null &&
           DateTime.now().isAfter(logo.endTime!)) {
         if (kDebugMode) { debugPrint("Auction expired → calling endOffChainAuction()"); }
@@ -250,7 +251,7 @@ class _AuctionPageState extends State<AuctionPage> {
   }
 
   String _formatTimeRemaining(LogoNFT logo) {
-    if (logo.status == ValidationStatus.rejected) return '-- : -- : --';
+    if (logo.status == ValidationStatus.rejected || logo.status == ValidationStatus.copyrightViolation) return '-- : -- : --';
 
     int remainingSeconds = 0;
 
@@ -439,6 +440,30 @@ class _AuctionPageState extends State<AuctionPage> {
           icon: const Icon(Icons.arrow_back, color: AppColors.textPrimary),
           onPressed: () => Navigator.pop(context),
         ),
+        actions: [
+          if (isLive)
+            PopupMenuButton<String>(
+              icon: const Icon(Icons.more_vert, color: AppColors.textPrimary),
+              color: AppColors.surface,
+              onSelected: (value) {
+                if (value == 'report') {
+                  ReportDialog.show(context, widget.logo.tokenId);
+                }
+              },
+              itemBuilder: (context) => [
+                PopupMenuItem(
+                  value: 'report',
+                  child: Row(
+                    children: [
+                      const Icon(Icons.flag_outlined, size: 20, color: AppColors.danger),
+                      const SizedBox(width: AppSpacing.sm),
+                      Text('Report Artwork', style: AppTextStyles.labelMedium.copyWith(color: AppColors.danger)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+        ],
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
@@ -1869,10 +1894,11 @@ class _AuctionPageState extends State<AuctionPage> {
             ),
           ),
 
-        // â”€â”€â”€ Re-Auction Button â”€â”€â”€
+        // ——— Re-Auction Button ———
         if (isOwner &&
             !logo.isFrozen &&
             logo.status != ValidationStatus.rejected &&
+            logo.status != ValidationStatus.copyrightViolation &&
             (auction.status == AuctionStatus.ended ||
              auction.status == AuctionStatus.endedNoBids ||
              logo.auctionStatus == 'ENDED_NO_BIDS' ||
@@ -1928,8 +1954,8 @@ class _AuctionPageState extends State<AuctionPage> {
                 PrimaryButton(
                   text: 'Bid Now',
                   icon: Icons.rocket_launch,
-                  backgroundColor: AppColors.accentOrange,
-                  onPressed: () {
+                  backgroundColor: logo.status == ValidationStatus.underReview ? AppColors.textSecondary : AppColors.accentOrange,
+                  onPressed: logo.status == ValidationStatus.underReview ? null : () {
                     if (logo.isFrozen || auction.status == AuctionStatus.frozen) {
                       NotificationManager.show(
                         context: context,
@@ -1971,6 +1997,41 @@ class _AuctionPageState extends State<AuctionPage> {
                     _showBidDialog(auction);
                   },
                 ),
+                if (logo.status == ValidationStatus.underReview && !logo.isFrozen)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.textSecondary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Under Review',
+                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                if (!logo.isFrozen && isLive)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: Center(
+                      child: TextButton.icon(
+                        onPressed: () => ReportDialog.show(context, logo.tokenId),
+                        icon: const Icon(Icons.flag_outlined, size: 16, color: AppColors.danger),
+                        label: Text('Report Artwork', style: AppTextStyles.labelMedium.copyWith(color: AppColors.danger)),
+                      ),
+                    ),
+                  ),
                 const SizedBox(height: AppSpacing.sm),
                 // OFF-CHAIN BADGE
                 Center(
@@ -2212,23 +2273,6 @@ class _AuctionPageState extends State<AuctionPage> {
         ],
 
         const SizedBox(height: AppSpacing.xxl),
-
-        Center(
-          child: TextButton.icon(
-            onPressed: () => ReportDialog.show(context, widget.logo.tokenId),
-            icon: const Icon(
-              Icons.flag_outlined,
-              size: 16,
-              color: AppColors.textSecondary,
-            ),
-            label: Text(
-              'Report Artwork',
-              style: AppTextStyles.labelMedium.copyWith(
-                color: AppColors.textSecondary,
-              ),
-            ),
-          ),
-        ),
       ],
     );
   }

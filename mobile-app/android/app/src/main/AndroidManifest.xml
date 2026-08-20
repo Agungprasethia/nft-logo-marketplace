@@ -42,7 +42,7 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
             <!-- Blok pertama: tangkap nftlogomarketplace:// tanpa host (untuk redirect dari MetaMask) -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
@@ -50,12 +50,21 @@
             </intent-filter>
 
             <!-- Blok kedua: tangkap nftlogomarketplace://wc dan nftlogomarketplace://request dengan host (untuk WalletConnect internal) -->
-            <intent-filter android:autoVerify="true">
+            <intent-filter>
                 <action android:name="android.intent.action.VIEW" />
                 <category android:name="android.intent.category.DEFAULT" />
                 <category android:name="android.intent.category.BROWSABLE" />
                 <data android:scheme="nftlogomarketplace" android:host="wc" />
                 <data android:scheme="nftlogomarketplace" android:host="request" />
+            </intent-filter>
+
+            <!-- TODO: Setup assetlinks.json di hosting https://nft-logo-marketplace.app/.well-known/assetlinks.json
+                 untuk mengaktifkan autoVerify App Links agar OS tidak memblokir URL universal -->
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="https" android:host="nft-logo-marketplace.app" />
             </intent-filter>
         </activity>
         <!-- Don't delete the meta-data below.

@@ -72,33 +72,40 @@ class NotificationManager {
 
   void _showOverlay(BuildContext context, AppNotification notification) {
     if (!context.mounted) {
+      _isShowing = false; // reset dulu sebelum process next
       _processQueue(); // Context might be dead, skip and process next
       return;
     }
 
     _isShowing = true;
 
-    final overlay = Overlay.of(context, rootOverlay: true);
-    
-    _currentOverlay = OverlayEntry(
-      builder: (context) {
-        return PremiumNotification(
-          title: notification.title,
-          message: notification.message,
-          type: notification.type,
-          onDismissed: () {
-            _removeCurrent();
-          },
-          onTap: () {
-            if (notification.actionRoute != null) {
-              Navigator.pushNamed(context, notification.actionRoute!);
-            }
-          },
-        );
-      },
-    );
+    try {
+      final overlay = Overlay.of(context, rootOverlay: true);
+      
+      _currentOverlay = OverlayEntry(
+        builder: (context) {
+          return PremiumNotification(
+            title: notification.title,
+            message: notification.message,
+            type: notification.type,
+            onDismissed: () {
+              _removeCurrent();
+            },
+            onTap: () {
+              if (notification.actionRoute != null) {
+                Navigator.pushNamed(context, notification.actionRoute!);
+              }
+            },
+          );
+        },
+      );
 
-    overlay.insert(_currentOverlay!);
+      overlay.insert(_currentOverlay!);
+    } catch (e) {
+      debugPrint('NotificationManager: Failed to show overlay: $e');
+      _isShowing = false;
+      _processQueue(); // skip dan coba notif berikutnya
+    }
   }
 
   void _removeCurrent() {
@@ -108,6 +115,13 @@ class NotificationManager {
     }
     _isShowing = false;
     _processQueue();
+  }
+
+  static void reset() {
+    _instance._isShowing = false;
+    _instance._queue.clear();
+    _instance._currentOverlay?.remove();
+    _instance._currentOverlay = null;
   }
 }
 

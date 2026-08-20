@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -147,9 +148,14 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: FirebaseFirestore.instance.collection('nfts').doc(logo.tokenId.toString()).snapshots(),
-        builder: (context, snapshot) {
+      body: RefreshIndicator(
+        onRefresh: () async { 
+          await Future.delayed(const Duration(milliseconds: 600));
+          if (mounted) setState(() {}); 
+        },
+        child: StreamBuilder<DocumentSnapshot>(
+          stream: FirebaseFirestore.instance.collection('nfts').doc(logo.tokenId.toString()).snapshots(),
+          builder: (context, snapshot) {
           if (snapshot.hasError) {
             return FirestoreErrorHandler.buildErrorWidget(
               snapshot.error,
@@ -163,13 +169,12 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
           }
           final doc = snapshot.data!;
           final data = doc.data() as Map<String, dynamic>? ?? {};
+          final logo = doc.exists ? LogoNFT.fromFirestore(data) : widget.logo;
           final status = data['status'] ?? 'unknown';
           final auctionCreated = data['auctionCreated'] ?? false;
           final isActive = data['isActive'] ?? true;
 
-          return RefreshIndicator(
-      onRefresh: () async { setState(() {}); },
-      child: CustomScrollView(
+          return CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
               // ─────── App Bar ───────
@@ -188,6 +193,28 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                       // Share functionality
                     },
                   ),
+                  if (logo.isAuctionActive && logo.endTime != null && DateTime.now().isBefore(logo.endTime!))
+                    PopupMenuButton<String>(
+                      icon: const Icon(Icons.more_vert, color: AppColors.textPrimary),
+                      color: AppColors.surface,
+                      onSelected: (value) {
+                        if (value == 'report') {
+                          ReportDialog.show(context, widget.logo.tokenId);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(
+                          value: 'report',
+                          child: Row(
+                            children: [
+                              const Icon(Icons.flag_outlined, size: 20, color: AppColors.danger),
+                              const SizedBox(width: AppSpacing.sm),
+                              Text('Report Artwork', style: AppTextStyles.labelMedium.copyWith(color: AppColors.danger)),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
                 ],
               ),
 
@@ -240,12 +267,12 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
               ),
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
-          ),
-    );
+          );
         }
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildImageHero(String displayImageUrl) {
     return AspectRatio(
@@ -386,6 +413,8 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
               const AuctionBadge(text: 'PENDING', type: BadgeType.neutral)
             else if (status == 'rejected')
               const AuctionBadge(text: 'REJECTED', type: BadgeType.ended)
+            else if (status == 'copyright_violation')
+              const AuctionBadge(text: 'COPYRIGHT VIOLATION', type: BadgeType.ended)
             else if (status == 'disabled')
               const AuctionBadge(text: 'DISABLED', type: BadgeType.neutral),
           ],
@@ -775,8 +804,12 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                       const SizedBox(height: AppSpacing.md),
                       SizedBox(
                         width: double.infinity,
-                        child: OutlinedButton(
+                        child: ElevatedButton(
                           onPressed: () => ReAuctionDialog.show(context, logo),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.accentOrange,
+                            foregroundColor: Colors.white,
+                          ),
                           child: const Text('Request Re-Auction'),
                         ),
                       ),
@@ -785,7 +818,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ),
 
               // Re-Auction Requested Banner
-              if (isCreator && logo.auctionStatus == 'RE_AUCTION_REQUESTED' && status != 'rejected')
+              if (isCreator && logo.auctionStatus == 'RE_AUCTION_REQUESTED' && status != 'rejected' && status != 'copyright_violation')
                 Container(
                   width: double.infinity,
                   margin: const EdgeInsets.only(bottom: AppSpacing.md),
@@ -809,7 +842,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   ),
                 ),
 
-              if (status == 'pending' || status == 'rejected' || status == 'disabled' || (status != 'approved' && status != 'sold'))
+              if (status == 'pending' || status == 'rejected' || status == 'copyright_violation' || status == 'disabled' || (status != 'approved' && status != 'sold'))
                 Builder(builder: (_) {
                   late final Color color;
                   late final String message;
@@ -817,7 +850,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                   if (status == 'disabled') {
                     color = AppColors.textSecondary;
                     message = 'This NFT has been disabled by admin.';
-                  } else if (status == 'rejected') {
+                  } else if (status == 'rejected' || status == 'copyright_violation') {
                     color = AppColors.danger;
                     message = 'This NFT has been permanently removed by marketplace moderation.';
                   } else if (status != 'approved' && status != 'sold' && status != 'available') {
@@ -850,7 +883,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ),
               
               // Payment pending - show for winner or creator
-              if (auctionCreated && !isActive && logo.highestBidderWallet != null && status != 'rejected' && (logo.auctionStatus == 'PAYMENT_PENDING' || logo.auctionStatus == 'PENDING_PAYMENT' || logo.auctionStatus == 'payment_pending' || logo.auctionStatus == 'pending_payment'))
+              if (auctionCreated && !isActive && logo.highestBidderWallet != null && status != 'rejected' && status != 'copyright_violation' && (logo.auctionStatus == 'PAYMENT_PENDING' || logo.auctionStatus == 'PENDING_PAYMENT' || logo.auctionStatus == 'payment_pending' || logo.auctionStatus == 'pending_payment'))
                 Padding(
                   padding: const EdgeInsets.only(bottom: AppSpacing.md),
                   child: Container(
@@ -911,7 +944,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
                 ),
               ], // End of !logo.isFrozen block
 
-              if (!logo.isFrozen)
+              if (!logo.isFrozen && logo.isAuctionActive && logo.endTime != null && DateTime.now().isBefore(logo.endTime!))
                 TextButton.icon(
                 onPressed: () => ReportDialog.show(context, widget.logo.tokenId),
                 icon: const Icon(Icons.flag_outlined, size: 16, color: AppColors.danger),
@@ -923,7 +956,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
 
         // ——— Leaderboard Section ———
         if (auctionCreated)
-          _buildLeaderboardSection(auction),
+          _buildLeaderboardSection(auction, status),
       ],
     );
   }
@@ -953,7 +986,7 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
     return '${(seconds / 3600).round()} Hours';
   }
 
-  Widget _buildLeaderboardSection(Auction? auction) {
+  Widget _buildLeaderboardSection(Auction? auction, String status) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -1278,11 +1311,38 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
         if (auction != null && auction.isOngoing)
           Padding(
             padding: const EdgeInsets.only(top: AppSpacing.lg),
-            child: PrimaryButton(
-              text: 'Bid Now',
-              icon: Icons.rocket_launch,
-              backgroundColor: AppColors.accentOrange,
-              onPressed: () => _showBidDialog(auction),
+            child: Column(
+              children: [
+                PrimaryButton(
+                  text: 'Bid Now',
+                  icon: Icons.rocket_launch,
+                  backgroundColor: status == 'under_review' ? AppColors.textSecondary : AppColors.accentOrange,
+                  onPressed: status == 'under_review' ? null : () => _showBidDialog(auction),
+                ),
+                if (status == 'under_review' && !widget.logo.isFrozen)
+                  Padding(
+                    padding: const EdgeInsets.only(top: AppSpacing.sm),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: AppColors.textSecondary.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(AppRadius.md),
+                        border: Border.all(color: AppColors.textSecondary.withValues(alpha: 0.3)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.info_outline, size: 14, color: AppColors.textSecondary),
+                          const SizedBox(width: 8),
+                          Text(
+                            'Under Review',
+                            style: AppTextStyles.labelSmall.copyWith(color: AppColors.textSecondary),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+              ],
             ),
           ),
       ],
@@ -1363,85 +1423,87 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
   Future<void> _saveToGallery(String imageUrl) async {
     setState(() => _isSavingGallery = true);
     try {
-      if (Platform.isAndroid || Platform.isIOS) {
-        final hasAccess = await Gal.hasAccess();
-        if (!hasAccess) {
-          bool request = false;
-          try {
-            request = await Gal.requestAccess();
-          } on GalException catch (e) {
-            if (e.type == GalExceptionType.accessDenied) {
-              request = false;
-            } else {
-              rethrow;
+      await Future(() async {
+        if (Platform.isAndroid || Platform.isIOS) {
+          final hasAccess = await Gal.hasAccess();
+          if (!hasAccess) {
+            bool request = false;
+            try {
+              request = await Gal.requestAccess();
+            } on GalException catch (e) {
+              if (e.type == GalExceptionType.accessDenied) {
+                request = false;
+              } else {
+                rethrow;
+              }
             }
-          }
-          if (!request) {
-            if (!mounted) {
-              setState(() => _isSavingGallery = false);
+            if (!request) {
+              if (!mounted) {
+                return;
+              }
+              bool isPermanentlyDenied = false;
+              if (Platform.isAndroid) {
+                isPermanentlyDenied = await Permission.storage.isPermanentlyDenied || await Permission.photos.isPermanentlyDenied;
+              } else if (Platform.isIOS) {
+                isPermanentlyDenied = await Permission.photos.isPermanentlyDenied;
+              }
+              
+              if (!mounted) return;
+              String msg = 'Storage permission is required to save to gallery.';
+              if (isPermanentlyDenied) {
+                msg += '\n\nPlease enable storage permission in Settings.';
+              }
+              NotificationManager.show(context: context, title: 'Permission Denied', message: msg, type: NotificationType.error);
               return;
             }
-            bool isPermanentlyDenied = false;
-            if (Platform.isAndroid) {
-              isPermanentlyDenied = await Permission.storage.isPermanentlyDenied || await Permission.photos.isPermanentlyDenied;
-            } else if (Platform.isIOS) {
-              isPermanentlyDenied = await Permission.photos.isPermanentlyDenied;
-            }
-            
-            if (!mounted) return;
-            String msg = 'Storage permission is required to save to gallery.';
-            if (isPermanentlyDenied) {
-              msg += '\n\nPlease enable storage permission in Settings.';
-            }
-            NotificationManager.show(context: context, title: 'Permission Denied', message: msg, type: NotificationType.error);
-            setState(() => _isSavingGallery = false);
-            return;
           }
         }
-      }
 
-      String? filePath;
+        String? filePath;
 
-      if (imageUrl.startsWith('data:image')) {
-        final bytes = base64Decode(imageUrl.split(',').last);
-        final tempDir = await getTemporaryDirectory();
-        filePath = '${tempDir.path}/gallery_${DateTime.now().millisecondsSinceEpoch}.png';
-        final file = File(filePath);
-        await file.writeAsBytes(bytes);
-      } else {
-        String url = imageUrl;
-        if (url.contains('dweb.link/ipfs/')) {
-          url = url.replaceAll('dweb.link/ipfs/', 'ipfs.io/ipfs/');
-        } else if (url.contains('ipfs://')) {
-          url = url.replaceAll('ipfs://', 'https://ipfs.io/ipfs/');
-        }
+        if (imageUrl.startsWith('data:image')) {
+          final bytes = base64Decode(imageUrl.split(',').last);
+          final tempDir = await getTemporaryDirectory();
+          filePath = '${tempDir.path}/gallery_${DateTime.now().millisecondsSinceEpoch}.png';
+          final file = File(filePath);
+          await file.writeAsBytes(bytes);
+        } else {
+          String url = imageUrl;
+          if (url.contains('dweb.link/ipfs/')) {
+            url = url.replaceAll('dweb.link/ipfs/', 'ipfs.io/ipfs/');
+          } else if (url.contains('ipfs://')) {
+            url = url.replaceAll('ipfs://', 'https://ipfs.io/ipfs/');
+          }
 
-        final tempDir = await getTemporaryDirectory();
-        filePath = '${tempDir.path}/gallery_${DateTime.now().millisecondsSinceEpoch}.png';
-        final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 15)));
-        await dio.download(
-          url, 
-          filePath,
-          options: Options(
+          final tempDir = await getTemporaryDirectory();
+          filePath = '${tempDir.path}/gallery_${DateTime.now().millisecondsSinceEpoch}.png';
+          final dio = Dio(BaseOptions(
+            connectTimeout: const Duration(seconds: 15),
             receiveTimeout: const Duration(seconds: 15),
             sendTimeout: const Duration(seconds: 15),
-          ),
-        );
-      }
+          ));
+          await dio.download(
+            url, 
+            filePath,
+            options: Options(
+              receiveTimeout: const Duration(seconds: 15),
+              sendTimeout: const Duration(seconds: 15),
+            ),
+          );
+        }
 
-      await Gal.putImage(filePath);
-      if (!mounted) {
-        setState(() => _isSavingGallery = false);
-        return;
-      }
-      NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
+        await Gal.putImage(filePath);
+        if (!mounted) return;
+        NotificationManager.show(context: context, title: 'Success', message: 'NFT saved to gallery! 🎉', type: NotificationType.success);
+      }).timeout(const Duration(seconds: 15));
     } catch (e) {
       if (!mounted) {
-        setState(() => _isSavingGallery = false);
         return;
       }
       String errorMsg = 'Failed to save to gallery.';
-      if (e is DioException) {
+      if (e is TimeoutException) {
+        errorMsg = 'Operation timed out. Please try again.';
+      } else if (e is DioException) {
         if (e.type == DioExceptionType.connectionTimeout || e.type == DioExceptionType.receiveTimeout) {
           errorMsg = 'Failed to save to gallery. Connection timeout.';
         }
@@ -1449,8 +1511,9 @@ class _DetailLogoPageState extends State<DetailLogoPage> {
         errorMsg = 'Permission Denied. Storage permission is required to save to gallery.';
       }
       NotificationManager.show(context: context, title: 'Error', message: errorMsg, type: NotificationType.error);
+    } finally {
+      if (mounted) setState(() => _isSavingGallery = false);
     }
-    if (mounted) setState(() => _isSavingGallery = false);
   }
 }
 

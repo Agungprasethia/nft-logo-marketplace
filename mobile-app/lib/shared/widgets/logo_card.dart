@@ -77,7 +77,7 @@ class _LogoCardState extends State<LogoCard> with SingleTickerProviderStateMixin
       badgeText = 'WON';
       badgeColor = AppColors.accentOrange;
     } else if (widget.logo.isFrozen) {
-      badgeText = 'Copyright Review';
+      badgeText = 'FROZEN';
       badgeColor = Colors.lightBlue;
     } else if (isLive && widget.logo.totalBids > 3) {
       badgeText = 'HOT';

@@ -875,7 +875,7 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
       
       Navigator.of(context, rootNavigator: true).pop(); // Close processing dialog
       
-      final isRejected = errorText.contains('reject') || errorText.contains('denied');
+      final isRejected = errorText.contains('reject') || errorText.contains('denied') || errorText.contains('cancelled');
       NotificationManager.show(
         context: context,
         title: 'Payment Failed',
@@ -883,9 +883,13 @@ class _AuctionPaymentPageState extends State<AuctionPaymentPage> with WidgetsBin
         type: NotificationType.error,
       );
     } finally {
-      await FirestoreService.instance.setPaymentProcessing(logo.tokenId, false);
       if (mounted) {
         setState(() => _isProcessingPayment = false);
+      }
+      try {
+        await FirestoreService.instance.setPaymentProcessing(logo.tokenId, false).timeout(const Duration(seconds: 5));
+      } catch (e) {
+        if (kDebugMode) { debugPrint('[Payment] Failed to clear payment processing lock: $e'); }
       }
     }
   }

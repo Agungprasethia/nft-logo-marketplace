@@ -26,32 +26,35 @@ class _PendingNftPageState extends State<PendingNftPage> {
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<LogoNFT>>(
-      stream: FirestoreService.instance.getPendingNFTsStream(),
-      builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return FirestoreErrorHandler.buildErrorWidget(
-            snapshot.error,
-            onRetry: () {
-              if (context is Element) {
-                context.markNeedsBuild();
-              }
-            },
-          );
-        }
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (mounted) setState(() {});
+      },
+      child: StreamBuilder<List<LogoNFT>>(
+        stream: FirestoreService.instance.getPendingNFTsStream(),
+        builder: (context, snapshot) {
+          if (snapshot.hasError) {
+            return FirestoreErrorHandler.buildErrorWidget(
+              snapshot.error,
+              onRetry: () {
+                if (context is Element) {
+                  context.markNeedsBuild();
+                }
+              },
+            );
+          }
 
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(
-            child: CircularProgressIndicator(color: AppColors.primary),
-          );
-        }
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const Center(
+              child: CircularProgressIndicator(color: AppColors.primary),
+            );
+          }
 
-        final pendingList = snapshot.data ?? [];
+          final pendingList = snapshot.data ?? [];
 
-        if (pendingList.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: () async { setState(() {}); },
-            child: CustomScrollView(
+          if (pendingList.isEmpty) {
+            return CustomScrollView(
               physics: const AlwaysScrollableScrollPhysics(),
               slivers: [
                 SliverFillRemaining(
@@ -79,13 +82,10 @@ class _PendingNftPageState extends State<PendingNftPage> {
                   ),
                 ),
               ],
-            ),
-          );
-        }
+            );
+          }
 
-        return RefreshIndicator(
-          onRefresh: () async { setState(() {}); },
-          child: SingleChildScrollView(
+          return SingleChildScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.all(AppSpacing.xl),
             child: Column(
@@ -107,9 +107,9 @@ class _PendingNftPageState extends State<PendingNftPage> {
                 ),
               ],
             ),
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 

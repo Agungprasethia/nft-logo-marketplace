@@ -2,10 +2,8 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
-import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
-import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 
 /// Global realtime auction notification service.
 /// Automatically starts when wallet connects and stops when it disconnects.
@@ -217,36 +215,15 @@ class _AuctionNotifState {
 
       if (remainingSeconds <= 60 && remainingSeconds > 30) {
         if (_canShowEvent('60s')) {
-          NotificationManager.show(
-            title: '⏰ Auction Ending Soon!',
-            message: 'Less than 1 minute remaining.\nPlace your final bid now.',
-            type: NotificationType.warning,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: false,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       } else if (remainingSeconds <= 30 && remainingSeconds > 10) {
         if (_canShowEvent('30s')) {
-          NotificationManager.show(
-            title: '🔥 Final 30 Seconds!',
-            message: 'This auction is entering the final stage.',
-            type: NotificationType.warning,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: false,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       } else if (remainingSeconds <= 10 && remainingSeconds > 0) {
         if (_canShowEvent('10s')) {
-          NotificationManager.show(
-            title: '⚠ Final Countdown!',
-            message: 'Only a few seconds remain.',
-            type: NotificationType.error,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: false,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       }
     }
@@ -268,41 +245,20 @@ class _AuctionNotifState {
       // Phase 4: Winner Alert
       if (isWinner) {
         if (_canShowEvent('winner')) {
-          NotificationManager.show(
-            title: '🏆 Congratulations!',
-            message: 'You won this auction.\nProceed to payment to claim ownership.',
-            type: NotificationType.success,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: true,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       }
       // Phase 5: Auction Lost Alert
       else if (participated && !isWinner) {
         if (_canShowEvent('lost')) {
-          NotificationManager.show(
-            title: 'Auction Finished',
-            message: 'Another bidder won this auction.\nThank you for participating.',
-            type: NotificationType.info,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: true,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       }
 
       // Phase 6: Payment Reminder
       if (auction.status == AuctionStatus.paymentPending && isWinner) {
         if (_canShowEvent('payment_reminder')) {
-          NotificationManager.show(
-            title: 'Payment Required',
-            message: 'Complete your payment to receive ownership.',
-            type: NotificationType.warning,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: true,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       }
     }
@@ -317,7 +273,6 @@ class _AuctionNotifState {
         Web3Service.instance.currentAddress?.toLowerCase();
 
     final currentHighestBidder = bids.first.bidderWallet.toLowerCase();
-    final currentHighestBid = bids.first.amount;
     
     // Check if user is seller
     final isSeller = _auction?.sellerWallet.toLowerCase() == currentWallet;
@@ -325,29 +280,14 @@ class _AuctionNotifState {
     // ── TRIGGER 13: New Bid Received On Your Auction (For Seller) ─────────
     if (isSeller && _lastBidCount > 0 && bids.length > _lastBidCount) {
       if (_canShow('new_bid_seller')) {
-         NotificationManager.show(
-           title: '🔔 New Bid Received',
-           message: 'Someone placed a bid on your logo.\nCurrent Highest Bid: ${currentHighestBid.toStringAsFixed(4)} ETH',
-           type: NotificationType.info,
-           category: 'auction',
-           tokenId: tokenId,
-           saveToHistory: true,
-         );
+         // NotificationManager.show removed: No valid context for popup
       }
     }
 
     // ── TRIGGER 5: New Bidder Joined ──────────────────────────────────────
     if (_lastBidCount > 0 && bids.length > _lastBidCount) {
       if (_canShow('new_bidder')) {
-        NotificationManager.show(
-          title: 'New Bidder Joined',
-          message:
-              'A new participant entered the auction.\nCurrent Bidders: ${bids.length}',
-          type: NotificationType.info,
-          category: 'auction',
-          tokenId: tokenId,
-          saveToHistory: false,
-        );
+        // NotificationManager.show removed: No valid context for popup
       }
     }
     _lastBidCount = bids.length;
@@ -359,43 +299,19 @@ class _AuctionNotifState {
         // TRIGGER 1: Current user was outbid
         if (_lastHighestBidderWallet == currentWallet) {
           if (_canShow('outbid')) {
-            NotificationManager.show(
-              title: '⚠ You have been outbid!',
-              message:
-                  'Current Highest Bid: ${currentHighestBid.toStringAsFixed(4)} ETH\nPlace a higher bid now.',
-              type: NotificationType.warning,
-              category: 'auction',
-              tokenId: tokenId,
-              saveToHistory: true,
-            );
+            // NotificationManager.show removed: No valid context for popup
           }
         }
         // TRIGGER 2: Current user just became the highest bidder
         else if (currentHighestBidder == currentWallet) {
           if (_canShow('you_are_top')) {
-            NotificationManager.show(
-              title: '🏆 You are now the highest bidder!',
-              message:
-                  'Current Bid: ${currentHighestBid.toStringAsFixed(4)} ETH\nKeep your lead!',
-              type: NotificationType.success,
-              category: 'auction',
-              tokenId: tokenId,
-              saveToHistory: true,
-            );
+            // NotificationManager.show removed: No valid context for popup
           }
         }
         // A third-party outbid — show general "new highest bid"
         else {
           if (_canShow('new_highest_bid')) {
-            NotificationManager.show(
-              title: 'New Highest Bid',
-              message:
-                  'New highest bid: ${currentHighestBid.toStringAsFixed(4)} ETH',
-              type: NotificationType.info,
-              category: 'auction',
-              tokenId: tokenId,
-              saveToHistory: false,
-            );
+            // NotificationManager.show removed: No valid context for popup
           }
         }
       }
@@ -418,28 +334,12 @@ class _AuctionNotifState {
       if (prevRank != null && currentRank > prevRank) {
         // Rank dropped (higher number)
         if (_canShow('rank_drop')) {
-          NotificationManager.show(
-            title: '📉 Your ranking dropped',
-            message:
-                'Current Rank: #$currentRank\nPlace a higher bid to regain the lead.',
-            type: NotificationType.warning,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: false,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       } else if (prevRank != null && currentRank < prevRank) {
         // Rank improved (lower number)
         if (_canShow('rank_increase')) {
-          NotificationManager.show(
-            title: '📈 Your ranking improved',
-            message:
-                'Current Rank: #$currentRank\nGreat job moving up!',
-            type: NotificationType.success,
-            category: 'auction',
-            tokenId: tokenId,
-            saveToHistory: false,
-          );
+          // NotificationManager.show removed: No valid context for popup
         }
       }
       _prevRank = currentRank;

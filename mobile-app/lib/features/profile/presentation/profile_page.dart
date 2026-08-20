@@ -25,8 +25,9 @@ import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
 import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 import 'package:shimmer/shimmer.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/auction_detail_page.dart';
-import 'package:nft_logo_marketplace/features/profile/presentation/relist_auction_dialog.dart';
+import 'package:nft_logo_marketplace/shared/dialogs/re_auction_dialog.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/notifications_page.dart';
+import 'package:nft_logo_marketplace/shared/dialogs/receipt_dialog.dart';
 
 // --- NEW DARK THEME DEFINITION ---
 class _ProfileColors {
@@ -230,6 +231,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   Future<void> _handleRefresh() async {
     setState(() => _isLoading = true);
     await _initData();
+    await Future.delayed(const Duration(milliseconds: 600)); // Ensure spinner shows
     if (mounted) setState(() => _isLoading = false);
   }
 
@@ -264,6 +266,9 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                 onRefresh: _handleRefresh,
                 color: _ProfileColors.accent,
                 backgroundColor: _ProfileColors.cardBg,
+                notificationPredicate: (ScrollNotification notification) {
+                  return notification.depth == 0 || notification.depth == 1;
+                },
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1200),
@@ -949,6 +954,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         }).toList();
 
         return CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             const SliverToBoxAdapter(
               child: Padding(
@@ -1048,7 +1054,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                         const SizedBox(height: 4),
                         const Text('Owned since recently', style: TextStyle(color: _ProfileColors.textMuted, fontSize: 9)),
                         const SizedBox(height: 2),
-                        Text('${logo.price > 0 ? logo.price : logo.highestBid} ETH paid', style: const TextStyle(color: _ProfileColors.accent, fontSize: 10)),
+                        Text('${logo.previousFinalBid ?? (logo.highestBid > 0 ? logo.highestBid : logo.price)} ETH paid', style: const TextStyle(color: _ProfileColors.accent, fontSize: 10)),
                       ],
                     ),
                     // Download Button
@@ -1212,33 +1218,45 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     }
 
     // Default Bid Card (Active or History)
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: _ProfileColors.cardBg,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: _ProfileColors.border, width: 0.5),
-      ),
-      child: Row(
-        children: [
-          ClipRRect(
-            borderRadius: BorderRadius.circular(10),
-            child: SizedBox(width: 38, height: 38, child: _buildNetworkImage(logo.imageUrl)),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 2),
-                Text('My bid: $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
-              ],
+    return GestureDetector(
+      onTap: () {
+        ReceiptDialog.show(
+          context,
+          logo: logo,
+          auction: auction,
+          myBid: myBid,
+          status: status,
+          currentWallet: currentWallet,
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: _ProfileColors.cardBg,
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(color: _ProfileColors.border, width: 0.5),
+        ),
+        child: Row(
+          children: [
+            ClipRRect(
+              borderRadius: BorderRadius.circular(10),
+              child: SizedBox(width: 38, height: 38, child: _buildNetworkImage(logo.imageUrl)),
             ),
-          ),
-          _buildBidStatusBadge(status),
-        ],
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(logo.name, style: const TextStyle(color: _ProfileColors.textWhite, fontSize: 13, fontWeight: FontWeight.bold)),
+                  const SizedBox(height: 2),
+                  Text('My bid: $myBid ETH', style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 11)),
+                ],
+              ),
+            ),
+            _buildBidStatusBadge(status),
+          ],
+        ),
       ),
     );
   }
@@ -1338,6 +1356,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
         }
 
         return ListView.builder(
+          physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           itemCount: myAuctions.length,
           itemBuilder: (context, index) {
@@ -1391,6 +1410,7 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
     final bidsList = bids.entries.toList();
 
     return ListView.builder(
+      physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
       itemCount: bidsList.length,
       itemBuilder: (context, index) {
@@ -1445,8 +1465,8 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
       } else if (auction.status == AuctionStatus.paymentCompleted || auction.status == AuctionStatus.claimed || auction.status == AuctionStatus.ended) {
         // ended might mean sold if there are bids, but we'll use paymentCompleted/claimed for SOLD
         badgeText = 'SOLD';
-        badgeBg = _ProfileColors.accent.withValues(alpha: 0.2);
-        badgeTextCol = _ProfileColors.accent;
+        badgeBg = _ProfileColors.successBg;
+        badgeTextCol = _ProfileColors.successText;
       } else if (auction.status == AuctionStatus.failedPayment || auction.status == AuctionStatus.paymentExpired) {
         badgeText = 'PAYMENT FAILED';
         badgeBg = _ProfileColors.dangerBg;
@@ -1508,7 +1528,24 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                         const SizedBox(width: 4),
                         Text(auction?.timeRemainingFormatted ?? '--', style: const TextStyle(color: _ProfileColors.successText, fontSize: 10, fontWeight: FontWeight.bold)),
                       ],
-                    ),
+                    )
+                  else if (auction?.status == AuctionStatus.paymentPending && logo?.paymentDeadline != null) ...[
+                    Builder(builder: (context) {
+                      final deadline = logo!.paymentDeadline!;
+                      final remaining = deadline.difference(DateTime.now());
+                      final isExpired = remaining.isNegative;
+                      final hours = remaining.inHours.abs();
+                      final mins = remaining.inMinutes.remainder(60).abs();
+                      final timeStr = isExpired ? 'EXPIRED' : '${hours}h ${mins}m left';
+                      return Row(
+                        children: [
+                          Icon(Icons.payment, size: 12, color: isExpired ? _ProfileColors.dangerText : _ProfileColors.actionAmberBtnText),
+                          const SizedBox(width: 4),
+                          Text(timeStr, style: TextStyle(color: isExpired ? _ProfileColors.dangerText : _ProfileColors.actionAmberBtnText, fontSize: 10, fontWeight: FontWeight.bold)),
+                        ],
+                      );
+                    }),
+                  ],
                 ],
               ),
             ),
@@ -1523,19 +1560,19 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
                     if (canReAuction)
                       GestureDetector(
                         onTap: () {
-                          if (logo != null) RelistAuctionDialog.show(context, logo);
+                          if (logo != null) ReAuctionDialog.show(context, logo);
                         },
                         child: Container(
                           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                           decoration: BoxDecoration(
+                            color: _ProfileColors.actionAmberBtnBg,
                             borderRadius: BorderRadius.circular(20),
-                            border: Border.all(color: _ProfileColors.accent, width: 1),
                           ),
                           child: const Row(
                             children: [
-                              Icon(Icons.refresh, size: 12, color: _ProfileColors.accent),
+                              Icon(Icons.refresh, size: 12, color: _ProfileColors.actionAmberBtnText),
                               SizedBox(width: 4),
-                              Text('Relist Auction', style: TextStyle(color: _ProfileColors.accent, fontSize: 10, fontWeight: FontWeight.bold)),
+                              Text('Relist Auction', style: TextStyle(color: _ProfileColors.actionAmberBtnText, fontSize: 10, fontWeight: FontWeight.bold)),
                             ],
                           ),
                         ),
@@ -1657,15 +1694,26 @@ class _ProfilePageState extends State<ProfilePage> with SingleTickerProviderStat
   // --- HELPERS & DIALOGS ---
 
   Widget _buildEmptyState(IconData icon, String msg) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(icon, size: 48, color: _ProfileColors.textMuted.withValues(alpha: 0.5)),
-          const SizedBox(height: 16),
-          Text(msg, style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 12)),
-        ],
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          children: [
+            Container(
+              height: constraints.maxHeight > 0 ? constraints.maxHeight : 400,
+              alignment: Alignment.center,
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 48, color: _ProfileColors.textMuted.withValues(alpha: 0.5)),
+                  const SizedBox(height: 16),
+                  Text(msg, style: const TextStyle(color: _ProfileColors.textMuted, fontSize: 12)),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 

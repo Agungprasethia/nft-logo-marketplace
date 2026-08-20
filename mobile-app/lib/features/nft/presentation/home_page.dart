@@ -132,13 +132,6 @@ class HomePageState extends State<HomePage> {
       }
 
       // ── ACTIVE AUCTION FILTER (gabungan, toleran terhadap data tidak konsisten) ──
-      final bool hasActiveFlag = logo.isAuctionActive == true;
-      final bool hasActiveStatus = logo.auctionStatus?.toUpperCase() == 'ACTIVE';
-      if (!hasActiveFlag && !hasActiveStatus) {
-        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=neither isAuctionActive nor auctionStatus indicates active (isAuctionActive=${logo.isAuctionActive}, auctionStatus=${logo.auctionStatus})'); }
-        return false;
-      }
-
       if (logo.endTime == null) {
         if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=endTime is null'); }
         return false;
@@ -150,8 +143,16 @@ class HomePageState extends State<HomePage> {
       }
 
       if (logo.isFrozen) {
-        if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=NFT is frozen'); }
-        return false;
+        // NFT frozen: tetap tampil di homepage tapi dengan state khusus
+        // Badge FROZEN akan dirender oleh logo_card.dart berdasarkan logo.isFrozen
+        // Hanya filter berdasarkan nftVisible dan kategori/search saja
+      } else {
+        final bool hasActiveFlag = logo.isAuctionActive == true;
+        final bool hasActiveStatus = logo.auctionStatus?.toUpperCase() == 'ACTIVE';
+        if (!hasActiveFlag && !hasActiveStatus) {
+          if (kDebugMode) { debugPrint('FILTER REJECTED:\nNFT=${logo.name}\nReason=neither isAuctionActive nor auctionStatus indicates active (isAuctionActive=${logo.isAuctionActive}, auctionStatus=${logo.auctionStatus})'); }
+          return false;
+        }
       }
 
       if (kDebugMode) {
@@ -353,35 +354,35 @@ class HomePageState extends State<HomePage> {
   }
 
   Widget _buildHomeContent() {
-    return StreamBuilder<List<LogoNFT>>(
-      stream: _nftStream,
-      builder: (context, snapshot) {
-        final List<LogoNFT> allLogos = snapshot.hasData ? snapshot.data! : [];
-        debugPrint('🔎 [INVESTIGASI] HomePageState: _buildHomeContent() Stream mendapat ${allLogos.length} items (connectionState=${snapshot.connectionState})');
-        
-        if (kDebugMode) {
-          debugPrint("STREAM SNAPSHOT: connectionState=${snapshot.connectionState} hasData=${snapshot.hasData} data.length=${allLogos.length}");
-        }
-        final filteredLogos = _filterLogos(allLogos);
-        debugPrint('🔎 [INVESTIGASI] HomePageState: _buildHomeContent() Setelah difilter tersisa ${filteredLogos.length} items');
-        
-        final displayedLogos = filteredLogos.take(_limit).toList();
-        if (kDebugMode) {
-          debugPrint("DISPLAYED LOGOS COUNT: ${displayedLogos.length}");
-        }
-        final bool hasMore = filteredLogos.length > _limit;
-        final isLoading = snapshot.connectionState == ConnectionState.waiting;
-        final hasError = snapshot.hasError;
+    return RefreshIndicator(
+      onRefresh: _loadBlockchainData,
+      color: AppColors.primary,
+      backgroundColor: AppColors.surface,
+      child: StreamBuilder<List<LogoNFT>>(
+        stream: _nftStream,
+        builder: (context, snapshot) {
+          final List<LogoNFT> allLogos = snapshot.hasData ? snapshot.data! : [];
+          debugPrint('🔎 [INVESTIGASI] HomePageState: _buildHomeContent() Stream mendapat ${allLogos.length} items (connectionState=${snapshot.connectionState})');
+          
+          if (kDebugMode) {
+            debugPrint("STREAM SNAPSHOT: connectionState=${snapshot.connectionState} hasData=${snapshot.hasData} data.length=${allLogos.length}");
+          }
+          final filteredLogos = _filterLogos(allLogos);
+          debugPrint('🔎 [INVESTIGASI] HomePageState: _buildHomeContent() Setelah difilter tersisa ${filteredLogos.length} items');
+          
+          final displayedLogos = filteredLogos.take(_limit).toList();
+          if (kDebugMode) {
+            debugPrint("DISPLAYED LOGOS COUNT: ${displayedLogos.length}");
+          }
+          final bool hasMore = filteredLogos.length > _limit;
+          final isLoading = snapshot.connectionState == ConnectionState.waiting;
+          final hasError = snapshot.hasError;
 
-        if (hasError && kDebugMode) {
-          debugPrint('🔥 NFT Stream Error: ${snapshot.error}');
-        }
+          if (hasError && kDebugMode) {
+            debugPrint('🔥 NFT Stream Error: ${snapshot.error}');
+          }
 
-        return RefreshIndicator(
-          onRefresh: _loadBlockchainData,
-          color: AppColors.primary,
-          backgroundColor: AppColors.surface,
-          child: CustomScrollView(
+          return CustomScrollView(
             controller: _scrollController,
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
@@ -739,9 +740,9 @@ class HomePageState extends State<HomePage> {
                 ),
               const SliverToBoxAdapter(child: SizedBox(height: 40)),
             ],
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }

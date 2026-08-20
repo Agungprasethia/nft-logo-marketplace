@@ -97,10 +97,21 @@ class Web3Service extends Web3ServiceBase {
     _startWinnerPolling();
     _startBalancePolling();
     
+    // Listen to WalletConnect background events (disconnect, chain changed)
+    _walletConnect.addListener(_syncWalletConnectState);
+    
     _isInitialized = true;
     if (kDebugMode) { debugPrint('[WEB3] ✅ Initialization complete'); }
     if (kDebugMode) { debugPrint('[WEB3] ═══════════════════════════════════════'); }
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _walletConnect.removeListener(_syncWalletConnectState);
+    _notificationTimer?.cancel();
+    _balanceTimer?.cancel();
+    super.dispose();
   }
 
   // ============ Contract ABI Definitions ============
@@ -415,6 +426,25 @@ class Web3Service extends Web3ServiceBase {
 
   final _walletConnect = WalletConnectService.instance;
 
+  void _syncWalletConnectState() {
+    // Only sync if the connection type is walletconnect 
+    // (ignore if manual connection is active)
+    if (_connectionType != 'walletconnect' && _connectionType != 'none') return;
+    
+    final wasConnected = _isConnected;
+    _isConnected = _walletConnect.isConnected;
+    _currentAddress = _walletConnect.address;
+    _chainId = _walletConnect.chainId;
+    
+    if (_isConnected) {
+      _connectionType = 'walletconnect';
+    } else if (wasConnected) {
+      // Disconnected externally
+      _connectionType = 'none';
+      _balance = 0;
+    }
+    notifyListeners();
+  }
   /// Fallback: manually set a wallet address without WalletConnect.
   /// Used when MetaMask deep-link flow fails on strict OEM devices.
   /// The user copies their address from MetaMask and pastes it in the app.

@@ -95,6 +95,9 @@ class _SplashScreenState extends State<SplashScreen>
       final hasSession = await SessionService.instance.hasValidSession();
       
       if (hasSession) {
+        // Sync with the 800ms fade-in animation so the text is visible
+        await Future.delayed(const Duration(milliseconds: 800));
+        
         // Await the background validation (it has an 8-second internal timeout)
         final restored = await _performBackgroundValidation();
         

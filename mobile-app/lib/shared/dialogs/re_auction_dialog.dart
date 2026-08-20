@@ -33,20 +33,15 @@ class ReAuctionDialog extends StatefulWidget {
 class _ReAuctionDialogState extends State<ReAuctionDialog> {
   final _formKey = GlobalKey<FormState>();
   final _priceController = TextEditingController();
-  int _selectedDuration = 86400; // Default 24 hours
+  int _selectedDuration = 300; // Default 5 minutes
   bool _isLoading = false;
 
   final List<Map<String, dynamic>> _durations = [
-    {'label': '30 Seconds', 'value': 30},
-    {'label': '1 Minute', 'value': 60},
+    {'label': '5 Minutes', 'value': 300},
+    {'label': '10 Minutes', 'value': 600},
     {'label': '25 Minutes', 'value': 1500},
     {'label': '30 Minutes', 'value': 1800},
     {'label': '1 Hour', 'value': 3600},
-    {'label': '6 Hours', 'value': 21600},
-    {'label': '12 Hours', 'value': 43200},
-    {'label': '24 Hours', 'value': 86400},
-    {'label': '3 Days', 'value': 259200},
-    {'label': '7 Days', 'value': 604800},
   ];
 
   @override
@@ -77,8 +72,8 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
       if (mounted) {
         NotificationManager.show(
           context: context,
-          title: 'Re-Auction Started',
-          message: 'Your NFT has been relisted successfully.',
+          title: 'Re-Auction Requested',
+          message: 'Your re-auction request has been sent for admin approval.',
           type: NotificationType.success,
         );
         Navigator.pop(context);
@@ -127,7 +122,7 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
               ),
               const SizedBox(height: AppSpacing.md),
               Text(
-                'Review your NFT and set new auction parameters. The auction will start immediately.',
+                'Review your NFT and set new auction parameters. The auction will start after admin approval.',
                 style: AppTextStyles.bodyMedium.copyWith(color: AppColors.textSecondary),
               ),
               const SizedBox(height: AppSpacing.xl),
@@ -263,7 +258,7 @@ class _ReAuctionDialogState extends State<ReAuctionDialog> {
               SizedBox(
                 width: double.infinity,
                 child: PrimaryButton(
-                  text: 'Start Re-Auction',
+                  text: 'Request Re-Auction',
                   onPressed: _submitRequest,
                   isLoading: _isLoading,
                 ),

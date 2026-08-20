@@ -22,13 +22,18 @@ class ReportedNftPage extends StatefulWidget {
 }
 
 class _ReportedNftPageState extends State<ReportedNftPage> {
-  final String currentAdminId = FirebaseAuth.instance.currentUser?.uid ?? 'unknown_admin';
+  String get currentAdminId => FirebaseAuth.instance.currentUser?.uid ?? 'unknown_admin';
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<List<Map<String, dynamic>>>(
-      stream: FirestoreService.instance.getPendingReportsStream(),
-      builder: (context, snapshot) {
+    return RefreshIndicator(
+      onRefresh: () async {
+        await Future.delayed(const Duration(milliseconds: 600));
+        if (mounted) setState(() {});
+      },
+      child: StreamBuilder<List<Map<String, dynamic>>>(
+        stream: FirestoreService.instance.getPendingReportsStream(),
+        builder: (context, snapshot) {
         if (snapshot.connectionState == ConnectionState.waiting) {
           return const Center(child: CircularProgressIndicator(color: AppColors.primary));
         }
@@ -47,13 +52,11 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
         final reportedList = snapshot.data ?? [];
 
         if (reportedList.isEmpty) {
-          return RefreshIndicator(
-            onRefresh: () async { setState(() {}); },
-            child: CustomScrollView(
+          return ListView(
               physics: const AlwaysScrollableScrollPhysics(),
-              slivers: [
-                SliverFillRemaining(
-                  hasScrollBody: false,
+              children: [
+                SizedBox(
+                  height: MediaQuery.of(context).size.height * 0.6,
                   child: Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
@@ -76,13 +79,10 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
                   ),
                 ),
               ],
-            ),
-          );
+            );
         }
 
-        return RefreshIndicator(
-      onRefresh: () async { setState(() {}); },
-      child: ListView.builder(
+        return ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.all(AppSpacing.lg),
           itemCount: reportedList.length,
@@ -92,11 +92,11 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
               child: _buildReportedNFTCard(context, reportedList[index]),
             );
           },
-        ),
-    );
-      }
-    );
-  }
+        );
+      },
+    ),
+  );
+}
 
   Widget _buildReportedNFTCard(BuildContext context, Map<String, dynamic> reportData) {
     final tokenId = reportData['tokenId'] as int;
@@ -179,31 +179,64 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Text(
-                          nftTitle,
-                          style: AppTextStyles.h3,
-                          overflow: TextOverflow.ellipsis,
-                          maxLines: 1,
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                nftTitle,
+                                style: AppTextStyles.h3,
+                                overflow: TextOverflow.ellipsis,
+                                maxLines: 1,
+                              ),
+                            ),
+                            if (reportStatus == 'resolved')
+                              IconButton(
+                                icon: const Icon(Icons.close, color: AppColors.textSecondary, size: 20),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () => _handleDeleteReport(reportId),
+                              ),
+                          ],
                         ),
                         const SizedBox(height: 6),
                         Row(
                           children: [
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                              decoration: BoxDecoration(
-                                color: AppColors.danger.withValues(alpha: 0.1),
-                                borderRadius: BorderRadius.circular(AppRadius.sm),
-                                border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
+                            if (reportStatus == 'resolved') ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.success.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                                  border: Border.all(color: AppColors.success.withValues(alpha: 0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.check_circle, size: 12, color: AppColors.success),
+                                    const SizedBox(width: 4),
+                                    Text('RESOLVED', style: AppTextStyles.labelSmall.copyWith(color: AppColors.success, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
                               ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const Icon(Icons.flag, size: 12, color: AppColors.danger),
-                                  const SizedBox(width: 4),
-                                  Text('REPORTED', style: AppTextStyles.labelSmall.copyWith(color: AppColors.danger, fontWeight: FontWeight.bold)),
-                                ],
+                            ] else ...[
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                                decoration: BoxDecoration(
+                                  color: AppColors.danger.withValues(alpha: 0.1),
+                                  borderRadius: BorderRadius.circular(AppRadius.sm),
+                                  border: Border.all(color: AppColors.danger.withValues(alpha: 0.5)),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    const Icon(Icons.flag, size: 12, color: AppColors.danger),
+                                    const SizedBox(width: 4),
+                                    Text('REPORTED', style: AppTextStyles.labelSmall.copyWith(color: AppColors.danger, fontWeight: FontWeight.bold)),
+                                  ],
+                                ),
                               ),
-                            ),
+                            ],
                             if (reportStatus == 'frozen') ...[
                               const SizedBox(width: 8),
                               Container(
@@ -415,7 +448,7 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
                       Expanded(
                         child: _buildActionButton(
                           icon: Icons.restore,
-                          label: 'Reopen',
+                          label: 'Unfreeze',
                           color: AppColors.success,
                           textColor: AppColors.textPrimary,
                           onPressed: () => _handleReopenAction(tokenId, reportId),
@@ -432,6 +465,33 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
                         ),
                       ),
                     ],
+                  )
+                else if (reportStatus == 'resolved')
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(AppSpacing.md),
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceLight,
+                      borderRadius: BorderRadius.circular(AppRadius.md),
+                      border: Border.all(color: AppColors.success.withValues(alpha: 0.3)),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Row(
+                          children: [
+                            const Icon(Icons.check_circle, size: 16, color: AppColors.success),
+                            const SizedBox(width: 8),
+                            Text('Action Taken:', style: AppTextStyles.labelMedium.copyWith(color: AppColors.textSecondary)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          reportData['adminAction'] as String? ?? 'Resolved by admin',
+                          style: AppTextStyles.bodyMedium,
+                        ),
+                      ],
+                    ),
                   ),
               ],
             ),
@@ -555,10 +615,28 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
     }
   }
 
+  Future<void> _handleDeleteReport(String reportId) async {
+    final confirmed = await _showConfirmDialog(
+      'Delete Report Log',
+      'Are you sure you want to delete this resolved report log? This action cannot be undone.',
+      AppColors.danger,
+    );
+    if (!confirmed) return;
+
+    try {
+      await FirestoreService.instance.deleteReport(reportId, currentAdminId);
+      if (!mounted) return;
+      NotificationManager.show(context: context, title: 'Success', message: 'Report Log Deleted!', type: NotificationType.success);
+    } catch (e) {
+      if (!mounted) return;
+      NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
+    }
+  }
+
   Future<void> _handleReopenAction(int tokenId, String reportId) async {
     final confirmed = await _showConfirmDialog(
-      'Reopen Auction', 
-      'Reopen this frozen auction? The countdown timer will resume and bidding will be enabled again.',
+      'Unfreeze Auction', 
+      'Unfreeze this auction? The countdown timer will resume and bidding will be enabled again.',
       AppColors.success,
     );
     if (!confirmed) return;
@@ -566,7 +644,7 @@ class _ReportedNftPageState extends State<ReportedNftPage> {
     try {
       await FirestoreService.instance.reopenAuction(tokenId, currentAdminId, reportId);
       if (!mounted) return;
-      NotificationManager.show(context: context, title: 'Success', message: 'Auction Reopened!', type: NotificationType.success);
+      NotificationManager.show(context: context, title: 'Success', message: 'Auction Unfrozen!', type: NotificationType.success);
     } catch (e) {
       if (!mounted) return;
       NotificationManager.show(context: context, title: 'Error', message: e.toString().replaceFirst("Exception: ", ""), type: NotificationType.error);
