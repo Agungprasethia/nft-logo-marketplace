@@ -12,8 +12,8 @@ Write-Host "[1/3] Building Flutter App..." -ForegroundColor Yellow
 Set-Location -Path "mobile-app"
 flutter build web
 if ($LASTEXITCODE -ne 0) {
-    Write-Host "  ❌ Failed to build mobile-app!" -ForegroundColor Red
-    exit 1
+  Write-Host "  ❌ Failed to build mobile-app!" -ForegroundColor Red
+  exit 1
 }
 Set-Location -Path ".."
 Write-Host "  ✅ App built successfully`n" -ForegroundColor Green
@@ -23,7 +23,7 @@ Write-Host "[2/3] Assembling public_deploy folder..." -ForegroundColor Yellow
 $deployDir = "public_deploy"
 
 if (Test-Path -Path $deployDir) {
-    Remove-Item -Path $deployDir -Recurse -Force
+  Remove-Item -Path $deployDir -Recurse -Force
 }
 New-Item -ItemType Directory -Force -Path $deployDir | Out-Null
 

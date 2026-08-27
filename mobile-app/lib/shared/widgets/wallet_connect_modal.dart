@@ -387,6 +387,14 @@ class _WalletConnectModalState extends State<WalletConnectModal>
     setState(() => _state = _ConnState.launching);
 
     try {
+      // If we are on Web, on a Mobile Device, and NOT in a dApp browser (MetaMask not installed)
+      if (kIsWeb && Web3Service.instance.isMobileDevice && !Web3Service.instance.isMetaMaskInstalled) {
+        if (kDebugMode) debugPrint('[LOGIN] Web Mobile: Redirecting to MetaMask dApp browser');
+        // This will redirect the current page to metamask.app.link/dapp/...
+        await Web3Service.instance.connectMobileWallet(walletName: wallet);
+        return; // Stop execution here since the page will redirect
+      }
+
       // Step 2: Generate WC URI
       final wcUri = await WalletConnectService.instance.generateConnectionUri();
       if (wcUri == null || !mounted || _isClosing) {
