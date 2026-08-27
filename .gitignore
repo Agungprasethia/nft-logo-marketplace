@@ -90,4 +90,3 @@ deployed_addresses.json
 # Temporary files
 *.tmp
 *.temp
-public_deploy/

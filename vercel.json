@@ -1,0 +1,9 @@
+{
+  "outputDirectory": "public_deploy",
+  "buildCommand": null,
+  "installCommand": null,
+  "framework": null,
+  "rewrites": [
+    { "source": "/(.*)", "destination": "/index.html" }
+  ]
+}
