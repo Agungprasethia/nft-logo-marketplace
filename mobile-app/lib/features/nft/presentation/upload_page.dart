@@ -549,14 +549,17 @@ class _UploadPageState extends State<UploadPage> {
       ),
       body: !_web3.isConnected
           ? _buildConnectPrompt()
-          : SingleChildScrollView(
-              padding: const EdgeInsets.only(left: AppSpacing.xl, right: AppSpacing.xl, top: AppSpacing.xl, bottom: 40),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // Upload area
+          : Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 800),
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.only(left: AppSpacing.xl, right: AppSpacing.xl, top: AppSpacing.xl, bottom: 40),
+                  child: Form(
+                    key: _formKey,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        // Upload area
                     GestureDetector(
                       onTap: _pickImage,
                       child: Container(
@@ -921,6 +924,8 @@ class _UploadPageState extends State<UploadPage> {
                   ],
                 ),
               ),
+            ),
+            ),
             ),
       ),
     );

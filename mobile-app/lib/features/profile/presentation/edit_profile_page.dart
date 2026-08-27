@@ -461,14 +461,17 @@ class _EditProfilePageState extends State<EditProfilePage> {
               SliverPadding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl, vertical: AppSpacing.lg),
                 sliver: SliverToBoxAdapter(
-                  child: Form(
-                    key: _formKey,
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        // Header Profile Picture
-                        Center(
-                          child: GestureDetector(
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 800),
+                      child: Form(
+                        key: _formKey,
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            // Header Profile Picture
+                            Center(
+                              child: GestureDetector(
                             onTap: _pickImage,
                             child: Stack(
                               alignment: Alignment.center,
@@ -757,6 +760,8 @@ class _EditProfilePageState extends State<EditProfilePage> {
                     ),
                   ),
                 ),
+              ),
+              ),
               ),
             ],
           ),
