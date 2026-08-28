@@ -387,6 +387,27 @@ class _WalletConnectModalState extends State<WalletConnectModal>
     setState(() => _state = _ConnState.launching);
 
     try {
+      // If we are on Web and MetaMask is installed (dApp browser or Desktop extension)
+      // We should use the injected wallet directly, bypassing WalletConnect
+      if (kIsWeb && Web3Service.instance.isMetaMaskInstalled) {
+        if (kDebugMode) debugPrint('[LOGIN] Web Injected: Using direct connect');
+        final ok = await Web3Service.instance.connectWallet(walletName: wallet);
+        if (ok && mounted && !_isClosing) {
+          _safePop(true);
+        } else {
+          if (mounted && !_isClosing) {
+            setState(() => _state = _ConnState.timeout);
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text('Connection failed or timed out. Please try again.'),
+                backgroundColor: Colors.redAccent,
+              ),
+            );
+          }
+        }
+        return;
+      }
+
       // If we are on Web, on a Mobile Device, and NOT in a dApp browser (MetaMask not installed)
       if (kIsWeb && Web3Service.instance.isMobileDevice && !Web3Service.instance.isMetaMaskInstalled) {
         if (kDebugMode) debugPrint('[LOGIN] Web Mobile: Redirecting to MetaMask dApp browser');
