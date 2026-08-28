@@ -13,6 +13,7 @@ import 'package:nft_logo_marketplace/config/contract_config.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
+import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
 import 'package:flutter/material.dart';
 import 'package:nft_logo_marketplace/main.dart';
 
@@ -337,6 +338,26 @@ class Web3Service extends Web3ServiceBase {
 
   @override
   Future<bool> connectWallet({String walletName = 'metamask', bool restoreSession = false}) async {
+    // On mobile web without injected MetaMask:
+    // When restoring a session, check WalletConnectService first.
+    // connectMobileWallet() just redirects (or returns false for restore),
+    // so we need to apply the WalletConnect session directly.
+    if (restoreSession && isMobileDevice && !isMetaMaskInstalled) {
+      final wcs = WalletConnectService.instance;
+      if (wcs.isConnected && wcs.address != null) {
+        _currentAddress = wcs.address;
+        _chainId = wcs.chainId;
+        _isConnected = true;
+        _connectionType = 'walletconnect';
+        _registerAsSeller(_currentAddress!);
+        _saveWebSession();
+        await _updateBalanceViaRpc();
+        notifyListeners();
+        if (kDebugMode) { debugPrint('✅ Web3Service connected via WalletConnect session: $_currentAddress'); }
+        return true;
+      }
+      return false;
+    }
     if (isMobileDevice && !isMetaMaskInstalled) {
       return await connectMobileWallet(walletName: walletName, restoreSession: restoreSession);
     }
@@ -462,6 +483,41 @@ class Web3Service extends Web3ServiceBase {
       notifyListeners();
     } catch (e) {
       if (kDebugMode) { debugPrint('Error getting balance: $e'); }
+      // Fallback to RPC if window.ethereum is not available
+      await _updateBalanceViaRpc();
+    }
+  }
+
+  /// Fetch balance via HTTP RPC — used when window.ethereum is not available
+  /// (e.g. WalletConnect session on mobile Chrome without MetaMask extension)
+  Future<void> _updateBalanceViaRpc() async {
+    if (_currentAddress == null) return;
+    try {
+      final uri = Uri.parse(ContractConfig.rpcUrl);
+      final response = await html.HttpRequest.request(
+        uri.toString(),
+        method: 'POST',
+        sendData: jsonEncode({
+          'jsonrpc': '2.0',
+          'method': 'eth_getBalance',
+          'params': [_currentAddress, 'latest'],
+          'id': 1,
+        }),
+        requestHeaders: {'Content-Type': 'application/json'},
+      );
+      if (response.status == 200) {
+        final data = jsonDecode(response.responseText ?? '{}');
+        if (data['result'] != null) {
+          final balanceWei = BigInt.parse(
+            data['result'].toString().replaceFirst('0x', ''),
+            radix: 16,
+          );
+          _balance = balanceWei / BigInt.from(10).pow(18);
+          notifyListeners();
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) { debugPrint('Error getting balance via RPC: $e'); }
     }
   }
 

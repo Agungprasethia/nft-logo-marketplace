@@ -209,8 +209,8 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       if (Web3Service.instance.isConnected) { _safePop(true); return; }
 
       // WalletConnect has a session — use restoreSession: true so that
-      // connectMobileWallet picks up the EXISTING session instead of
-      // generating a new URI and re-opening MetaMask (which causes the loop).
+      // connectWallet picks up the EXISTING WalletConnect session directly
+      // (instead of redirecting to MetaMask browser).
       final bool wcHasSession = WalletConnectService.instance.isConnected;
       if (kDebugMode) {
         debugPrint('[LOGIN] _finaliseConnection: wcHasSession=$wcHasSession');
@@ -219,36 +219,26 @@ class _WalletConnectModalState extends State<WalletConnectModal>
       final ok = await Web3Service.instance
           .connectWallet(
             walletName: _selectedWallet,
-            restoreSession: wcHasSession, // true → picks up existing session
+            restoreSession: wcHasSession, // true → apply WalletConnect session
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 15), onTimeout: () => false);
           
       if (ok && mounted && !_isClosing) {
         _safePop(true);
       } else {
+        // Don't show error — quietly go back to waiting and let polling continue
+        if (kDebugMode) debugPrint('[LOGIN] _finaliseConnection: connectWallet returned false, resuming polling');
         if (mounted && !_isClosing) {
-          setState(() => _state = _ConnState.timeout);
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Connection failed or timed out. Please try again.'),
-              backgroundColor: Colors.redAccent,
-            ),
-          );
+          setState(() => _state = _ConnState.waiting);
+          _startPoller(maxSeconds: 30);
         }
       }
     } catch (e) {
+      if (kDebugMode) debugPrint('[LOGIN] _finaliseConnection error: $e');
+      // Don't show error SnackBar — just go back to waiting
       if (mounted && !_isClosing) {
-        setState(() => _state = _ConnState.timeout);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Connection error. Please make sure you approved in MetaMask.'),
-            backgroundColor: Colors.redAccent,
-          ),
-        );
-      }
-    } finally {
-      if (mounted && !_isClosing && _state == _ConnState.checking) {
-        setState(() => _state = _ConnState.timeout);
+        setState(() => _state = _ConnState.waiting);
+        _startPoller(maxSeconds: 30);
       }
     }
   }
@@ -387,34 +377,15 @@ class _WalletConnectModalState extends State<WalletConnectModal>
     setState(() => _state = _ConnState.launching);
 
     try {
-      // If we are on Web and MetaMask is installed (dApp browser or Desktop extension)
-      // We should use the injected wallet directly, bypassing WalletConnect
-      if (kIsWeb && Web3Service.instance.isMetaMaskInstalled) {
-        if (kDebugMode) debugPrint('[LOGIN] Web Injected: Using direct connect');
-        final ok = await Web3Service.instance.connectWallet(walletName: wallet);
-        if (ok && mounted && !_isClosing) {
-          _safePop(true);
-        } else {
-          if (mounted && !_isClosing) {
-            setState(() => _state = _ConnState.timeout);
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('Connection failed or timed out. Please try again.'),
-                backgroundColor: Colors.redAccent,
-              ),
-            );
-          }
-        }
-        return;
-      }
-
-      // If we are on Web, on a Mobile Device, and NOT in a dApp browser (MetaMask not installed)
-      if (kIsWeb && Web3Service.instance.isMobileDevice && !Web3Service.instance.isMetaMaskInstalled) {
-        if (kDebugMode) debugPrint('[LOGIN] Web Mobile: Redirecting to MetaMask dApp browser');
-        // This will redirect the current page to metamask.app.link/dapp/...
-        await Web3Service.instance.connectMobileWallet(walletName: wallet);
-        return; // Stop execution here since the page will redirect
-      }
+      // Always use WalletConnect flow for mobile web:
+      // Flutter web does NOT render inside MetaMask's dApp browser (blank page),
+      // so we must stay in Chrome and use WalletConnect to communicate with
+      // the MetaMask APP. The flow is:
+      //   1. Generate WC URI
+      //   2. Open MetaMask APP via deep link (not its browser)
+      //   3. User approves in MetaMask
+      //   4. User switches back to Chrome
+      //   5. Polling detects the new session
 
       // Step 2: Generate WC URI
       final wcUri = await WalletConnectService.instance.generateConnectionUri();
@@ -425,15 +396,16 @@ class _WalletConnectModalState extends State<WalletConnectModal>
 
       await WalletConnectService.instance.startWalletConnectService();
 
-      // Step 3: Open MetaMask (fire-and-forget — no await on approval)
+      // Step 3: Open MetaMask APP (fire-and-forget — no await on approval)
       await WalletConnectService.instance.launchWalletApp(wcUri, walletName: wallet);
 
       if (!mounted || _isClosing) return;
       setState(() => _state = _ConnState.waiting);
 
       // Step 4: Start polling — completely independent of deep-link callback
-      _startPoller(maxSeconds: 30);
-    } catch (_) {
+      _startPoller(maxSeconds: 60);
+    } catch (e) {
+      if (kDebugMode) debugPrint('[LOGIN] Connect flow error: $e');
       if (mounted && !_isClosing) setState(() => _state = _ConnState.idle);
     }
   }
