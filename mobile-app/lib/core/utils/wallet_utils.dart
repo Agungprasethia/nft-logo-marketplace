@@ -1,8 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:nft_logo_marketplace/core/services/web3_service.dart';
-import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
-
 import 'package:flutter/foundation.dart';
+import 'package:nft_logo_marketplace/core/services/web3_service.dart';
+import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/profile_setup_page.dart';
 import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
@@ -17,81 +16,30 @@ class WalletUtils {
   }) async {
     bool success = false;
 
-    if (kIsWeb) {
-      bool installed = web3Service.isMetaMaskInstalled;
+    try {
+      final wcs = WalletConnectService.instance;
+      if (!wcs.isInitialized) {
+        await wcs.initialize(context: context);
+      }
       
-      // Tunggu hingga 1.5 detik agar MetaMask sempat inject window.ethereum ke DOM
-      // karena eksekusi di Flutter Web seringkali lebih cepat dari proses inject extension
-      if (!installed) {
-        for (int i = 0; i < 15; i++) {
-          await Future.delayed(const Duration(milliseconds: 100));
-          if (web3Service.isMetaMaskInstalled) {
-            installed = true;
-            break;
-          }
-        }
+      if (wcs.appKitModal != null) {
+        // This unified UI handles both desktop extension detection (EIP-6963)
+        // and mobile app deep-linking out of the box!
+        await wcs.appKitModal!.openModalView();
+        
+        // Modal is closed. Check if connection was successful.
+        success = web3Service.isConnected || wcs.isConnected;
       }
-
-      if (!web3Service.isMobileDevice) {
-        // Desktop Web: Wajib pakai ekstensi MetaMask
-        if (installed) {
-          try {
-            success = await web3Service.connectWallet();
-          } catch (e) {
-            if (context.mounted) {
-              NotificationManager.show(
-                context: context,
-                title: 'Connection Failed',
-                message: e.toString().replaceFirst('Exception: ', ''),
-                type: NotificationType.error,
-              );
-            }
-            return false;
-          }
-        } else {
-          if (context.mounted) {
-            NotificationManager.show(
-              context: context,
-              title: 'MetaMask Required',
-              message: 'Please install the MetaMask browser extension to connect.',
-              type: NotificationType.warning,
-            );
-          }
-          return false;
-        }
-      } else {
-        // Mobile Web
-        if (installed) {
-          // Jika dibuka dari in-app browser MetaMask
-          try {
-            success = await web3Service.connectWallet();
-          } catch (e) {
-            if (context.mounted) {
-              NotificationManager.show(
-                context: context,
-                title: 'Connection Failed',
-                message: e.toString().replaceFirst('Exception: ', ''),
-                type: NotificationType.error,
-              );
-            }
-            return false;
-          }
-        } else {
-          // Jika dibuka dari Chrome/Safari di HP biasa -> pakai WalletConnectModal
-          success = await WalletConnectModal.show(
-            context,
-            title: title,
-            message: message,
-          );
-        }
+    } catch (e) {
+      if (context.mounted) {
+        NotificationManager.show(
+          context: context,
+          title: 'Connection Failed',
+          message: e.toString().replaceFirst('Exception: ', ''),
+          type: NotificationType.error,
+        );
       }
-    } else {
-      // Native Android/iOS: Selalu pakai WalletConnectModal
-      success = await WalletConnectModal.show(
-        context,
-        title: title,
-        message: message,
-      );
+      return false;
     }
 
     if (success && web3Service.isConnected && context.mounted) {

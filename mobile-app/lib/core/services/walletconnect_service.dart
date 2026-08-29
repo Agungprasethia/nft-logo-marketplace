@@ -5,6 +5,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/widgets.dart';
 import 'package:reown_appkit/reown_appkit.dart';
+import 'package:nft_logo_marketplace/main.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:nft_logo_marketplace/config/contract_config.dart';
@@ -17,6 +18,8 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   WalletConnectService._();
 
   ReownAppKit? _web3App;
+  ReownAppKitModal? _appKitModal;
+  
   SessionData? _session;
   String? _connectedAddress;
   int? _chainId;
@@ -28,17 +31,19 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   String? get address => _connectedAddress;
   int? get chainId => _chainId;
   bool get isOnSepolia => _chainId == ContractConfig.chainId;
-  bool get isInitialized => _web3App != null;
+  bool get isInitialized => _web3App != null && _appKitModal != null;
   ReownAppKit? get web3App => _web3App;
+  ReownAppKitModal? get appKitModal => _appKitModal;
 
   // ── Initialization ──────────────────────────────────────────────────────
 
-  Future<void> initialize() async {
-    if (_web3App != null) return;
+  Future<void> initialize({BuildContext? context}) async {
+    if (_web3App != null && _appKitModal != null) return;
 
     WidgetsBinding.instance.addObserver(this);
 
-    _web3App = await ReownAppKit.createInstance(
+    _appKitModal = ReownAppKitModal(
+      context: context ?? navigatorKey.currentContext,
       projectId: ContractConfig.walletConnectProjectId,
       metadata: const PairingMetadata(
         name: 'L E O',
@@ -51,6 +56,9 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
         ),
       ),
     );
+    await _appKitModal!.init();
+    
+    _web3App = _appKitModal!.appKit;
 
     // Listen for session lifecycle events
     _web3App!.onSessionConnect.subscribe(_onSessionConnect);
@@ -553,6 +561,13 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
   Future<void> _openMetaMaskForTransaction() async {
     try {
+      if (_appKitModal != null) {
+        if (kDebugMode) debugPrint('🦊 Launching connected wallet via AppKitModal...');
+        _appKitModal!.launchConnectedWallet();
+        await Future.delayed(const Duration(milliseconds: 500));
+        return;
+      }
+      // Fallback if appKitModal is somehow null
       final topic = _session?.topic;
       final walletUri = topic != null
           ? Uri.parse('metamask://wc?topic=$topic')
