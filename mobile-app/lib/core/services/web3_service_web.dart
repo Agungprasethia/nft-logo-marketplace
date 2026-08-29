@@ -78,9 +78,7 @@ class Web3Service extends Web3ServiceBase {
   bool get isMetaMaskInstalled {
     try {
       final ethereum = js_util.getProperty(html.window, 'ethereum');
-      if (ethereum == null) return false;
-      final isMetaMask = js_util.getProperty(ethereum, 'isMetaMask');
-      return isMetaMask == true;
+      return ethereum != null; // Cukup cek ethereum ada, karena beberapa wallet tidak meng-set isMetaMask=true
     } catch (e) {
       return false;
     }
@@ -195,6 +193,22 @@ class Web3Service extends Web3ServiceBase {
     try {
       final ethereum = js_util.getProperty(html.window, 'ethereum');
       
+      if (!restoreSession) {
+        // Memaksa memunculkan popup MetaMask untuk memilih akun
+        try {
+          await js_util.promiseToFuture(
+            js_util.callMethod(ethereum, 'request', [
+              js_util.jsify({
+                'method': 'wallet_requestPermissions',
+                'params': [{'eth_accounts': {}}]
+              }),
+            ]),
+          );
+        } catch (_) {
+          // Abaikan error jika user menolak permission popup, lanjut ke eth_requestAccounts
+        }
+      }
+
       final method = restoreSession ? 'eth_accounts' : 'eth_requestAccounts';
       
       final result = await js_util.promiseToFuture(
