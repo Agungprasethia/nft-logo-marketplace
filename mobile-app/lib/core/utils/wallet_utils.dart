@@ -5,6 +5,8 @@ import 'package:nft_logo_marketplace/shared/widgets/wallet_connect_modal.dart';
 import 'package:flutter/foundation.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/features/profile/presentation/profile_setup_page.dart';
+import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 class WalletUtils {
   static Future<bool> showConnectDialog(
@@ -13,13 +15,31 @@ class WalletUtils {
     String title = 'Connect Wallet',
     String message = 'Choose a wallet to connect to the marketplace.',
   }) async {
-    // Delegate entirely to the new WalletConnectModal which handles the robust
-    // polling and deep-link-free connection flow for all Android devices.
-    final success = await WalletConnectModal.show(
-      context,
-      title: title,
-      message: message,
-    );
+    bool success = false;
+
+    if (kIsWeb && web3Service.isMetaMaskInstalled) {
+      try {
+        success = await web3Service.connectWallet();
+      } catch (e) {
+        if (context.mounted) {
+          NotificationManager.show(
+            context: context,
+            title: 'Connection Failed',
+            message: e.toString().replaceFirst('Exception: ', ''),
+            type: NotificationType.error,
+          );
+        }
+        return false;
+      }
+    } else {
+      // Delegate entirely to the new WalletConnectModal which handles the robust
+      // polling and deep-link-free connection flow for all Android devices.
+      success = await WalletConnectModal.show(
+        context,
+        title: title,
+        message: message,
+      );
+    }
 
     if (success && web3Service.isConnected && context.mounted) {
       // Check if profile is complete
