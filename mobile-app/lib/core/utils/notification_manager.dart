@@ -6,6 +6,7 @@ import 'package:nft_logo_marketplace/core/widgets/premium_notification.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:uuid/uuid.dart';
 import 'package:nft_logo_marketplace/main.dart';
+import 'package:nft_logo_marketplace/core/services/notification_service.dart';
 
 class NotificationManager {
   static final NotificationManager _instance = NotificationManager._internal();
@@ -60,6 +61,19 @@ class NotificationManager {
       _instance._processQueue();
     } else {
       debugPrint('NotificationManager: Cannot show notification, no context available.');
+    }
+
+    // Trigger local push notification for the status bar
+    try {
+      // Using time-based ID so multiple notifications can appear in status bar
+      final int notificationId = DateTime.now().millisecondsSinceEpoch.remainder(100000);
+      NotificationService().showNotification(
+        id: notificationId,
+        title: title,
+        body: message,
+      );
+    } catch (e) {
+      debugPrint('NotificationManager: Failed to show system notification: $e');
     }
   }
 

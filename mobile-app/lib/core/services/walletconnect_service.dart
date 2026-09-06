@@ -17,7 +17,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
   WalletConnectService._();
 
-  ReownAppKit? _web3App;
+  IReownAppKit? _web3App;
   ReownAppKitModal? _appKitModal;
   
   SessionData? _session;
@@ -32,7 +32,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   int? get chainId => _chainId;
   bool get isOnSepolia => _chainId == ContractConfig.chainId;
   bool get isInitialized => _web3App != null && _appKitModal != null;
-  ReownAppKit? get web3App => _web3App;
+  IReownAppKit? get web3App => _web3App;
   ReownAppKitModal? get appKitModal => _appKitModal;
 
   // ── Initialization ──────────────────────────────────────────────────────
@@ -42,8 +42,11 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
     WidgetsBinding.instance.addObserver(this);
 
+    // Ensure we have a valid context. If not, use navigatorKey.currentContext and assert it's not null.
+    final validContext = context ?? navigatorKey.currentContext!;
+
     _appKitModal = ReownAppKitModal(
-      context: context ?? navigatorKey.currentContext,
+      context: validContext,
       projectId: ContractConfig.walletConnectProjectId,
       metadata: const PairingMetadata(
         name: 'L E O',
