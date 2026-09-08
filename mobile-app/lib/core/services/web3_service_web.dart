@@ -696,8 +696,29 @@ class Web3Service extends Web3ServiceBase {
       notifyListeners();
       return logo;
     } catch (e) {
-      if (kDebugMode) { debugPrint('❌ Mint failed: $e'); }
-      throw Exception('Mint failed: $e');
+      // MetaMask errors are JS objects — extract the actual message
+      String errorMsg;
+      try {
+        // Try to read .message property from JS error object
+        final jsMessage = js_util.getProperty(e, 'message');
+        errorMsg = jsMessage?.toString() ?? e.toString();
+      } catch (_) {
+        errorMsg = e.toString();
+      }
+      
+      // Clean up common wrapper text
+      if (errorMsg.contains('[object Object]')) {
+        errorMsg = 'Transaction rejected or failed in MetaMask';
+      }
+      
+      if (kDebugMode) { debugPrint('❌ Mint failed: $errorMsg'); }
+      
+      if (errorMsg.contains('User rejected') || errorMsg.contains('user rejected') || errorMsg.contains('denied')) {
+        throw Exception('Transaction cancelled by user');
+      } else if (errorMsg.contains('insufficient funds') || errorMsg.contains('gas')) {
+        throw Exception('Insufficient funds for gas. Please add SepoliaETH to your wallet.');
+      }
+      throw Exception('Mint failed: $errorMsg');
     }
   }
   
@@ -705,7 +726,7 @@ class Web3Service extends Web3ServiceBase {
   String _encodeMintCall(String name, String desc, String hash, BigInt price) {
     // Function selector for mint(string,string,string,uint256)
     // Using pre-computed selector to avoid dependencies
-    const selector = '94bf804d';
+    const selector = '31b6475c';
     
     // Simplified encoding - in production use proper ABI encoder
     // For now, encode strings as hex
@@ -774,21 +795,21 @@ class Web3Service extends Web3ServiceBase {
 
   /// Encode approveNFT function call
   String _encodeApproveNFTCall(int tokenId) {
-    const selector = '85e0fe17'; // approveNFT(uint256)
+    const selector = 'ad6ed71d'; // approveNFT(uint256)
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$tokenIdArg';
   }
 
   /// Encode rejectNFT function call
   String _encodeRejectNFTCall(int tokenId) {
-    const selector = '0b3687be'; // rejectNFT(uint256)
+    const selector = '6c126ba1'; // rejectNFT(uint256)
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$tokenIdArg';
   }
 
   /// Encode disableNFT function call
   String _encodeDisableNFTCall(int tokenId) {
-    const selector = 'ebdfbf9e'; // disableNFT(uint256)
+    const selector = 'aa77a809'; // disableNFT(uint256)
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$tokenIdArg';
   }
@@ -1235,7 +1256,7 @@ class Web3Service extends Web3ServiceBase {
 
   // ignore: unused_element
   String _encodeCreateAuctionCall(int tokenId, String creator, BigInt startingPrice, BigInt reservePrice, int durationSeconds) {
-    const selector = 'f84b2591';
+    const selector = '8874c389';
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     final creatorArg = creator.replaceFirst('0x', '').toLowerCase().padLeft(64, '0');
     final startPriceArg = startingPrice.toRadixString(16).padLeft(64, '0');

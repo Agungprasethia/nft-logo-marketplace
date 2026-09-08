@@ -1304,19 +1304,19 @@ class Web3Service extends Web3ServiceBase {
   // ============ Admin Operations ============
 
   String _encodeApproveNFTCall(int tokenId) {
-    const selector = '85e0fe17';
+    const selector = 'ad6ed71d';
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$tokenIdArg';
   }
 
   String _encodeRejectNFTCall(int tokenId) {
-    const selector = '0b3687be';
+    const selector = '6c126ba1';
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$tokenIdArg';
   }
 
   String _encodeDisableNFTCall(int tokenId) {
-    const selector = 'ebdfbf9e';
+    const selector = 'aa77a809';
     final tokenIdArg = BigInt.from(tokenId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$tokenIdArg';
   }
@@ -1419,13 +1419,13 @@ class Web3Service extends Web3ServiceBase {
 
 
   String _encodePlaceBidCall(int auctionId) {
-    const selector = '1998aeef';
+    const selector = '9979ef45';
     final auctionIdArg = BigInt.from(auctionId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$auctionIdArg';
   }
 
   String _encodeEndAuctionCall(int auctionId) {
-    const selector = '51b88e00';
+    const selector = 'b9a2de3a';
     final auctionIdArg = BigInt.from(auctionId).toRadixString(16).padLeft(64, '0');
     return '0x$selector$auctionIdArg';
   }

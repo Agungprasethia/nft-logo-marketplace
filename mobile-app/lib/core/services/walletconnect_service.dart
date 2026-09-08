@@ -310,7 +310,7 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
 
     // Wait for relay if not connected yet
     if (!(_web3App!.core.relayClient.isConnected)) {
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 800));
     }
     final liveSessions = _web3App!.sessions.getAll();
     if (liveSessions.isEmpty) {
@@ -546,13 +546,33 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
       await _openMetaMaskForTransaction();
 
       if (kDebugMode) debugPrint('⏳ Waiting for user approval in MetaMask...');
-      final txHash = await txFuture.timeout(
-        const Duration(minutes: 3),
-        onTimeout: () => throw Exception('Transaction request timed out in MetaMask'),
-      );
+      
+      // Retry timer: re-open MetaMask every 4 seconds if user returns to app
+      // without approving. Cancelled once txFuture completes.
+      bool txCompleted = false;
+      final retryTimer = Timer.periodic(const Duration(seconds: 8), (timer) {
+        if (txCompleted) {
+          timer.cancel();
+          return;
+        }
+        _retryOpenMetaMask();
+      });
 
-      if (kDebugMode) debugPrint('✅ Transaction approved! Hash: $txHash');
-      return txHash.toString();
+      try {
+        final txHash = await txFuture.timeout(
+          const Duration(minutes: 3),
+          onTimeout: () => throw Exception('Transaction request timed out in MetaMask'),
+        );
+        txCompleted = true;
+        retryTimer.cancel();
+
+        if (kDebugMode) debugPrint('✅ Transaction approved! Hash: $txHash');
+        return txHash.toString();
+      } catch (e) {
+        txCompleted = true;
+        retryTimer.cancel();
+        rethrow;
+      }
     } catch (e) {
       if (kDebugMode) debugPrint('❌ Transaction failed: $e');
       final errStr = e.toString().toLowerCase();
@@ -575,33 +595,71 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   Future<void> _openMetaMaskForTransaction() async {
-    try {
-      if (_appKitModal != null) {
-        if (kDebugMode) debugPrint('🦊 Launching connected wallet via AppKitModal...');
-        _appKitModal!.launchConnectedWallet();
-        await Future.delayed(const Duration(milliseconds: 500));
-        // Do not return here, forcefully trigger MetaMask deep link as a fallback
-        // to ensure it opens on Android devices where AppKitModal might fail.
-      }
-      
-      // Fallback: direct MetaMask deep link
-      final topic = _session?.topic;
-      final walletUri = topic != null
-          ? Uri.parse('metamask://wc?topic=$topic')
-          : Uri.parse('metamask://');
+    // Wait for WalletConnect relay to deliver the request to MetaMask
+    // before trying to open the app. Without this delay, MetaMask opens
+    // but the transaction request hasn't arrived yet.
+    await Future.delayed(const Duration(milliseconds: 300));
 
-      if (await canLaunchUrl(walletUri)) {
-        if (kDebugMode) debugPrint('🦊 Opening MetaMask for transaction approval...');
-        await launchUrl(walletUri, mode: LaunchMode.externalApplication);
-      } else {
-        final universalUri = topic != null
-            ? Uri.parse('https://metamask.app.link/wc?topic=$topic')
-            : Uri.parse('https://metamask.app.link/');
-        await launchUrl(universalUri, mode: LaunchMode.externalApplication);
+    bool launched = false;
+
+
+    // Strategy 2: Simple native deep link (most reliable on Android)
+    // Just open MetaMask — the pending WC request will show automatically.
+    if (!launched) {
+      try {
+        // bypass canLaunchUrl because it often returns false on Android 11+ 
+        // even when the app is installed, preventing the auto-launch.
+        final simpleUri = Uri.parse('metamask://wc');
+        if (kDebugMode) debugPrint('🦊 [Strategy 2] Force Opening MetaMask via native scheme...');
+        await launchUrl(simpleUri, mode: LaunchMode.externalApplication);
+        launched = true;
+        await Future.delayed(const Duration(milliseconds: 400));
+      } catch (e) {
+        if (kDebugMode) debugPrint('⚠️ Native scheme failed: $e');
       }
-      await Future.delayed(const Duration(milliseconds: 500));
+    }
+
+    // Strategy 3: Android Intent URI (works on devices that block custom schemes)
+    if (!launched) {
+      try {
+        final intentUri = Uri.parse(
+          'intent://wc#Intent;scheme=metamask;package=io.metamask;end',
+        );
+        if (kDebugMode) debugPrint('🦊 [Strategy 3] Opening MetaMask via intent URI...');
+        await launchUrl(intentUri, mode: LaunchMode.externalApplication);
+        launched = true;
+        await Future.delayed(const Duration(milliseconds: 400));
+      } catch (e) {
+        if (kDebugMode) debugPrint('⚠️ Intent URI failed: $e');
+      }
+    }
+
+    // Strategy 4: Universal link (last resort)
+    if (!launched) {
+      try {
+        final universalUri = Uri.parse('https://metamask.app.link/');
+        if (kDebugMode) debugPrint('🦊 [Strategy 4] Opening MetaMask via universal link...');
+        await launchUrl(universalUri, mode: LaunchMode.externalApplication);
+        launched = true;
+      } catch (e) {
+        if (kDebugMode) debugPrint('⚠️ Universal link also failed: $e');
+      }
+    }
+
+    if (!launched) {
+      if (kDebugMode) debugPrint('❌ All MetaMask launch strategies failed');
+    }
+  }
+
+  /// Re-launch MetaMask if the user returned to the app without approving.
+  /// Called from sendTransaction after a short delay.
+  Future<void> _retryOpenMetaMask() async {
+    try {
+      final simpleUri = Uri.parse('metamask://wc');
+      if (kDebugMode) debugPrint('🦊 [Retry] Force Re-opening MetaMask...');
+      await launchUrl(simpleUri, mode: LaunchMode.externalApplication);
     } catch (e) {
-      if (kDebugMode) debugPrint('⚠️ Could not open MetaMask for tx: $e');
+      if (kDebugMode) debugPrint('⚠️ Retry open MetaMask failed: $e');
     }
   }
 
