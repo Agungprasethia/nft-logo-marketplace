@@ -1008,17 +1008,10 @@ class Web3Service extends Web3ServiceBase {
     String? copyrightHash,
     String? hashAlgorithm,
   }) async {
-    // ═══ STRICT PRE-FLIGHT VALIDATION ═══
-    if (kDebugMode) { debugPrint('[MINT START] ═══════════════════════════════'); }
-    if (kDebugMode) { debugPrint('[MINT START] Wallet: $_currentAddress'); }
-    if (kDebugMode) { debugPrint('[MINT START] Connected: $_isConnected'); }
-    if (kDebugMode) { debugPrint('[MINT START] Chain ID: $_chainId'); }
-    if (kDebugMode) { debugPrint('[MINT START] RPC ready: $_rpcReady'); }
-    if (kDebugMode) { debugPrint('[MINT START] NFT Contract ready: ${_nftContract != null}'); }
-    if (kDebugMode) { debugPrint('[MINT START] Initialized: $_isInitialized'); }
-
     if (_currentAddress == null) throw Exception('Wallet not connected');
-    if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia network in MetaMask');
+    final activeAddress = _currentAddress!;
+
+    if (!isOnSepolia) throw Exception('Please switch to Sepolia network');
 
     // Ensure contracts are ready (auto-recovery for hot reload)
     if (_nftContract == null) {
@@ -1032,7 +1025,7 @@ class Web3Service extends Web3ServiceBase {
       );
     }
 
-    _registerAsSeller(_currentAddress!);
+    _registerAsSeller(activeAddress);
     final imageHash = generateImageHash(imageUrl);
     
     final priceWei = BigInt.from(price * 1e18);
@@ -1042,7 +1035,9 @@ class Web3Service extends Web3ServiceBase {
       if (kDebugMode) { debugPrint('[TX SENT] 🚀 Sending mint transaction to LogoNFT contract...'); }
       if (kDebugMode) { debugPrint('[TX SENT] 📄 Contract: ${ContractConfig.logoNFTAddress}'); }
       
-      await validateBalanceAndEstimate(ContractConfig.logoNFTAddress, txData, valueInEth: price);
+      // NOTE: mint() is nonpayable — do NOT pass valueInEth (no ETH is sent with the tx).
+      // Only gas cost needs to be validated.
+      await validateBalanceAndEstimate(ContractConfig.logoNFTAddress, txData);
 
       final txHash = await _walletConnect.sendTransaction(
         to: ContractConfig.logoNFTAddress,
@@ -1065,7 +1060,7 @@ class Web3Service extends Web3ServiceBase {
       final realTokenId = _parseTokenIdFromReceipt(receipt);
       if (kDebugMode) { debugPrint('[TOKEN ID PARSED] 🎉 Real Token ID from blockchain: $realTokenId'); }
 
-      final firebaseUid = AuthService.instance.currentUser?.uid ?? _currentAddress?.toLowerCase() ?? '';
+      final firebaseUid = AuthService.instance.currentUser?.uid ?? activeAddress.toLowerCase();
       
       final logo = LogoNFT(
         tokenId: realTokenId,
@@ -1074,9 +1069,9 @@ class Web3Service extends Web3ServiceBase {
         imageUrl: imageUrl,
         imageHash: imageHash,
         creatorId: firebaseUid,
-        creatorWallet: _currentAddress!,
+        creatorWallet: activeAddress,
         ownerId: firebaseUid,
-        ownerWallet: _currentAddress!,
+        ownerWallet: activeAddress,
         createdAt: DateTime.now(),
         price: price,
         txHash: txHash,
@@ -1107,7 +1102,7 @@ class Web3Service extends Web3ServiceBase {
       _allLogos.removeWhere((l) => l.tokenId == realTokenId);
       _allLogos.add(logo);
 
-      final key = _currentAddress!.toLowerCase();
+      final key = activeAddress.toLowerCase();
       if (_sellers.containsKey(key)) {
         _sellers[key] = _sellers[key]!.copyWith(
           totalLogosCreated: _sellers[key]!.totalLogosCreated + 1,
@@ -1123,8 +1118,18 @@ class Web3Service extends Web3ServiceBase {
       return logo;
     } catch (e) {
       if (kDebugMode) { debugPrint('[MINT FAILED] ❌ Mint failed: $e'); }
-      if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
+      final errStr = e.toString();
+      if (errStr.contains('User rejected') || errStr.contains('cancelled')) {
         throw Exception('Transaction cancelled by user');
+      } else if (errStr.contains('Null check operator') || errStr.contains('null value')) {
+        // Defensive: null check errors from web3dart/WalletConnect internals
+        throw Exception('Blockchain connection error. Please reconnect your wallet and try again.');
+      } else if (errStr.contains('insufficient') || errStr.contains('gas')) {
+        throw Exception('Insufficient funds for gas. Please add SepoliaETH to your wallet.');
+      } else if (errStr.contains('timed out') || errStr.contains('timeout')) {
+        throw Exception('Transaction timed out. Please check Etherscan for status.');
+      } else if (errStr.contains('Transaction failed on-chain') || errStr.contains('revert')) {
+        throw Exception('Smart contract rejected the transaction. Please try again.');
       }
       throw Exception('Mint failed: $e');
     }
@@ -1439,6 +1444,7 @@ class Web3Service extends Web3ServiceBase {
   /// After both blockchain transactions succeed, Firestore is updated to reflect the live auction.
   Future<void> createAuction(int tokenId) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
+    final activeAddress = _currentAddress!;
     if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
 
     // Look up NFT data from Firestore
@@ -1454,7 +1460,7 @@ class Web3Service extends Web3ServiceBase {
       throw Exception('NFT must be approved before starting an auction. Current status: $status');
     }
 
-    final creatorWallet = nftData['creatorWallet'] as String? ?? _currentAddress!;
+    final creatorWallet = nftData['creatorWallet'] as String? ?? activeAddress;
     final priceEth = (nftData['price'] as num?)?.toDouble() ?? 0.01;
     final durationSeconds = nftData['auctionDuration'] as int? ?? 86400;
 
@@ -1550,6 +1556,7 @@ class Web3Service extends Web3ServiceBase {
   /// After the blockchain transaction succeeds, updates Firestore with the bid data.
   Future<void> placeBid(int tokenId, double amountInEth) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
+    final activeAddress = _currentAddress!;
     if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
 
     // Lookup the on-chain auction ID from Firestore
@@ -1598,9 +1605,9 @@ class Web3Service extends Web3ServiceBase {
 
       // ── Sync Firestore with on-chain bid ──
       final bid = Bid(
-        bidId: _currentAddress!.toLowerCase(),
+        bidId: activeAddress.toLowerCase(),
         bidderId: AuthService.instance.currentUser?.uid ?? '',
-        bidderWallet: _currentAddress!,
+        bidderWallet: activeAddress,
         amount: amountInEth,
         firstBidTimestamp: DateTime.now(),
         lastBidTimestamp: DateTime.now(),
@@ -1683,6 +1690,7 @@ class Web3Service extends Web3ServiceBase {
   @override
   Future<String> payAuctionWinner(String sellerWallet, double amountInEth, {Function(String)? onTxHashReady}) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
+    final activeAddress = _currentAddress!;
     if (!_walletConnect.isOnSepolia) throw Exception('Please switch to Sepolia Testnet');
     
     // ═══ STRICT CHAIN VALIDATION ═══
@@ -1694,7 +1702,7 @@ class Web3Service extends Web3ServiceBase {
       if (kDebugMode) { debugPrint('[PAYMENT] Opening MetaMask'); }
       if (kDebugMode) { debugPrint('[PAYMENT] Winning Bid: $amountInEth'); }
       if (kDebugMode) { debugPrint('[PAYMENT] Creator Wallet: $sellerWallet'); }
-      if (kDebugMode) { debugPrint('[PAYMENT] Winner Wallet: $_currentAddress'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Winner Wallet: $activeAddress'); }
       
       // Strict string-based ETH to Wei conversion to avoid precision loss
       final amountStr = amountInEth.toStringAsFixed(18);
@@ -1747,7 +1755,7 @@ class Web3Service extends Web3ServiceBase {
       }
 
       // Validate sender wallet
-      if (tx.from.hexEip55.toLowerCase() != _currentAddress!.toLowerCase()) {
+      if (tx.from.hexEip55.toLowerCase() != activeAddress.toLowerCase()) {
           throw Exception('Sender wallet mismatch. Unverified sender.');
       }
 
@@ -1852,21 +1860,27 @@ class Web3Service extends Web3ServiceBase {
   }
 
   int _parseTokenIdFromReceipt(TransactionReceipt receipt) {
+    try {
       for (final log in receipt.logs) {
-          if (log.topics != null && log.topics!.isNotEmpty) {
-              final sig = log.topics![0].toString().toLowerCase();
-              // Transfer(address from, address to, uint256 tokenId)
-              if (sig == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
-                   if (log.topics!.length >= 4) {
-                       final tokenIdHex = log.topics![3].toString();
-                       return BigInt.parse(tokenIdHex).toInt();
-                   }
-              }
+        final topics = log.topics;
+        if (topics != null && topics.isNotEmpty) {
+          final sig = topics[0].toString().toLowerCase();
+          // Transfer(address from, address to, uint256 tokenId)
+          if (sig == '0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef') {
+            if (topics.length >= 4) {
+              final tokenIdHex = topics[3].toString();
+              return BigInt.parse(tokenIdHex).toInt();
+            }
           }
+        }
       }
-      
-      if (kDebugMode) { debugPrint('Logs found: ${receipt.logs.length}'); }
-      throw Exception('Could not find Token ID in transaction receipt');
+    } catch (e) {
+      if (kDebugMode) { debugPrint('⚠️ Error parsing token ID from receipt: $e'); }
+      throw Exception('Failed to parse Token ID from receipt: $e');
+    }
+
+    if (kDebugMode) { debugPrint('Logs found: ${receipt.logs.length}'); }
+    throw Exception('Could not find Token ID in transaction receipt');
   }
 
   // ignore: unused_element

@@ -14,6 +14,7 @@ import 'package:nft_logo_marketplace/core/services/web3_service.dart';
 import 'package:nft_logo_marketplace/core/services/auth_service.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart';
 import 'package:nft_logo_marketplace/core/services/walletconnect_service.dart';
+import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:flutter/material.dart';
 import 'package:nft_logo_marketplace/main.dart';
 
@@ -609,6 +610,133 @@ class Web3Service extends Web3ServiceBase {
     }
   }
 
+  /// ═══ ROBUST JS ERROR EXTRACTION (shared across all web3 methods) ═══
+  /// MetaMask errors are JS objects with varying nested structures.
+  /// This extracts a meaningful message from any JS error shape.
+  String _extractJsErrorMessage(dynamic e) {
+    String errorMsg = '';
+
+    // Helper to safely read a JS property (returns null on failure)
+    dynamic tryGetProp(dynamic obj, String prop) {
+      try { return js_util.getProperty(obj, prop); } catch (_) { return null; }
+    }
+
+    try {
+      // Strategy 1: e.message (simple MetaMask errors)
+      final msg1 = tryGetProp(e, 'message');
+      if (msg1 != null) {
+        final s = msg1.toString();
+        if (!s.toLowerCase().contains('[object') && s.isNotEmpty) {
+          errorMsg = s;
+        }
+      }
+
+      // Strategy 2: e.reason (ethers.js revert reason)
+      if (errorMsg.isEmpty) {
+        final reason = tryGetProp(e, 'reason');
+        if (reason != null) {
+          final s = reason.toString();
+          if (!s.toLowerCase().contains('[object') && s.isNotEmpty) {
+            errorMsg = s;
+          }
+        }
+      }
+
+      // Strategy 3: e.data.message (nested RPC error)
+      if (errorMsg.isEmpty) {
+        final data = tryGetProp(e, 'data');
+        if (data != null) {
+          final dataMsg = tryGetProp(data, 'message');
+          if (dataMsg != null) {
+            final s = dataMsg.toString();
+            if (!s.toLowerCase().contains('[object') && s.isNotEmpty) {
+              errorMsg = s;
+            }
+          }
+        }
+      }
+
+      // Strategy 4: e.info.error.message (deep nested ethers v6 style)
+      if (errorMsg.isEmpty) {
+        final info = tryGetProp(e, 'info');
+        if (info != null) {
+          final infoErr = tryGetProp(info, 'error');
+          if (infoErr != null) {
+            final infoMsg = tryGetProp(infoErr, 'message');
+            if (infoMsg != null) {
+              final s = infoMsg.toString();
+              if (!s.toLowerCase().contains('[object') && s.isNotEmpty) {
+                errorMsg = s;
+              }
+            }
+          }
+        }
+      }
+
+      // Strategy 5: Map known error codes to user-friendly messages
+      if (errorMsg.isEmpty) {
+        final code = tryGetProp(e, 'code');
+        if (code != null) {
+          final codeStr = code.toString();
+          if (codeStr == '4001' || codeStr == 'ACTION_REJECTED') {
+            errorMsg = 'User rejected the transaction';
+          } else if (codeStr == '-32603') {
+            errorMsg = 'Internal JSON-RPC error. Please check gas and contract parameters.';
+          } else if (codeStr == '-32000') {
+            errorMsg = 'Execution reverted by the smart contract.';
+          } else if (codeStr == '-32002') {
+            errorMsg = 'Request already pending in MetaMask. Please check your MetaMask popup.';
+          } else {
+            errorMsg = 'MetaMask error (code: $codeStr)';
+          }
+        }
+      }
+
+      // Strategy 6: JSON.stringify the entire JS object as last JS-level attempt
+      if (errorMsg.isEmpty) {
+        try {
+          final jsonStr = js_util.callMethod(
+            js_util.getProperty(html.window, 'JSON'), 'stringify', [e],
+          );
+          if (jsonStr != null) {
+            final parsed = jsonStr.toString();
+            if (parsed.isNotEmpty && parsed != '{}' && parsed != 'null') {
+              // Try to extract message from JSON string
+              try {
+                final map = jsonDecode(parsed);
+                if (map is Map) {
+                  errorMsg = (map['message'] ?? map['reason'] ?? map['error'] ?? '').toString();
+                }
+              } catch (_) {
+                // Use raw JSON if parsing fails but it's readable
+                if (parsed.length < 200) errorMsg = parsed;
+              }
+            }
+          }
+        } catch (_) {}
+      }
+    } catch (_) {
+      // All JS interop failed — use Dart toString as last resort
+    }
+
+    // Final fallback: if nothing extracted, use Dart string representation
+    if (errorMsg.isEmpty) {
+      if (e is String) {
+        errorMsg = e;
+      } else {
+        errorMsg = e.toString();
+      }
+    }
+
+    // Absolute last safety net: never show raw [object Object] to user
+    final fallbackLower = errorMsg.toLowerCase();
+    if (fallbackLower.contains('[object') || fallbackLower.contains('instance of') || fallbackLower.contains('jsobject')) {
+      errorMsg = 'Transaction rejected or failed in MetaMask';
+    }
+
+    return errorMsg;
+  }
+
   @override
   Future<LogoNFT> mintLogo({
     required String name,
@@ -620,52 +748,71 @@ class Web3Service extends Web3ServiceBase {
     String? copyrightHash,
     String? hashAlgorithm,
   }) async {
+    // ═══ FIX 1: Capture address early to prevent null during async ═══
     if (_currentAddress == null) throw Exception('Wallet not connected');
+    final activeAddress = _currentAddress!;
+
     if (!isOnSepolia) throw Exception('Please switch to Sepolia network');
 
-    _registerAsSeller(_currentAddress!);
+    // ═══ FIX 2: Pre-flight checks before sending transaction ═══
+    final ethereum = js_util.getProperty(html.window, 'ethereum');
+    if (ethereum == null) {
+      throw Exception('MetaMask not detected. Please install MetaMask or use MetaMask browser.');
+    }
+
+    // Check balance BEFORE sending — saves user from opaque MetaMask errors
+    if (_balance <= 0) {
+      throw Exception('Insufficient funds for gas. Please add SepoliaETH to your wallet.');
+    }
+
+    _registerAsSeller(activeAddress);
     final imageHash = generateImageHash(imageUrl);
     
     // Convert price to wei (1 ETH = 10^18 wei)
     final priceWei = BigInt.from(price * 1e18);
-    
-    // Encode function call data for mint(name, description, imageHash, price)
-    // Function selector for mint is embedded in _encodeMintCall
-    // const functionSelector = '0x94bf804d';
-    
-    // For simplicity, we'll use eth_sendTransaction with encoded data
-    // In production, use proper ABI encoding
     final txData = _encodeMintCall(name, description, imageHash, priceWei);
 
     try {
-      final ethereum = js_util.getProperty(html.window, 'ethereum');
+      if (kDebugMode) { debugPrint('[TX SENT] 🚀 Sending mint transaction to LogoNFT contract...'); }
+      if (kDebugMode) { debugPrint('[TX SENT] 📄 Contract: ${ContractConfig.logoNFTAddress}'); }
+      if (kDebugMode) { debugPrint('[TX SENT] 👛 From: $activeAddress'); }
+
       final txHash = await js_util.promiseToFuture(
         js_util.callMethod(ethereum, 'request', [
           js_util.jsify({
             'method': 'eth_sendTransaction',
             'params': [{
-              'from': _currentAddress,
+              'from': activeAddress,
               'to': ContractConfig.logoNFTAddress,
               'data': txData,
-              // Let MetaMask auto-estimate gas (typically 200-500K for NFT mint)
             }],
           }),
         ]),
       );
       
-      if (kDebugMode) { debugPrint('✅ Mint transaction sent: $txHash'); }
-      if (kDebugMode) { debugPrint('🔗 View on Etherscan: ${ContractConfig.getEtherscanTxUrl(txHash.toString())}'); }
+      if (kDebugMode) { debugPrint('[TX SENT] ✅ Mint transaction sent: $txHash'); }
+      if (kDebugMode) { debugPrint('[TX SENT] 🔗 Etherscan: ${ContractConfig.getEtherscanTxUrl(txHash.toString())}'); }
       
       // Wait for transaction confirmation
-      if (kDebugMode) { debugPrint('⏳ Waiting for mint confirmation...'); }
+      if (kDebugMode) { debugPrint('[WAITING CONFIRMATION] ⏳ Waiting for blockchain confirmation...'); }
       final receipt = await _waitForReceipt(txHash.toString());
-      if (receipt == null) throw Exception('Transaction failed');
+      if (receipt == null) throw Exception('Transaction failed - no receipt received');
+
+      // Verify on-chain status
+      final status = receipt['status'];
+      if (status != null) {
+        final statusInt = int.tryParse(status.toString().replaceFirst('0x', ''), radix: 16);
+        if (statusInt == 0) {
+          throw Exception('Transaction failed on-chain (reverted)');
+        }
+      }
 
       final realTokenId = _parseTokenIdFromReceipt(receipt);
-      if (kDebugMode) { debugPrint('🎉 Minted Token ID: $realTokenId'); }
+      if (kDebugMode) { debugPrint('[TOKEN ID PARSED] 🎉 Real Token ID from blockchain: $realTokenId'); }
       
       final firebaseUid = AuthService.instance.currentUser?.uid ?? '';
 
+      // ═══ FIX 3: Include ALL required fields (matching mobile version) ═══
       final logo = LogoNFT(
         tokenId: realTokenId,
         name: name,
@@ -673,19 +820,39 @@ class Web3Service extends Web3ServiceBase {
         imageUrl: imageUrl,
         imageHash: imageHash,
         creatorId: firebaseUid,
-        creatorWallet: _currentAddress!,
+        creatorWallet: activeAddress,
         ownerId: firebaseUid,
-        ownerWallet: _currentAddress!,
+        ownerWallet: activeAddress,
         createdAt: DateTime.now(),
         price: price,
         txHash: txHash.toString(),
         category: category,
+        status: ValidationStatus.pending,
+        metadataUrl: metadataUrl,
+        copyrightHash: copyrightHash ?? '',
+        hashAlgorithm: hashAlgorithm ?? 'SHA-256',
+        copyrightVerifiedAt: DateTime.now(),
+        nftVisible: false,
+        auctionStatus: 'NONE',
+        isAuctionActive: false,
+        isInAuction: false,
+        isMetadataLocked: false,
       );
+
+      // ═══ FIX 4: Save to Firestore (was COMPLETELY MISSING!) ═══
+      try {
+        if (kDebugMode) { debugPrint('[FIRESTORE SAVE START] 🔥 Saving NFT #$realTokenId to Firestore...'); }
+        await FirestoreService.instance.saveNFT(logo);
+        if (kDebugMode) { debugPrint('[FIRESTORE SAVE SUCCESS] ✅ NFT #$realTokenId saved to Firestore'); }
+      } catch (fsError) {
+        if (kDebugMode) { debugPrint('[FIRESTORE SAVE] ⚠️ Firestore write failed: $fsError'); }
+        throw Exception('Firestore fail: $fsError');
+      }
 
       _allLogos.removeWhere((l) => l.tokenId == realTokenId);
       _allLogos.add(logo);
 
-      final key = _currentAddress!.toLowerCase();
+      final key = activeAddress.toLowerCase();
       if (_sellers.containsKey(key)) {
         _sellers[key] = _sellers[key]!.copyWith(
           totalLogosCreated: _sellers[key]!.totalLogosCreated + 1,
@@ -694,29 +861,41 @@ class Web3Service extends Web3ServiceBase {
 
       await _updateBalance();
       notifyListeners();
+
+      if (kDebugMode) { debugPrint('[MINT COMPLETE] ✅ Token #$realTokenId minted and saved successfully'); }
       return logo;
     } catch (e) {
-      // MetaMask errors are JS objects — extract the actual message
-      String errorMsg;
-      try {
-        // Try to read .message property from JS error object
-        final jsMessage = js_util.getProperty(e, 'message');
-        errorMsg = jsMessage?.toString() ?? e.toString();
-      } catch (_) {
-        errorMsg = e.toString();
+      // ═══ Re-throw known Exception types directly ═══
+      if (e is Exception && e.toString().contains('Exception:')) {
+        final msg = e.toString().replaceFirst('Exception: ', '');
+        if (msg.contains('Wallet not connected') ||
+            msg.contains('Insufficient funds') ||
+            msg.contains('Sepolia') ||
+            msg.contains('cancelled') ||
+            msg.contains('Transaction failed') ||
+            msg.contains('Firestore fail') ||
+            msg.contains('MetaMask not detected') ||
+            msg.contains('Token ID')) {
+          rethrow;
+        }
       }
-      
-      // Clean up common wrapper text
-      if (errorMsg.contains('[object Object]')) {
-        errorMsg = 'Transaction rejected or failed in MetaMask';
-      }
-      
+
+      // Extract meaningful error from JS object
+      final errorMsg = _extractJsErrorMessage(e);
       if (kDebugMode) { debugPrint('❌ Mint failed: $errorMsg'); }
-      
-      if (errorMsg.contains('User rejected') || errorMsg.contains('user rejected') || errorMsg.contains('denied')) {
+
+      // Classify and re-throw with user-friendly messages
+      final lower = errorMsg.toLowerCase();
+      if (lower.contains('user rejected') || lower.contains('user denied') || lower.contains('action_rejected')) {
         throw Exception('Transaction cancelled by user');
-      } else if (errorMsg.contains('insufficient funds') || errorMsg.contains('gas')) {
+      } else if (lower.contains('insufficient funds') || lower.contains('enough ether') || lower.contains('gas required exceeds')) {
         throw Exception('Insufficient funds for gas. Please add SepoliaETH to your wallet.');
+      } else if (lower.contains('revert') || lower.contains('execution failed')) {
+        throw Exception('Smart contract rejected the transaction. Please verify your inputs and try again.');
+      } else if (lower.contains('nonce') || lower.contains('replacement')) {
+        throw Exception('Transaction nonce conflict. Please reset your MetaMask account in Settings > Advanced.');
+      } else if (lower.contains('already pending') || lower.contains('-32002')) {
+        throw Exception('A transaction is already pending in MetaMask. Please check your MetaMask popup.');
       }
       throw Exception('Mint failed: $errorMsg');
     }
@@ -926,13 +1105,14 @@ class Web3Service extends Web3ServiceBase {
   @override
   Future<void> buyLogo(int tokenId) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
+    final activeAddress = _currentAddress!;
 
     final index = _allLogos.indexWhere((l) => l.tokenId == tokenId);
     if (index == -1) throw Exception('Logo not found');
 
     final logo = _allLogos[index];
     if (!logo.isForSale) throw Exception('Not for sale');
-    if (logo.ownerWallet.toLowerCase() == _currentAddress!.toLowerCase()) {
+    if (logo.ownerWallet.toLowerCase() == activeAddress.toLowerCase()) {
       throw Exception('Already owned');
     }
     if (_balance < logo.price) throw Exception('Insufficient balance');
@@ -947,7 +1127,7 @@ class Web3Service extends Web3ServiceBase {
     }
 
     _allLogos[index] = logo.copyWith(
-      ownerId: '', ownerWallet: _currentAddress!,
+      ownerId: '', ownerWallet: activeAddress,
       isForSale: false,
     );
 
@@ -973,7 +1153,7 @@ class Web3Service extends Web3ServiceBase {
     _saleHistory.add(SaleRecord(
       tokenId: tokenId,
       seller: seller,
-      buyer: _currentAddress!,
+      buyer: activeAddress,
       price: price,
       royaltyPaid: royalty,
       timestamp: DateTime.now(),
@@ -984,6 +1164,7 @@ class Web3Service extends Web3ServiceBase {
   @override
   Future<String> payAuctionWinner(String sellerWallet, double amountInEth, {Function(String)? onTxHashReady}) async {
     if (_currentAddress == null) throw Exception('Wallet not connected');
+    final activeAddress = _currentAddress!;
     if (_chainId != Web3ServiceBase.sepoliaChainId) {
       throw Exception('Please switch to Sepolia Testnet');
     }
@@ -992,7 +1173,7 @@ class Web3Service extends Web3ServiceBase {
       if (kDebugMode) { debugPrint('[PAYMENT] Opening MetaMask'); }
       if (kDebugMode) { debugPrint('[PAYMENT] Winning Bid: $amountInEth'); }
       if (kDebugMode) { debugPrint('[PAYMENT] Creator Wallet: $sellerWallet'); }
-      if (kDebugMode) { debugPrint('[PAYMENT] Winner Wallet: $_currentAddress'); }
+      if (kDebugMode) { debugPrint('[PAYMENT] Winner Wallet: $activeAddress'); }
       
       // Strict string-based ETH to Wei conversion to avoid precision loss
       final amountStr = amountInEth.toStringAsFixed(18);
@@ -1016,7 +1197,7 @@ class Web3Service extends Web3ServiceBase {
           js_util.jsify({
             'method': 'eth_sendTransaction',
             'params': [{
-              'from': _currentAddress,
+              'from': activeAddress,
               'to': sellerWallet,
               'value': weiAmountHex,
             }],
@@ -1039,7 +1220,7 @@ class Web3Service extends Web3ServiceBase {
       if (txData != null) {
         // Validate sender wallet (tx.from)
         final txFrom = (txData['from'] as String? ?? '').toLowerCase();
-        if (txFrom != _currentAddress!.toLowerCase()) {
+        if (txFrom != activeAddress.toLowerCase()) {
           throw Exception('Sender wallet mismatch. Unverified sender.');
         }
 
@@ -1074,10 +1255,21 @@ class Web3Service extends Web3ServiceBase {
       return txHash.toString();
     } catch (e) {
       if (kDebugMode) { debugPrint('❌ Payment failed: $e'); }
-      if (e.toString().contains('User rejected') || e.toString().contains('cancelled') || e.toString().contains('User denied')) {
-        throw Exception('Payment cancelled');
+      // Re-throw known exceptions
+      if (e is Exception) {
+        final msg = e.toString();
+        if (msg.contains('User rejected') || msg.contains('cancelled') || msg.contains('User denied')) {
+          throw Exception('Payment cancelled');
+        }
+        if (msg.contains('Wallet not connected') || msg.contains('Sepolia') ||
+            msg.contains('Blockchain transaction failed') || msg.contains('mismatch') ||
+            msg.contains('Invalid blockchain') || msg.contains('Could not fetch')) {
+          rethrow;
+        }
       }
-      throw Exception('$e'.replaceFirst('Exception: ', '')); // Strip generic Exception prefix
+      // Extract JS error for unknown errors
+      final errorMsg = _extractJsErrorMessage(e);
+      throw Exception('Payment failed: $errorMsg');
     }
   }
 

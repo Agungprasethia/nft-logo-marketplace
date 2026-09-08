@@ -360,6 +360,8 @@ class _UploadPageState extends State<UploadPage> {
       
       if (e.toString().contains('User rejected') || e.toString().contains('cancelled')) {
         errorMessage = 'User rejected the transaction';
+      } else if (e.toString().contains('Null check operator') || e.toString().contains('null value')) {
+        errorMessage = 'Blockchain connection error. Please reconnect your wallet and try again.';
       } else if (e.toString().contains('insufficient funds') || e.toString().contains('gas')) {
         errorMessage = 'Blockchain transaction failed';
       } else if (e.toString().contains('network') || e.toString().contains('Sepolia')) {
