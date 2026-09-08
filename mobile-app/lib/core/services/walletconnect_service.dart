@@ -10,6 +10,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:http/http.dart' as http;
 import 'package:nft_logo_marketplace/config/contract_config.dart';
 import 'package:nft_logo_marketplace/core/services/session_service.dart' as app_session;
+import 'package:nft_logo_marketplace/core/services/notification_service.dart';
 
 class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
   static WalletConnectService? _instance;
@@ -531,6 +532,17 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
         ),
       );
 
+      // Tampilkan notifikasi sistem (OS level)
+      try {
+        await NotificationService().showNotification(
+          id: 999,
+          title: 'Konfirmasi Transaksi 🦊',
+          body: 'Buka aplikasi MetaMask secara manual sekarang untuk menyetujui transaksi.',
+        );
+      } catch (e) {
+        if (kDebugMode) debugPrint('Failed to show tx notification: $e');
+      }
+
       await _openMetaMaskForTransaction();
 
       if (kDebugMode) debugPrint('⏳ Waiting for user approval in MetaMask...');
@@ -568,9 +580,11 @@ class WalletConnectService extends ChangeNotifier with WidgetsBindingObserver {
         if (kDebugMode) debugPrint('🦊 Launching connected wallet via AppKitModal...');
         _appKitModal!.launchConnectedWallet();
         await Future.delayed(const Duration(milliseconds: 500));
-        return;
+        // Do not return here, forcefully trigger MetaMask deep link as a fallback
+        // to ensure it opens on Android devices where AppKitModal might fail.
       }
-      // Fallback if appKitModal is somehow null
+      
+      // Fallback: direct MetaMask deep link
       final topic = _session?.topic;
       final walletUri = topic != null
           ? Uri.parse('metamask://wc?topic=$topic')

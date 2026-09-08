@@ -1,5 +1,6 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:flutter/foundation.dart';
+import 'dart:io';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -14,6 +15,13 @@ class NotificationService {
 
   Future<void> initialize() async {
     if (_isInitialized) return;
+
+    if (!kIsWeb && Platform.isAndroid) {
+      await flutterLocalNotificationsPlugin
+          .resolvePlatformSpecificImplementation<
+              AndroidFlutterLocalNotificationsPlugin>()
+          ?.requestNotificationsPermission();
+    }
 
     // Android info
     const AndroidInitializationSettings initializationSettingsAndroid =
@@ -49,6 +57,10 @@ class NotificationService {
     required String body,
     String? payload,
   }) async {
+    if (!_isInitialized) {
+      await initialize();
+    }
+
     const AndroidNotificationDetails androidNotificationDetails =
         AndroidNotificationDetails(
       'auction_channel',

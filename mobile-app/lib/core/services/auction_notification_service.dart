@@ -4,6 +4,8 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:nft_logo_marketplace/shared/models/auction.dart';
 import 'package:nft_logo_marketplace/core/services/firestore_service.dart';
 import 'package:nft_logo_marketplace/core/services/web3_service.dart';
+import 'package:nft_logo_marketplace/core/utils/notification_manager.dart';
+import 'package:nft_logo_marketplace/shared/models/app_notification.dart';
 
 /// Global realtime auction notification service.
 /// Automatically starts when wallet connects and stops when it disconnects.
@@ -215,15 +217,30 @@ class _AuctionNotifState {
 
       if (remainingSeconds <= 60 && remainingSeconds > 30) {
         if (_canShowEvent('60s')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Auction Ending Soon',
+            message: 'Auction #${auction.id} ends in 1 minute!',
+            type: NotificationType.warning,
+            tokenId: auction.id,
+          );
         }
       } else if (remainingSeconds <= 30 && remainingSeconds > 10) {
         if (_canShowEvent('30s')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Auction Almost Over',
+            message: 'Auction #${auction.id} ends in 30 seconds!',
+            type: NotificationType.warning,
+            tokenId: auction.id,
+          );
         }
       } else if (remainingSeconds <= 10 && remainingSeconds > 0) {
         if (_canShowEvent('10s')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Auction Ending Now',
+            message: '10 seconds left for Auction #${auction.id}!',
+            type: NotificationType.warning,
+            tokenId: auction.id,
+          );
         }
       }
     }
@@ -245,20 +262,35 @@ class _AuctionNotifState {
       // Phase 4: Winner Alert
       if (isWinner) {
         if (_canShowEvent('winner')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'You Won!',
+            message: 'You won the auction for #${auction.id}!',
+            type: NotificationType.success,
+            tokenId: auction.id,
+          );
         }
       }
       // Phase 5: Auction Lost Alert
       else if (participated && !isWinner) {
         if (_canShowEvent('lost')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Auction Lost',
+            message: 'Someone outbid you for #${auction.id}.',
+            type: NotificationType.info,
+            tokenId: auction.id,
+          );
         }
       }
 
       // Phase 6: Payment Reminder
       if (auction.status == AuctionStatus.paymentPending && isWinner) {
         if (_canShowEvent('payment_reminder')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Payment Pending',
+            message: 'Please complete payment for #${auction.id}.',
+            type: NotificationType.warning,
+            tokenId: auction.id,
+          );
         }
       }
     }
@@ -280,14 +312,24 @@ class _AuctionNotifState {
     // ── TRIGGER 13: New Bid Received On Your Auction (For Seller) ─────────
     if (isSeller && _lastBidCount > 0 && bids.length > _lastBidCount) {
       if (_canShow('new_bid_seller')) {
-         // NotificationManager.show removed: No valid context for popup
+         NotificationManager.show(
+           title: 'New Bid Received',
+           message: 'Someone just placed a bid on your auction #$tokenId!',
+           type: NotificationType.info,
+           tokenId: tokenId,
+         );
       }
     }
 
     // ── TRIGGER 5: New Bidder Joined ──────────────────────────────────────
     if (_lastBidCount > 0 && bids.length > _lastBidCount) {
       if (_canShow('new_bidder')) {
-        // NotificationManager.show removed: No valid context for popup
+        NotificationManager.show(
+          title: 'New Bidder',
+          message: 'A new bid was placed on auction #$tokenId.',
+          type: NotificationType.info,
+          tokenId: tokenId,
+        );
       }
     }
     _lastBidCount = bids.length;
@@ -299,19 +341,34 @@ class _AuctionNotifState {
         // TRIGGER 1: Current user was outbid
         if (_lastHighestBidderWallet == currentWallet) {
           if (_canShow('outbid')) {
-            // NotificationManager.show removed: No valid context for popup
+            NotificationManager.show(
+              title: 'You were outbid!',
+              message: 'Someone placed a higher bid on #$tokenId.',
+              type: NotificationType.warning,
+              tokenId: tokenId,
+            );
           }
         }
         // TRIGGER 2: Current user just became the highest bidder
         else if (currentHighestBidder == currentWallet) {
           if (_canShow('you_are_top')) {
-            // NotificationManager.show removed: No valid context for popup
+            NotificationManager.show(
+              title: 'Highest Bidder!',
+              message: 'You are now the highest bidder for #$tokenId.',
+              type: NotificationType.success,
+              tokenId: tokenId,
+            );
           }
         }
         // A third-party outbid — show general "new highest bid"
         else {
           if (_canShow('new_highest_bid')) {
-            // NotificationManager.show removed: No valid context for popup
+            NotificationManager.show(
+              title: 'New Highest Bid',
+              message: 'There is a new highest bid on #$tokenId.',
+              type: NotificationType.info,
+              tokenId: tokenId,
+            );
           }
         }
       }
@@ -334,12 +391,22 @@ class _AuctionNotifState {
       if (prevRank != null && currentRank > prevRank) {
         // Rank dropped (higher number)
         if (_canShow('rank_drop')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Rank Dropped',
+            message: 'Your rank dropped in auction #$tokenId.',
+            type: NotificationType.warning,
+            tokenId: tokenId,
+          );
         }
       } else if (prevRank != null && currentRank < prevRank) {
         // Rank improved (lower number)
         if (_canShow('rank_increase')) {
-          // NotificationManager.show removed: No valid context for popup
+          NotificationManager.show(
+            title: 'Rank Improved',
+            message: 'Your rank improved in auction #$tokenId.',
+            type: NotificationType.success,
+            tokenId: tokenId,
+          );
         }
       }
       _prevRank = currentRank;
